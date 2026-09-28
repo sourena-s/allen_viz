@@ -5,19 +5,19 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Geist:wght@400;500;600&display=swap">
 <style>
-  /* Frosted-glass controls over a white stage */
+  /* Frosted grey controls over a white viewport */
   :root {
-    color-scheme: light;
+    color-scheme: dark;
     --ground: #ffffff;
-    --glass: rgba(246, 247, 249, 0.78);
-    --glass-hover: rgba(20, 28, 38, 0.07);
-    --edge: rgba(20, 28, 38, 0.10);
-    --ink: #161a1f;
-    --muted: rgba(22, 26, 31, 0.58);
-    --frost: #2b3139;
-    --track: rgba(20, 28, 38, 0.14);
-    --field: rgba(20, 28, 38, 0.04);
-    --sheet: rgba(250, 251, 252, 0.94);
+    --glass: rgba(62, 68, 77, 0.62);
+    --glass-hover: rgba(255, 255, 255, 0.12);
+    --edge: rgba(255, 255, 255, 0.14);
+    --ink: #f1f3f5;
+    --muted: rgba(236, 240, 244, 0.62);
+    --frost: #e3e8ee;
+    --track: rgba(255, 255, 255, 0.2);
+    --field: rgba(255, 255, 255, 0.08);
+    --sheet: rgba(52, 57, 65, 0.86);
     --sans: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
     --mono: "Geist Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
   }
@@ -30,7 +30,7 @@
   .glass {
     background: var(--glass);
     -webkit-backdrop-filter: blur(22px) saturate(140%); backdrop-filter: blur(22px) saturate(140%);
-    border: 1px solid var(--edge); box-shadow: 0 10px 34px rgba(20, 28, 38, 0.12);
+    border: 1px solid var(--edge); box-shadow: 0 10px 34px rgba(20, 28, 38, 0.22);
   }
   .panel {
     position: fixed; top: calc(16px + env(safe-area-inset-top, 0px)); left: 16px;
@@ -56,9 +56,9 @@
   }
   input[type=checkbox]::after {
     content: ""; position: absolute; top: 2px; left: 2px; width: 11px; height: 11px; border-radius: 50%;
-    background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25); transition: transform .15s, background .15s;
+    background: rgba(255, 255, 255, 0.75); transition: transform .15s, background .15s;
   }
-  input[type=checkbox]:checked { background: var(--frost); }
+  input[type=checkbox]:checked { background: rgba(227, 232, 238, 0.6); }
   input[type=checkbox]:checked::after { transform: translateX(11px); background: #fff; }
 
   /* Thin sliders with a frosted thumb */
@@ -86,7 +86,7 @@
     font: 13px var(--sans); color: var(--ink); background: var(--field);
     border: 1px solid var(--edge); border-radius: 10px; padding: 7px 10px; width: 100%; box-sizing: border-box;
   }
-  select option { background: #fff; }
+  select option { background: #3a4048; }
   .progress { height: 2px; background: var(--track); border-radius: 2px; overflow: hidden; }
   .progress > div { height: 100%; width: 0; background: var(--frost); }
   .scale-bar { height: 8px; border-radius: 999px; background: linear-gradient(90deg, #2166ac, #f7f7f7, #b2182b); }
@@ -95,12 +95,12 @@
   /* Gene / probe search results, shown in the panel's flow right under the search box */
   .suggestions {
     list-style: none; margin: -4px 0 0; padding: 4px; max-height: 240px; overflow-y: auto;
-    border: 1px solid var(--edge); border-radius: 10px; background: rgba(255, 255, 255, 0.9);
+    border: 1px solid var(--edge); border-radius: 10px; background: rgba(40, 45, 52, 0.7);
     scrollbar-width: thin; scrollbar-color: var(--track) transparent;
   }
   .suggestions li { display: flex; align-items: baseline; gap: 8px; padding: 5px 8px; border-radius: 7px; cursor: pointer; }
   .suggestions li .text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .suggestions li mark { background: none; color: var(--ink); font-weight: 600; }
+  .suggestions li mark { background: none; color: #fff; font-weight: 600; }
   .suggestions li .kind { font: 11px var(--mono); color: var(--muted); white-space: nowrap; }
   .suggestions li[aria-selected=true], .suggestions li:hover { background: var(--glass-hover); }
   .suggestions li.note { cursor: default; color: var(--muted); font-size: 11.5px; }
@@ -143,9 +143,21 @@
   .ribbon-fit { flex: none; margin-left: auto; padding: 3px 12px; font-size: 11px; }
   .ribbon-grid { display: flex; gap: 8px; }
   .ribbon-fit2 { margin-left: 0; }
+  #ribbon-min { font-size: 14px; line-height: 1; padding: 3px 11px; }
+  /* Minimised ribbon: a thin line at the bottom; tap it to bring the ribbon back */
+  #ribbon-bar {
+    position: fixed; left: 50%; transform: translateX(-50%); bottom: env(safe-area-inset-bottom, 0px); z-index: 2;
+    width: min(360px, 60vw); height: 22px; padding: 0; border: 0; background: none; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #ribbon-bar::before { content: ""; display: block; margin: 8px auto 0; height: 5px; border-radius: 999px; background: rgba(62, 68, 77, 0.55); }
+  #ribbon-bar:hover::before { background: rgba(62, 68, 77, 0.8); }
+  html body.ribbon-min #ribbon { display: none; }
+  body.ribbon-min #readout { bottom: calc(30px + env(safe-area-inset-bottom, 0px)); }
+  body.phone.ribbon-min #readout { bottom: auto; }
   /* Landscape: the ribbon covers the screen; .ribbon-rot also turns it for an upright phone */
   html body.ribbon-full #ribbon {
-    background: #fbfbfc; -webkit-backdrop-filter: none; backdrop-filter: none;
+    background: #2f343b; -webkit-backdrop-filter: none; backdrop-filter: none;
     left: 0; right: 0; top: 0; bottom: 0; z-index: 6; border-radius: 0; border: 0; max-height: none;
     overflow-y: auto; padding: calc(12px + env(safe-area-inset-top, 0px)) 14px 14px;
   }
@@ -170,7 +182,7 @@
   #ribbon-canvas { display: block; cursor: pointer; }
   #ribbon-tip {
     position: fixed; z-index: 7; pointer-events: none; border-radius: 10px; padding: 7px 10px;
-    font-size: 12px; max-width: 300px; color: var(--ink); background: rgba(255, 255, 255, 0.96); box-shadow: 0 6px 20px rgba(20, 28, 38, 0.15); border: 1px solid var(--edge);
+    font-size: 12px; max-width: 300px; color: var(--ink); background: rgba(46, 51, 58, 0.95); box-shadow: 0 6px 20px rgba(20, 28, 38, 0.25); border: 1px solid var(--edge);
   }
   #ribbon-tip .meta { font: 11px var(--mono); color: var(--muted); margin-top: 2px; }
   body.phone #ribbon { left: 8px; right: 8px; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); padding: 8px; }
@@ -190,8 +202,8 @@
   .dl-folder .text-button { flex: none; padding: 6px 12px; }
   .dl-actions { display: flex; gap: 8px; justify-content: flex-end; }
   .dl-actions .text-button { padding: 7px 16px; }
-  .dl-actions .primary { background: var(--frost); color: #fff; border-color: transparent; }
-  .dl-actions .primary:hover { background: #000; }
+  .dl-actions .primary { background: var(--frost); color: #1d2126; border-color: transparent; }
+  .dl-actions .primary:hover { background: #fff; }
   .dl-actions .primary:disabled { opacity: .4; cursor: default; }
   #dl-log { display: flex; flex-direction: column; gap: 2px; }
   .expr-buttons { display: flex; flex-direction: column; gap: 6px; }
@@ -206,16 +218,16 @@
     height: min(46vh, 380px); width: 36px; display: flex; justify-content: center;
     cursor: ns-resize; touch-action: none; -webkit-tap-highlight-color: transparent; outline: none;
   }
-  .rail-track { position: relative; width: 3px; height: 100%; border-radius: 3px; background: var(--track); }
-  .rail-fill { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 3px; background: rgba(43, 49, 57, 0.55); }
+  .rail-track { position: relative; width: 3px; height: 100%; border-radius: 3px; background: rgba(62, 68, 77, 0.2); }
+  .rail-fill { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 3px; background: rgba(62, 68, 77, 0.6); }
   .rail-thumb {
     position: absolute; left: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%;
-    background: var(--frost); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25); transition: transform .12s;
+    background: #3e444d; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); transition: transform .12s;
   }
   #cut-rail:hover .rail-thumb, #cut-rail.dragging .rail-thumb, #cut-rail:focus-visible .rail-thumb { transform: scale(1.2); }
   .rail-thumb span {
     position: absolute; right: 26px; top: 50%; transform: translateY(-50%); white-space: nowrap;
-    font: 11px var(--mono); color: var(--ink); background: rgba(255, 255, 255, 0.9); padding: 3px 7px; border-radius: 999px;
+    font: 11px var(--mono); color: var(--ink); background: rgba(62, 68, 77, 0.8); padding: 3px 7px; border-radius: 999px;
     border: 1px solid var(--edge);
   }
   body.has-ribbon #cut-rail { top: calc((100% - var(--ribbon-h, 150px) - 28px) / 2); height: min(34vh, 300px); }
@@ -223,12 +235,11 @@
   body.phone.panel-open #cut-rail { display: none; }
 
   .panel-toggle {
-    display: none; position: fixed; z-index: 2; left: 50%; transform: translateX(-50%);
-    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
-    font: 500 15px var(--sans); color: var(--ink); border-radius: 999px; padding: 12px 22px;
-    align-items: center; gap: 9px; cursor: pointer; -webkit-tap-highlight-color: transparent;
+    display: none; position: fixed; z-index: 2; left: 10px; top: calc(10px + env(safe-area-inset-top, 0px));
+    width: 44px; height: 44px; padding: 0; border-radius: 12px; color: var(--ink);
+    align-items: center; justify-content: center; cursor: pointer; -webkit-tap-highlight-color: transparent;
   }
-  .panel-toggle svg { width: 18px; height: 18px; flex: none; }
+  .panel-toggle svg { width: 22px; height: 22px; flex: none; }
   .sheet-handle { display: none; }
   #scrim { display: none; }
 
@@ -258,7 +269,7 @@
     background: inherit; touch-action: none; cursor: grab;
   }
   body.phone .sheet-handle::before {
-    content: ""; display: block; margin: 0 auto; width: 40px; height: 5px; border-radius: 999px; background: rgba(20, 28, 38, 0.25);
+    content: ""; display: block; margin: 0 auto; width: 40px; height: 5px; border-radius: 999px; background: rgba(255, 255, 255, 0.35);
   }
   body.phone h1 { font-size: 18px; }
   body.phone .sub { font-size: 13.5px; }
@@ -283,13 +294,13 @@
   body.phone .probe-list .name { font-size: 14px; }
 
   body.phone #readout {
-    top: calc(10px + env(safe-area-inset-top, 0px)); bottom: auto; left: 10px; right: 10px; max-width: none;
+    top: calc(10px + env(safe-area-inset-top, 0px)); bottom: auto; left: 62px; right: 10px; max-width: none; min-height: 44px; box-sizing: border-box;
     padding: 9px 13px; border-radius: 14px;
   }
   body.phone #readout .meta { font-size: 12px; }
   body.phone.panel-open #readout, body.phone.panel-open #ribbon { display: none; }
 
-  body.phone #ribbon { left: 8px; right: 8px; bottom: calc(72px + env(safe-area-inset-bottom, 0px)); padding: 8px; max-height: 42dvh; overflow-y: auto; }
+  body.phone #ribbon { left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); padding: 8px; max-height: 42dvh; overflow-y: auto; }
   body.phone #expr-clear { display: none; }
   body.phone .rname input[type=checkbox] { width: 20px; height: 12px; }
   body.phone .rname input[type=checkbox]::after { top: 2px; left: 2px; width: 8px; height: 8px; }
@@ -310,7 +321,7 @@
 
   <div class="group">
     <span class="label">Brain surface</span>
-    <div class="row"><span class="swatch mesh-swatch" style="background:#8a9099"></span><input type="checkbox" id="show-brain" checked><label for="show-brain">Cortex, cerebellum and brainstem</label></div>
+    <div class="row"><span class="swatch mesh-swatch" style="background:#8a9099"></span><input type="checkbox" id="show-brain" checked><label for="show-brain">Pial</label></div>
     <div class="row"><input type="checkbox" id="show-hippocampus"><label for="show-hippocampus">Hippocampus</label></div>
     <div class="row"><input type="checkbox" id="show-amygdala"><label for="show-amygdala">Amygdala</label></div>
     <div class="row"><span class="swatch mesh-swatch" style="background:transparent"></span><input type="checkbox" id="mirror"><label for="mirror">Mirror right hemisphere onto the left</label></div>
@@ -401,12 +412,13 @@
   </div>
 </aside>
 
-<button class="panel-toggle glass" id="panel-toggle" aria-expanded="false" aria-controls="panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg><span>Controls</span></button>
+<button class="panel-toggle glass" id="panel-toggle" aria-expanded="false" aria-controls="panel" aria-label="Controls"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
 
 <section id="ribbon" class="glass" hidden aria-label="Expression z-score of every sample, one row per probe">
   <div class="ribbon-head">
     <span class="title" id="ribbon-title"></span><span class="probe" id="ribbon-probe"></span>
-    <button class="text-button ribbon-fit" id="ribbon-orient" type="button" aria-pressed="false" title="Show the ribbon full screen (landscape) or docked (portrait)">Landscape</button>
+    <button class="text-button ribbon-fit" id="ribbon-min" type="button" aria-label="Minimise the ribbon" title="Minimise">–</button>
+    <button class="text-button ribbon-fit ribbon-fit2" id="ribbon-orient" type="button" aria-pressed="false" title="Show the ribbon full screen (landscape) or docked (portrait)">Landscape</button>
     <button class="text-button ribbon-fit ribbon-fit2" id="ribbon-fit" type="button" title="Show the whole ribbon (or double-click it). Scroll the wheel over the ribbon, or pinch it, to zoom.">Fit</button>
   </div>
   <div class="ribbon-grid">
@@ -418,6 +430,7 @@
   </div>
 </section>
 <div id="ribbon-tip" hidden></div>
+<button id="ribbon-bar" type="button" hidden aria-label="Show the ribbon" title="Show the ribbon"></button>
 <div id="cut-rail" hidden role="slider" tabindex="0" aria-label="Cut position" aria-orientation="vertical">
   <div class="rail-track"><div class="rail-fill"></div><div class="rail-thumb"><span id="cut-pos-value"></span></div></div>
 </div>
@@ -938,7 +951,7 @@ function pick(e) {
   raycaster.params.Points.threshold = pointSize * 0.6;
   raycaster.setFromCamera(mouse, camera);
   const hit = raycaster.intersectObjects(donorClouds.filter(c => c.visible))
-    .find(h => { const s = h.object.userData.items[h.index]; return sampleShown(shownMni(s)) && passesZ(s); });   // ignore hidden samples
+    .find(h => { const s = h.object.userData.items[h.index]; return sampleShown(shownMni(s)) && sampleDrawn(s); });   // ignore hidden samples
   return hit ? hit.object.userData.items[hit.index] : null;
 }
 
@@ -1561,6 +1574,8 @@ function setScaleNote(text) { $e("expr-scale").hidden = false; $e("scale-note").
 
 // z-score filter: when on, samples of the coloured donor outside the chosen range are hidden
 // (drawn at size 0 and not hoverable). Other donors, which have no z-score, are unaffected.
+// While a gene is shown, samples without its data (donor not loaded, or probe missing) are hidden
+const sampleDrawn = s => passesZ(s) && (!!s.expr || !colouringActive());
 function passesZ(s) {
   if (!$e("z-filter").checked || !s.expr) return true;
   const t = +$e("z-threshold").value, z = s.expr.z;
@@ -1588,7 +1603,7 @@ function updateZFilter() {
 function applyScales() {
   for (const cloud of donorClouds) {
     const attr = cloud.geometry.getAttribute("pointScale");
-    cloud.userData.items.forEach((s, i) => attr.setX(i, passesZ(s) ? sampleScale(s) : 0));
+    cloud.userData.items.forEach((s, i) => attr.setX(i, sampleDrawn(s) ? sampleScale(s) : 0));
     attr.needsUpdate = true;
   }
   updateSelectMarker(); updateHoverMarker();
@@ -1935,7 +1950,7 @@ const THICK = 4;                                            // hippocampus/amygd
 const GAP_REGION = 0.6, GAP_GROUP = 3, GAP_DIVISION = 8;    // px between structures / subgroups / divisions
 // Row height: 16 px docked; full screen, rows grow to share the height (up to 72 px)
 let ROW_H = 16;
-const ROW_GAP = 2, NO_DATA = "rgba(20,28,38,0.08)", MAX_ZOOM = 20;
+const ROW_GAP = 2, NO_DATA = "rgba(255,255,255,0.10)", MAX_ZOOM = 20;
 const ribbon = {
   names: new Map(), groupOf: new Map(), probeStats: new Map(),
   items: [], spans: [], cols: [], rows: [], built: false, hoverCol: -1, zoom: 1,
@@ -2058,6 +2073,7 @@ function renderRibbon() {
   const active = colouringActive();
   $e("ribbon").hidden = !active;
   document.body.classList.toggle("has-ribbon", active);
+  $e("ribbon-bar").hidden = !active || !document.body.classList.contains("ribbon-min");
   if (!active) { ribbonTip(null); return; }
   if (!ribbon.built) buildRibbon();
   ribbon.rows = ribbonRows();
@@ -2123,8 +2139,8 @@ function drawRibbon() {
     ctx.strokeRect(col.x - 1, 0.75, col.w + 2, h - 1.5);
   };
   const sel = ribbon.cols.find(c => c.s === selected);
-  if (sel) outline(sel, "#e0a100");
-  if (ribbon.hoverCol >= 0) outline(ribbon.cols[ribbon.hoverCol], "#161a1f");
+  if (sel) outline(sel, "#ffd21f");
+  if (ribbon.hoverCol >= 0) outline(ribbon.cols[ribbon.hoverCol], "#ffffff");
 }
 // Redraw for a new selection and scroll its column into view if it is off screen
 function markPickedRegion() {
@@ -2187,6 +2203,14 @@ $e("ribbon-orient").addEventListener("click", () => {
   applyRibbonOrientation();
 });
 addEventListener("resize", applyRibbonOrientation);
+function setRibbonMin(min) {
+  document.body.classList.toggle("ribbon-min", min);
+  if (min) { document.body.classList.remove("ribbon-full", "ribbon-rot"); applyRibbonOrientation(); ribbonTip(null); }
+  $e("ribbon-bar").hidden = !min;
+  if (!min) { layoutRibbon(); drawRibbon(); }
+}
+$e("ribbon-min").addEventListener("click", () => setRibbonMin(true));
+$e("ribbon-bar").addEventListener("click", () => setRibbonMin(false));
 
 // Column under a canvas x position (columns are sorted by x)
 function columnAt(x) {
@@ -2230,7 +2254,11 @@ function ribbonCellTip(e) {
 ribbonCanvas.addEventListener("mouseleave", () => { ribbon.hoverCol = -1; drawRibbon(); ribbonTip(null); setHovered(null); });
 ribbonCanvas.addEventListener("click", e => {
   const p = ribbonLocal(e.clientX, e.clientY), ci = columnAt(p.x);
-  if (ci >= 0) setSelected(ribbon.cols[ci].s);
+  if (ci >= 0) {
+    const s = ribbon.cols[ci].s, cut = activeCut();
+    setSelected(s);
+    if (cut) setCutPos(shownMni(s)[CUTS[cut].axis]);   // move the slice to this sample's level
+  }
   const row = ribbon.rows[Math.floor(p.y / (ROW_H + ROW_GAP))];
   if (row) showRibbonProbe(row);
   ribbonCellTip(e);
