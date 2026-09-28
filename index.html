@@ -2,91 +2,108 @@
 <title>Allen Sample Brain</title>
 <meta name="description" content="Allen Human Brain Atlas microarray sample locations on an MNI cortex, cerebellum and brainstem">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Geist:wght@400;500;600&display=swap">
 <style>
+  /* Frosted-glass controls over a dark neutral stage */
   :root {
     color-scheme: dark;
-    --ground: #0c1015;
-    --panel: #141a21;
-    --line: #26303b;
-    --ink: #e6eaef;
-    --muted: #8b96a3;
-    --accent: #7fb7d9;
-    --cx: #ff7a59;
-    --cb: #58d0f0;
-    --bs: #f3cf55;
-    --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-    --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+    --ground: #0b0d10;
+    --glass: rgba(196, 204, 214, 0.15);
+    --glass-hover: rgba(196, 204, 214, 0.24);
+    --edge: rgba(255, 255, 255, 0.11);
+    --ink: #eceff2;
+    --muted: rgba(226, 231, 236, 0.56);
+    --frost: #d9e0e7;
+    --track: rgba(255, 255, 255, 0.16);
+    --sans: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "Geist Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
   }
   [hidden] { display: none !important; }
   html, body { height: 100%; }
-  body { margin: 0; background: var(--ground); color: var(--ink); font: 14px/1.45 var(--sans); overflow: hidden; }
+  body { margin: 0; background: var(--ground); color: var(--ink); font: 13px/1.45 var(--sans); overflow: hidden; -webkit-font-smoothing: antialiased; }
   #stage { position: fixed; inset: 0; }
   #stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 
+  .glass {
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(22px) saturate(140%); backdrop-filter: blur(22px) saturate(140%);
+    border: 1px solid var(--edge); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  }
   .panel {
     position: fixed; top: calc(16px + env(safe-area-inset-top, 0px)); left: 16px;
-    width: 264px; max-width: calc(100vw - 32px); max-height: calc(100% - 32px); overflow-y: auto;
-    background: color-mix(in srgb, var(--panel) 90%, transparent); backdrop-filter: blur(6px);
-    border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px;
-    display: flex; flex-direction: column; gap: 14px;
+    width: 268px; max-width: calc(100vw - 32px); max-height: calc(100% - 32px); overflow-y: auto;
+    border-radius: 16px; padding: 18px; box-sizing: border-box;
+    display: flex; flex-direction: column; gap: 18px;
+    scrollbar-width: thin; scrollbar-color: var(--track) transparent;
   }
-  h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: .01em; text-wrap: balance; }
-  .sub { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
-  .group { display: flex; flex-direction: column; gap: 6px; }
-  .label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
-  .row { display: flex; align-items: center; gap: 8px; }
+  h1 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; text-wrap: balance; }
+  .sub { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
+  .group { display: flex; flex-direction: column; gap: 8px; }
+  .label { font-size: 10.5px; font-weight: 500; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+  .row { display: flex; align-items: center; gap: 10px; min-height: 22px; }
   .row label { flex: 1; cursor: pointer; }
-  .count { font: 12px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
-  .swatch { width: 10px; height: 10px; border-radius: 50%; flex: none; }
-  .mesh-swatch { border-radius: 2px; }
-  input[type=range] { width: 100%; accent-color: var(--accent); }
-  input[type=checkbox] { accent-color: var(--accent); margin: 0; }
-  .seg { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
-  .seg button, .views button {
-    font: 500 12px var(--sans); color: var(--muted); background: transparent; border: 0; padding: 6px 0; cursor: pointer;
+  .count { font: 11.5px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+  .swatch { display: none; }
+
+  /* Checkboxes as small switches */
+  input[type=checkbox] {
+    appearance: none; -webkit-appearance: none; margin: 0; flex: none; cursor: pointer;
+    width: 26px; height: 15px; border-radius: 999px; background: var(--track); position: relative;
+    transition: background .15s;
   }
-  .seg button[aria-pressed=true] { background: var(--line); color: var(--ink); }
+  input[type=checkbox]::after {
+    content: ""; position: absolute; top: 2px; left: 2px; width: 11px; height: 11px; border-radius: 50%;
+    background: rgba(255, 255, 255, 0.7); transition: transform .15s, background .15s;
+  }
+  input[type=checkbox]:checked { background: rgba(217, 224, 231, 0.55); }
+  input[type=checkbox]:checked::after { transform: translateX(11px); background: #fff; }
+
+  /* Thin sliders with a frosted thumb */
+  input[type=range] { appearance: none; -webkit-appearance: none; width: 100%; height: 18px; background: transparent; margin: 0; cursor: pointer; }
+  input[type=range]::-webkit-slider-runnable-track { height: 2px; background: var(--track); border-radius: 2px; }
+  input[type=range]::-moz-range-track { height: 2px; background: var(--track); border-radius: 2px; }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 13px; height: 13px; margin-top: -5.5px; border-radius: 50%;
+    background: var(--frost); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  }
+  input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: 0; border-radius: 50%; background: var(--frost); }
+
   .views { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
-  .views button { border: 1px solid var(--line); border-radius: 5px; font-family: var(--mono); }
-  button:hover { color: var(--ink); }
-  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .views button, .text-button, .file-button {
+    font: 500 12px var(--sans); color: var(--ink); background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--edge); border-radius: 999px; padding: 6px 0; cursor: pointer; transition: background .15s;
+  }
+  .views button { font-family: var(--mono); }
+  .views button:hover, .text-button:hover, .file-button:hover { background: var(--glass-hover); }
+  .file-button { display: block; text-align: center; padding: 7px; border-style: dashed; }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline: 1.5px solid var(--frost); outline-offset: 2px; }
   #legend { display: flex; flex-direction: column; gap: 4px; }
+
+  select, input[type=text] {
+    font: 13px var(--sans); color: var(--ink); background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--edge); border-radius: 10px; padding: 7px 10px; width: 100%; box-sizing: border-box;
+  }
+  select option { background: #1b1f24; }
+  .progress { height: 2px; background: var(--track); border-radius: 2px; overflow: hidden; }
+  .progress > div { height: 100%; width: 0; background: var(--frost); }
+  .scale-bar { height: 8px; border-radius: 999px; background: linear-gradient(90deg, #2166ac, #f7f7f7, #b2182b); }
+  .scale-labels { display: flex; justify-content: space-between; font: 11px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+  #expr-list { display: flex; flex-direction: column; gap: 2px; }
+  .hint { font-size: 11.5px; color: var(--muted); }
 
   #readout {
     position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-    max-width: min(360px, calc(100vw - 32px));
-    background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+    max-width: min(360px, calc(100vw - 32px)); border-radius: 14px; padding: 11px 14px;
     pointer-events: none;
   }
   #readout .name { font-weight: 500; }
-  #readout .meta { font: 12px var(--mono); color: var(--muted); margin-top: 2px; }
-  .hint { font-size: 12px; color: var(--muted); }
-  #status { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); color: var(--muted); font: 13px var(--mono); }
+  #readout .meta { font: 11.5px var(--mono); color: var(--muted); margin-top: 3px; }
+  #status { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); color: var(--muted); font: 12px var(--mono); }
 
-  .file-button {
-    display: block; text-align: center; cursor: pointer; font: 500 12px var(--sans);
-    border: 1px dashed var(--line); border-radius: 6px; padding: 8px; color: var(--ink);
-  }
-  .file-button:hover { border-color: var(--accent); }
-  #expr-list { display: flex; flex-direction: column; gap: 2px; }
-  select, input[type=text] {
-    font: 13px var(--sans); color: var(--ink); background: var(--ground);
-    border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; width: 100%; box-sizing: border-box;
-  }
-  .progress { height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }
-  .progress > div { height: 100%; width: 0; background: var(--accent); }
-  .scale-bar { height: 10px; border-radius: 3px; background: linear-gradient(90deg, #2166ac, #f7f7f7, #b2182b); }
-  .scale-labels { display: flex; justify-content: space-between; font: 11px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
-  .text-button {
-    font: 500 12px var(--sans); color: var(--muted); background: transparent;
-    border: 1px solid var(--line); border-radius: 6px; padding: 6px; cursor: pointer;
-  }
   .panel-toggle {
     display: none; position: fixed; left: 12px; z-index: 2;
     bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-    font: 600 14px var(--sans); color: var(--ink); background: var(--panel);
-    border: 1px solid var(--line); border-radius: 999px; padding: 10px 18px;
+    font: 500 14px var(--sans); color: var(--ink); border-radius: 999px; padding: 10px 20px;
   }
 
   /* Phone layout (body.phone is set from a media query in the script): the controls become a
@@ -94,21 +111,23 @@
   body.phone .panel-toggle { display: block; }
   body.phone .panel {
     top: auto; left: 0; right: 0; bottom: 0; width: auto; max-width: none; max-height: 62%;
-    border-radius: 14px 14px 0 0; padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+    border-radius: 20px 20px 0 0; padding-bottom: calc(68px + env(safe-area-inset-bottom, 0px));
   }
   body.phone:not(.panel-open) .panel { display: none; }
   body.phone.panel-open .panel-toggle { bottom: calc(12px + env(safe-area-inset-bottom, 0px)); left: auto; right: 12px; }
   body.phone #readout {
     top: calc(12px + env(safe-area-inset-top, 0px)); bottom: auto; left: 12px; right: 12px; max-width: none;
   }
-  body.phone input[type=checkbox] { width: 20px; height: 20px; }
-  body.phone .row { min-height: 34px; }
+  body.phone input[type=checkbox] { width: 34px; height: 20px; }
+  body.phone input[type=checkbox]::after { width: 16px; height: 16px; }
+  body.phone input[type=checkbox]:checked::after { transform: translateX(14px); }
+  body.phone .row { min-height: 36px; }
   body.phone .views button { padding: 10px 0; }
 </style>
 
 <div id="stage"></div>
 
-<aside class="panel" id="panel">
+<aside class="panel glass" id="panel">
   <div>
     <h1>Allen Human Brain Atlas samples</h1>
     <p class="sub" id="summary">Loading…</p>
@@ -179,9 +198,9 @@
   </div>
 </aside>
 
-<button class="panel-toggle" id="panel-toggle" aria-expanded="false" aria-controls="panel">Controls</button>
+<button class="panel-toggle glass" id="panel-toggle" aria-expanded="false" aria-controls="panel">Controls</button>
 
-<div id="readout"><div class="name">Hover or click a sample</div><div class="meta">MNI x, y, z (mm)</div></div>
+<div id="readout" class="glass"><div class="name">Hover or click a sample</div><div class="meta">MNI x, y, z (mm)</div></div>
 <div id="status">Loading meshes…</div>
 
 <script src="assets/bundle.js"></script>
@@ -357,7 +376,7 @@ function parseSamples(text) {
 const stage = document.getElementById("stage");
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.setClearColor(0x0c1015);
+renderer.setClearColor(0x0b0d10);
 stage.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -371,7 +390,26 @@ controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIG
 controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 // Stop the browser's middle-click autoscroll so middle-drag can pan
 renderer.domElement.addEventListener("mousedown", e => { if (e.button === 1) e.preventDefault(); });
-controls.target.set(0, 5, 15);
+controls.target.set(0, 5, 15);   // replaced by the brain's centre once the surface is built
+
+// Rotation centre: the brain's centre, or the selected sample. Changing it glides the camera
+// and the orbit target together, so the view keeps its angle and the new centre slides to
+// the middle of the screen.
+const brainCenter = new THREE.Vector3(0, 5, 15);
+let focusGoal = null;
+function focusOn(point, instant = false) {
+  focusGoal = point.clone();
+  if (instant) stepFocus(1);
+}
+function stepFocus(fraction) {
+  if (!focusGoal) return;
+  const step = focusGoal.clone().sub(controls.target);
+  if (step.length() < 0.05) fraction = 1;
+  step.multiplyScalar(fraction);
+  controls.target.add(step);
+  camera.position.add(step);
+  if (fraction === 1) focusGoal = null;
+}
 
 scene.add(new THREE.HemisphereLight(0xf2f4f7, 0x2a3038, 1.4));
 const keyLight = new THREE.DirectionalLight(0xffffff, 1.6);
@@ -538,6 +576,7 @@ document.getElementById("mirror").addEventListener("change", e => {
     cloud.geometry.computeBoundingSphere();
   }
   placeMarker(selectMarker, selected);
+  if (selected) focusOn(sampleScenePos(selected));   // its drawn position moved
   placeMarker(hoverMarker, hovered && hovered !== selected ? hovered : null);
   showReadout();
 });
@@ -582,7 +621,11 @@ function showReadout() {
   }
 }
 function setHovered(s) { hovered = s; placeMarker(hoverMarker, s && s !== selected ? s : null); showReadout(); }
-function setSelected(s) { selected = s; placeMarker(selectMarker, s); placeMarker(hoverMarker, null); showReadout(); }
+const sampleScenePos = s => new THREE.Vector3(...toScene(...shownMni(s)));
+function setSelected(s) {
+  selected = s; placeMarker(selectMarker, s); placeMarker(hoverMarker, null); showReadout();
+  focusOn(s ? sampleScenePos(s) : brainCenter);   // rotate around the selected sample
+}
 
 renderer.domElement.addEventListener("pointermove", e => { if (samples.length) setHovered(pick(e)); });
 let downAt = null;
@@ -920,7 +963,7 @@ function resize() {
 }
 addEventListener("resize", resize); resize();
 setView([-0.62, 0.35, -0.7].map(v => v / Math.hypot(-0.62, 0.35, -0.7)));
-renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+renderer.setAnimationLoop(() => { stepFocus(0.15); controls.update(); renderer.render(scene, camera); });
 
 // Handle for inspecting the scene from the browser console
 window.viewer = { THREE, scene, camera, controls, setView, toScene, get samples() { return samples; }, loadExpressionFiles: files => loadExpressionFiles(files) };
@@ -937,6 +980,11 @@ try {
   setupSlice(t1Volume);
   const brain = volumeSurface(t1Volume, t1Lo);
   addSurface("brain", brain.positions, brain.indices, BRAIN_COLOR);
+  // Orbit around the centre of the brain's bounding box
+  const brainGeometry = surfaces.brain[0].shade.geometry;
+  brainGeometry.computeBoundingBox();
+  brainGeometry.boundingBox.getCenter(brainCenter);
+  focusOn(brainCenter, true);
   const list = parseSamples(sampleText);
   addSamples(list);
   initExpressionPanel();
