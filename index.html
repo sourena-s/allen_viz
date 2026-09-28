@@ -79,6 +79,7 @@
   <div class="group">
     <span class="label">Brain surface</span>
     <div class="row"><span class="swatch mesh-swatch" style="background:#8fc4ff"></span><input type="checkbox" id="show-brain" checked><label for="show-brain">Cortex, cerebellum and brainstem</label></div>
+    <div class="row"><span class="swatch mesh-swatch" style="background:transparent"></span><input type="checkbox" id="mirror"><label for="mirror">Mirror right hemisphere onto the left</label></div>
     <label class="label" for="opacity">Surface opacity</label>
     <input type="range" id="opacity" min="0" max="0.6" step="0.01" value="0.06">
   </div>
@@ -375,9 +376,13 @@ const dot = (() => {
 const SAMPLE_COLOR = 0x4ade80, HOVER_COLOR = 0xffffff, SELECT_COLOR = 0xffb020;
 let samples = [], donorClouds = [], pointSize = 2.2;
 
+// Mirror mode: right-hemisphere samples (mni_x > 0) are drawn at -x, on the left
+let mirrored = false;
+const shownMni = s => (mirrored && s.mni[0] > 0 ? [-s.mni[0], s.mni[1], s.mni[2]] : s.mni);
+
 function pointsFrom(list, color, size) {
   const pos = new Float32Array(list.length * 3);
-  list.forEach((s, i) => pos.set(toScene(...s.mni), i * 3));
+  list.forEach((s, i) => pos.set(toScene(...shownMni(s)), i * 3));
   const geom = new THREE.BufferGeometry();
   geom.setAttribute("position", new THREE.BufferAttribute(pos, 3));
   const cloud = new THREE.Points(geom, new THREE.PointsMaterial({
@@ -396,7 +401,7 @@ function makeMarker(color) {
 const hoverMarker = makeMarker(HOVER_COLOR), selectMarker = makeMarker(SELECT_COLOR);
 function placeMarker(marker, s) {
   marker.visible = !!s;
-  if (s) { marker.geometry.getAttribute("position").set(toScene(...s.mni)); marker.geometry.getAttribute("position").needsUpdate = true; }
+  if (s) { marker.geometry.getAttribute("position").set(toScene(...shownMni(s))); marker.geometry.getAttribute("position").needsUpdate = true; }
 }
 
 function addSamples(list) {
@@ -432,7 +437,26 @@ function setView(dir, dist = 420) {
 }
 document.querySelectorAll("[data-view]").forEach(b => b.addEventListener("click", () => setView(VIEWS[b.dataset.view])));
 
-document.getElementById("show-brain").addEventListener("change", e => (surfaces.brain ?? []).forEach(s => (s.group.visible = e.target.checked)));
+// surfaces.brain[1] is the right cortex (added second in addCortex); it is hidden while mirrored
+function updateSurfaceVisibility() {
+  const show = document.getElementById("show-brain").checked;
+  (surfaces.brain ?? []).forEach((s, i) => (s.group.visible = show && !(mirrored && i === 1)));
+}
+document.getElementById("show-brain").addEventListener("change", updateSurfaceVisibility);
+
+document.getElementById("mirror").addEventListener("change", e => {
+  mirrored = e.target.checked;
+  for (const cloud of donorClouds) {
+    const attr = cloud.geometry.getAttribute("position");
+    cloud.userData.items.forEach((s, i) => attr.setXYZ(i, ...toScene(...shownMni(s))));
+    attr.needsUpdate = true;
+    cloud.geometry.computeBoundingSphere();
+  }
+  updateSurfaceVisibility();
+  placeMarker(selectMarker, selected);
+  placeMarker(hoverMarker, hovered && hovered !== selected ? hovered : null);
+  showReadout();
+});
 document.getElementById("opacity").addEventListener("input", e => {
   Object.values(surfaces).flat().forEach(s => (s.shade.material.uniforms.opacity.value = +e.target.value));
 });
@@ -464,7 +488,7 @@ function showReadout() {
   }
   readout.innerHTML = `<div class="name"></div><div class="meta"></div>`;
   readout.querySelector(".name").textContent = `${selected ? "Selected: " : ""}${s.name} (${s.acronym})`;
-  readout.querySelector(".meta").textContent = `Donor ${s.donor} · ${s.slab} · MNI ${s.mni.map(v => v.toFixed(0)).join(", ")}`;
+  readout.querySelector(".meta").textContent = `Donor ${s.donor} · ${s.slab} · MNI ${s.mni.map(v => v.toFixed(0)).join(", ")}${mirrored && s.mni[0] > 0 ? " (drawn mirrored)" : ""}`;
 }
 function setHovered(s) { hovered = s; placeMarker(hoverMarker, s && s !== selected ? s : null); showReadout(); }
 function setSelected(s) { selected = s; placeMarker(selectMarker, s); placeMarker(hoverMarker, null); showReadout(); }
