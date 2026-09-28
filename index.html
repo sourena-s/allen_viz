@@ -102,6 +102,17 @@
   .suggestions li[aria-selected=true], .suggestions li:hover { background: var(--glass-hover); }
   .suggestions li.note { cursor: default; color: var(--muted); font-size: 11.5px; }
   .suggestions li.note:hover { background: none; }
+  .probe-list {
+    display: flex; flex-direction: column; gap: 1px; max-height: 190px; overflow-y: auto; padding: 4px;
+    border: 1px solid var(--edge); border-radius: 10px; scrollbar-width: thin; scrollbar-color: var(--track) transparent;
+  }
+  .probe-list .row { padding: 3px 6px; border-radius: 7px; }
+  .probe-list .row:hover { background: var(--glass-hover); }
+  .probe-list .name {
+    all: unset; flex: 1; min-width: 0; cursor: pointer; font: 12px var(--sans);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .probe-list .name:focus-visible { outline: 1.5px solid var(--frost); border-radius: 4px; }
   .hint { font-size: 11.5px; color: var(--muted); }
 
   #readout {
@@ -174,7 +185,7 @@
     <span class="label">Donors</span>
     <div id="legend"></div>
     <label class="label" for="point-size">Point size (mm)</label>
-    <input type="range" id="point-size" min="0.5" max="6" step="0.1" value="2.2">
+    <input type="range" id="point-size" min="1" max="12" step="0.1" value="5.5">
   </div>
 
   <div class="group">
@@ -191,7 +202,12 @@
       <input type="text" id="gene-input" role="combobox" aria-autocomplete="list" aria-expanded="false"
              aria-controls="gene-suggestions" placeholder="Gene symbol, e.g. CNTNAP2" autocomplete="off" spellcheck="false">
       <ul class="suggestions" id="gene-suggestions" role="listbox" hidden></ul>
-      <select id="probe-select" hidden></select>
+      <div class="group" id="probe-box" hidden>
+        <span class="label" id="probe-box-title">Probes</span>
+        <div class="probe-list" id="probe-list"></div>
+        <span class="hint">Click a probe name to show it alone. Switch several on to show their average.</span>
+      </div>
+      <div class="row"><input type="checkbox" id="size-by-z"><label for="size-by-z">Scale point size by z-score</label></div>
       <div class="group" id="expr-scale" hidden>
         <div class="scale-bar"></div>
         <div class="scale-labels"><span id="scale-lo"></span><span id="scale-mid"></span><span id="scale-hi"></span></div>
@@ -499,38 +515,76 @@ const dot = (() => {
   return new THREE.CanvasTexture(c);
 })();
 
+// Yellow ring drawn around the selected sample
+const ring = (() => {
+  const c = document.createElement("canvas"); c.width = c.height = 64;
+  const g = c.getContext("2d");
+  g.lineWidth = 7; g.strokeStyle = "#ffd21f"; g.beginPath(); g.arc(32, 32, 27, 0, Math.PI * 2); g.stroke();
+  return new THREE.CanvasTexture(c);
+})();
+
 // One point cloud per donor so each can be switched off; every sample is the same green.
-const SAMPLE_COLOR = 0x4ade80, HOVER_COLOR = 0xffffff, SELECT_COLOR = 0xffb020;
-let samples = [], donorClouds = [], pointSize = 2.2;
+const SAMPLE_COLOR = 0x4ade80, HOVER_COLOR = 0xffffff;
+const SELECT_SCALE = 3, HOVER_SCALE = 2;   // marker size relative to the sample's own dot
+let samples = [], donorClouds = [], pointSize = 5.5;
 
 // Mirror mode: right-hemisphere samples (mni_x > 0) are drawn at -x, on the left
 let mirrored = false;
 const shownMni = s => (mirrored && s.mni[0] > 0 ? [-s.mni[0], s.mni[1], s.mni[2]] : s.mni);
 
-function pointsFrom(list, color, size) {
+// Each point also carries a `pointScale` attribute (1 = normal) multiplying its drawn size,
+// used to size samples by expression z-score. It is patched into three.js' points shader.
+function pointsFrom(list, color, size, map = dot) {
   const pos = new Float32Array(list.length * 3);
   list.forEach((s, i) => pos.set(toScene(...shownMni(s)), i * 3));
   const geom = new THREE.BufferGeometry();
   geom.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-  const cloud = new THREE.Points(geom, new THREE.PointsMaterial({
-    size, color, map: dot, alphaTest: 0.5, transparent: true, depthTest: false, depthWrite: false,
+  geom.setAttribute("pointScale", new THREE.BufferAttribute(new Float32Array(list.length).fill(1), 1));
+  const material = new THREE.PointsMaterial({
+    size, color, map, alphaTest: 0.5, transparent: true, depthTest: false, depthWrite: false,
     clippingPlanes: [pointTop, pointBottom],
-  }));
+  });
+  material.onBeforeCompile = shader => {
+    shader.vertexShader = shader.vertexShader
+      .replace("uniform float size;", "uniform float size;\nattribute float pointScale;")
+      .replace("gl_PointSize = size;", "gl_PointSize = size * pointScale;");
+  };
+  const cloud = new THREE.Points(geom, material);
   cloud.renderOrder = 2;
   return cloud;
 }
 
-// Single-point markers drawn over the cloud for the hovered and the clicked sample
-function makeMarker(color) {
-  const m = pointsFrom([{ mni: [0, 0, 0] }], color, pointSize * 3.2);
-  m.renderOrder = 3; m.visible = false; m.frustumCulled = false; scene.add(m);
+// Single-point markers drawn over the cloud. Hover: a larger white dot. Selection: the
+// sample's own colour at SELECT_SCALE × its size, inside a yellow ring.
+function makeMarker(color, map = dot, order = 3) {
+  const m = pointsFrom([{ mni: [0, 0, 0] }], color, pointSize, map);
+  m.renderOrder = order; m.visible = false; m.frustumCulled = false; scene.add(m);
   m.material.clippingPlanes = null;   // a selected sample stays marked even when cut away
   return m;
 }
-const hoverMarker = makeMarker(HOVER_COLOR), selectMarker = makeMarker(SELECT_COLOR);
+const hoverMarker = makeMarker(HOVER_COLOR), selectMarker = makeMarker(0xffffff), selectRing = makeMarker(0xffffff, ring, 4);
 function placeMarker(marker, s) {
   marker.visible = !!s;
   if (s) { marker.geometry.getAttribute("position").set(toScene(...shownMni(s))); marker.geometry.getAttribute("position").needsUpdate = true; }
+}
+
+// Current colour and size factor of a sample's dot (expression colouring / z-score sizing)
+const colouringActive = () => samples.some(s => s.expr);
+const sampleColor = s => (s.expr ? scaleColor(s.expr.z) : colouringActive() ? OTHER_DONOR_COLOR : SAMPLE_COLOR);
+const sampleScale = s => (s.expr && document.getElementById("size-by-z").checked ? zScale(s.expr.z) : 1);
+
+function updateSelectMarker() {
+  placeMarker(selectMarker, selected); placeMarker(selectRing, selected);
+  if (!selected) return;
+  const size = pointSize * sampleScale(selected) * SELECT_SCALE;
+  selectMarker.material.color.set(sampleColor(selected));
+  selectMarker.material.size = size;
+  selectRing.material.size = size * 1.3;
+}
+function updateHoverMarker() {
+  const s = hovered && hovered !== selected ? hovered : null;
+  placeMarker(hoverMarker, s);
+  if (s) hoverMarker.material.size = pointSize * sampleScale(s) * HOVER_SCALE;
 }
 
 const paintColor = new THREE.Color();
@@ -589,9 +643,9 @@ document.getElementById("mirror").addEventListener("change", e => {
     attr.needsUpdate = true;
     cloud.geometry.computeBoundingSphere();
   }
-  placeMarker(selectMarker, selected);
+  updateSelectMarker();
   if (selected) focusOn(sampleScenePos(selected));   // its drawn position moved
-  placeMarker(hoverMarker, hovered && hovered !== selected ? hovered : null);
+  updateHoverMarker();
   showReadout();
 });
 document.getElementById("opacity").addEventListener("input", e => {
@@ -600,7 +654,7 @@ document.getElementById("opacity").addEventListener("input", e => {
 document.getElementById("point-size").addEventListener("input", e => {
   pointSize = +e.target.value;
   donorClouds.forEach(c => (c.material.size = pointSize));
-  hoverMarker.material.size = selectMarker.material.size = pointSize * 3.2;
+  updateSelectMarker(); updateHoverMarker();
 });
 
 // Hover highlights a sample; click pins it (click empty space to clear)
@@ -634,10 +688,10 @@ function showReadout() {
     readout.append(line);
   }
 }
-function setHovered(s) { hovered = s; placeMarker(hoverMarker, s && s !== selected ? s : null); showReadout(); }
+function setHovered(s) { hovered = s; updateHoverMarker(); showReadout(); }
 const sampleScenePos = s => new THREE.Vector3(...toScene(...shownMni(s)));
 function setSelected(s) {
-  selected = s; placeMarker(selectMarker, s); placeMarker(hoverMarker, null); showReadout();
+  selected = s; updateSelectMarker(); updateHoverMarker(); showReadout();
   focusOn(s ? sampleScenePos(s) : brainCenter);   // rotate around the selected sample
 }
 
@@ -1029,35 +1083,75 @@ searchBox.addEventListener("keydown", e => {
   }
 });
 
+// Point size factor for a z-score: 0.5× at -Z_CLIP, 1× at the mean, 2× at +Z_CLIP
+const zScale = z => 2 ** (Math.max(-Z_CLIP, Math.min(Z_CLIP, z)) / Z_CLIP);
+
+// Probe box: every probe of the chosen gene with a switch. All are on at first (their
+// average is shown). Clicking a name shows that probe alone; the switches pick several.
+function showProbeBox(query, ids) {
+  $e("probe-box-title").textContent = ids.length > 1 ? `${query}: ${ids.length} probes` : `${query}: 1 probe`;
+  $e("probe-list").replaceChildren(...ids.map((id, i) => {
+    const row = Object.assign(document.createElement("div"), { className: "row" });
+    const toggle = Object.assign(document.createElement("input"), { type: "checkbox", id: `probe-${i}`, checked: true });
+    toggle.dataset.probe = id;
+    toggle.setAttribute("aria-label", `Include probe ${id} in the average`);
+    const name = Object.assign(document.createElement("button"), { type: "button", className: "name", textContent: `${expr.probeName.get(id) ?? id}` });
+    name.title = `Show only probe ${id}`;
+    const count = Object.assign(document.createElement("span"), { className: "count", textContent: id });
+    toggle.addEventListener("change", () => {
+      if (!chosenProbes().length) toggle.checked = true;   // keep at least one probe on
+      applyColouring();
+    });
+    name.addEventListener("click", () => {
+      $e("probe-list").querySelectorAll("input").forEach(t => (t.checked = t === toggle));
+      applyColouring();
+    });
+    row.append(toggle, name, count);
+    return row;
+  }));
+  $e("probe-box").hidden = false;
+}
+const chosenProbes = () => [...$e("probe-list").querySelectorAll("input:checked")].map(t => t.dataset.probe);
+
 function onGeneChosen() {
-  const query = $e("gene-input").value, ids = probesFor(query), select = $e("probe-select");
-  if (!ids.length) { select.hidden = true; if (query.trim()) setScaleNote(`No probes found for "${query.trim()}" in this file.`); return; }
-  select.replaceChildren(
-    ...(ids.length > 1 ? [Object.assign(document.createElement("option"), { value: "mean", textContent: `Mean of ${ids.length} probes` })] : []),
-    ...ids.map(id => Object.assign(document.createElement("option"), { value: id, textContent: `${expr.probeName.get(id) ?? id} (probe ${id})` })),
-  );
-  select.hidden = ids.length < 2;
+  const query = $e("gene-input").value.trim(), ids = probesFor(query);
+  if (!ids.length) { $e("probe-box").hidden = true; if (query) setScaleNote(`No probes found for "${query}" in this file.`); return; }
+  // A gene lists all its probes; a single probe picked by id or name lists just that one
+  const symbol = expr.bySymbol.has(query) || expr.bySymbol.has(query.toUpperCase()) ? query : (expr.probeName.get(ids[0]) ?? ids[0]);
+  showProbeBox(symbol, ids);
   applyColouring();
 }
 
 function setScaleNote(text) { $e("expr-scale").hidden = false; $e("scale-note").textContent = text; }
 
+// Per-point size factors: z-score sizing on the coloured donor when switched on, else 1
+function applyScales() {
+  for (const cloud of donorClouds) {
+    const attr = cloud.geometry.getAttribute("pointScale");
+    cloud.userData.items.forEach((s, i) => attr.setX(i, sampleScale(s)));
+    attr.needsUpdate = true;
+  }
+  updateSelectMarker(); updateHoverMarker();
+}
+
 function applyColouring() {
   const query = $e("gene-input").value.trim(), ids = probesFor(query);
   if (!ids.length) return;
-  const choice = $e("probe-select").value;
-  const use = choice && choice !== "mean" && ids.includes(choice) ? [choice] : ids;
+  const use = chosenProbes().filter(id => ids.includes(id));
+  if (!use.length) return;
   const cloud = donorClouds.find(c => c.userData.donor === expr.donor), items = cloud.userData.items;
   const values = items.map((_, j) => use.reduce((sum, id) => sum + expr.rows.get(id)[j], 0) / use.length);
   const mean = values.reduce((a, b) => a + b, 0) / values.length;
   const sd = Math.sqrt(values.reduce((a, v) => a + (v - mean) ** 2, 0) / values.length) || 1;
-  const label = use.length > 1 ? `${query} (mean of ${use.length} probes)` : `${query} ${expr.probeName.get(use[0]) ?? ""}`.trim();
+  const gene = $e("probe-box-title").textContent.split(":")[0];
+  const label = use.length > 1 ? `${gene} (mean of ${use.length} probes)` : `${gene === expr.probeName.get(use[0]) ? gene : `${gene} ${expr.probeName.get(use[0]) ?? use[0]}`}`;
   items.forEach((s, j) => { s.expr = { label, value: values[j], z: (values[j] - mean) / sd }; });
   for (const c of donorClouds) paintCloud(c, s => (c === cloud ? scaleColor(s.expr.z) : OTHER_DONOR_COLOR));
   $e("scale-lo").textContent = (mean - Z_CLIP * sd).toFixed(1);
   $e("scale-mid").textContent = mean.toFixed(1);
   $e("scale-hi").textContent = (mean + Z_CLIP * sd).toFixed(1);
   setScaleNote(`${label}, donor ${expr.donor}: log2 expression, mean ± ${Z_CLIP} SD across its ${items.length} samples. Other donors are grey.`);
+  applyScales();
   showReadout();
 }
 
@@ -1065,6 +1159,7 @@ function clearColouring() {
   for (const s of samples) delete s.expr;
   for (const c of donorClouds) paintCloud(c, () => SAMPLE_COLOR);
   $e("expr-scale").hidden = true;
+  applyScales();
   showReadout();
 }
 
@@ -1081,8 +1176,8 @@ function initExpressionPanel() {
   });
 }
 $e("expr-files").addEventListener("change", e => { loadExpressionFiles(e.target.files); e.target.value = ""; });
-$e("probe-select").addEventListener("change", applyColouring);
-$e("expr-clear").addEventListener("click", () => { $e("gene-input").value = ""; $e("probe-select").hidden = true; clearColouring(); });
+$e("size-by-z").addEventListener("change", applyScales);
+$e("expr-clear").addEventListener("click", () => { $e("gene-input").value = ""; $e("probe-box").hidden = true; hideSuggestions(); clearColouring(); });
 
 function resize() {
   const w = stage.clientWidth, h = stage.clientHeight;
@@ -1094,7 +1189,7 @@ setView([-0.62, 0.35, -0.7].map(v => v / Math.hypot(-0.62, 0.35, -0.7)));
 renderer.setAnimationLoop(() => { stepFocus(0.15); controls.update(); renderer.render(scene, camera); });
 
 // Handle for inspecting the scene from the browser console
-window.viewer = { THREE, scene, camera, controls, setView, toScene, get samples() { return samples; }, loadExpressionFiles: files => loadExpressionFiles(files) };
+window.viewer = { THREE, scene, camera, controls, setView, toScene, get samples() { return samples; }, loadExpressionFiles: files => loadExpressionFiles(files), select: s => setSelected(s) };
 
 // ---------------------------------------------------------------- go
 try {
