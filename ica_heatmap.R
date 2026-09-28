@@ -182,11 +182,39 @@ ggsave("heatmap.png", plot = combined_plot, width = 500, height = 200, units = "
 # only the top genes per IC (largest |weight|, either sign) are labelled
 # -----------------------------------------------------------------
 top_genes_per_ic <- 20
+plot_height_cm <- max(30, 0.02 * nrow(gene_ic_weights))
+# Minimum vertical gap between two labels, in heatmap rows (about 0.28 cm on the page)
+label_gap_rows <- 0.28 / (plot_height_cm / nrow(gene_ic_weights))
 
-top_gene_names <- unique(unlist(lapply(colnames(gene_ic_weights), function(ic) {
-  weights <- gene_ic_weights[, ic]
-  names(weights)[order(abs(weights), decreasing = TRUE)[seq_len(top_genes_per_ic)]]
-})))
+# Push label positions apart so neighbours are at least `gap` rows apart,
+# keeping them within [lo, hi]; each label stays as close to its gene's row as it can
+spread_labels <- function(y, gap, lo, hi) {
+  o <- order(y)
+  s <- y[o]
+  for (i in seq_along(s)[-1]) s[i] <- max(s[i], s[i - 1] + gap)
+  if (s[length(s)] > hi) {
+    s[length(s)] <- hi
+    for (i in rev(seq_along(s))[-1]) s[i] <- min(s[i], s[i + 1] - gap)
+  }
+  out <- numeric(length(y))
+  out[o] <- pmax(s, lo)
+  out
+}
+
+gene_row <- setNames(seq_along(gene_probe_order), gene_probe_order)
+
+# One row per (IC, top gene): where the gene sits in the heatmap and where its label goes.
+# Row names are "SYMBOL PROBE", so the gene symbol is everything before the first space.
+top_gene_labels <- do.call(rbind, lapply(seq_len(ncol(gene_ic_weights)), function(k) {
+  weights <- gene_ic_weights[, k]
+  top <- names(weights)[order(abs(weights), decreasing = TRUE)[seq_len(top_genes_per_ic)]]
+  data.frame(
+    IC_index  = k,
+    gene      = sub(" .*", "", top),
+    row       = gene_row[top],
+    label_row = spread_labels(gene_row[top], label_gap_rows, 1, length(gene_row))
+  )
+}))
 
 gene_ic_weights_long <- melt(gene_ic_weights[gene_probe_order, ], varnames = c("gene_probe", "IC"), value.name = "IC_weight")
 gene_ic_weights_long$gene_probe <- factor(gene_ic_weights_long$gene_probe, levels = gene_probe_order)
@@ -197,14 +225,19 @@ max_abs_weight <- max(abs(gene_ic_weights))
 gene_ic_heatmap <- ggplot(gene_ic_weights_long, aes(x = IC, y = gene_probe, fill = IC_weight)) +
   geom_tile() +
   scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0, limits = c(-max_abs_weight, max_abs_weight)) +
-  scale_y_discrete(breaks = top_gene_names) +
+  # Leader line from the gene's row at the column's left edge to its label
+  geom_segment(data = top_gene_labels, inherit.aes = FALSE,
+               aes(x = IC_index - 0.47, xend = IC_index - 0.32, y = row, yend = label_row),
+               linewidth = 0.15, colour = "grey20") +
+  geom_text(data = top_gene_labels, inherit.aes = FALSE,
+            aes(x = IC_index - 0.3, y = label_row, label = gene),
+            hjust = 0, size = 1.8, colour = "black") +
+  scale_y_discrete(breaks = NULL) +
   theme_minimal(base_size = 8) +
   theme(
     axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
-    axis.text.y = element_text(size = 3),
-    axis.ticks.y = element_blank(),
     panel.grid = element_blank()
   ) +
-  labs(x = "Independent component", y = sprintf("Gene probe (top %d per IC labelled)", top_genes_per_ic), fill = "IC weight")
+  labs(x = "Independent component", y = sprintf("Gene probes (top %d per IC labelled in each column)", top_genes_per_ic), fill = "IC weight")
 
-ggsave("gene_ic_heatmap.png", plot = gene_ic_heatmap, width = 30, height = max(30, 0.02 * nrow(gene_ic_weights)), units = "cm", limitsize = FALSE, dpi = 300)
+ggsave("gene_ic_heatmap.png", plot = gene_ic_heatmap, width = 40, height = plot_height_cm, units = "cm", limitsize = FALSE, dpi = 300)
