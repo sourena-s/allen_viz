@@ -143,6 +143,11 @@
   .ribbon-fit { flex: none; margin-left: auto; padding: 3px 12px; font-size: 11px; }
   .ribbon-grid { display: flex; gap: 8px; }
   .ribbon-fit2 { margin-left: 0; }
+  .ribbon-donors { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); cursor: pointer; }
+  .ribbon-donors input[type=checkbox] { width: 20px; height: 12px; }
+  .ribbon-donors input[type=checkbox]::after { top: 2px; left: 2px; width: 8px; height: 8px; }
+  .ribbon-donors input[type=checkbox]:checked::after { transform: translateX(8px); }
+  .ribbon-donors + #ribbon-min { margin-left: 0; }
   #ribbon-min { font-size: 14px; line-height: 1; padding: 3px 11px; }
   /* Minimised ribbon: a thin line at the bottom; tap it to bring the ribbon back */
   #ribbon-bar {
@@ -326,7 +331,7 @@
     <div class="row"><input type="checkbox" id="show-amygdala"><label for="show-amygdala">Amygdala</label></div>
     <div class="row"><span class="swatch mesh-swatch" style="background:transparent"></span><input type="checkbox" id="mirror"><label for="mirror">Mirror right hemisphere onto the left</label></div>
     <label class="label" for="opacity">Surface opacity</label>
-    <input type="range" id="opacity" min="0" max="0.6" step="0.01" value="0.1">
+    <input type="range" id="opacity" min="0" max="0.6" step="0.01" value="0.05">
   </div>
 
   <div class="group">
@@ -417,6 +422,7 @@
 <section id="ribbon" class="glass" hidden aria-label="Expression z-score of every sample, one row per probe">
   <div class="ribbon-head">
     <span class="title" id="ribbon-title"></span><span class="probe" id="ribbon-probe"></span>
+    <label class="ribbon-donors" title="Group each region's samples by donor"><input type="checkbox" id="ribbon-donors">Donors</label>
     <button class="text-button ribbon-fit" id="ribbon-min" type="button" aria-label="Minimise the ribbon" title="Minimise">–</button>
     <button class="text-button ribbon-fit ribbon-fit2" id="ribbon-orient" type="button" aria-pressed="false" title="Show the ribbon full screen (landscape) or docked (portrait)">Landscape</button>
     <button class="text-button ribbon-fit ribbon-fit2" id="ribbon-fit" type="button" title="Show the whole ribbon (or double-click it). Scroll the wheel over the ribbon, or pinch it, to zoom.">Fit</button>
@@ -927,7 +933,6 @@ document.getElementById("mirror").addEventListener("change", e => {
     cloud.geometry.computeBoundingSphere();
   }
   updateSelectMarker();
-  if (selected) focusOn(sampleScenePos(selected));   // its drawn position moved
   updateHoverMarker();
   showReadout();
 });
@@ -975,7 +980,6 @@ function setHovered(s) { hovered = s; updateHoverMarker(); showReadout(); }
 const sampleScenePos = s => new THREE.Vector3(...toScene(...shownMni(s)));
 function setSelected(s) {
   selected = s; updateSelectMarker(); updateHoverMarker(); showReadout();
-  focusOn(s ? sampleScenePos(s) : brainCenter);   // rotate around the selected sample
 }
 
 let downAt = null;
@@ -1947,6 +1951,7 @@ function regionName(s) {
 // pixel, so neighbouring samples blend); the mouse wheel zooms in around the cursor, and
 // "Fit" or a double-click returns to the full view.
 const THICK = 4;                                            // hippocampus/amygdala width, in thin-column units
+const GAP_DONOR = 3;                                        // px between donors' runs when grouped
 const GAP_REGION = 0.6, GAP_GROUP = 3, GAP_DIVISION = 8;    // px between structures / subgroups / divisions
 // Row height: 16 px docked; full screen, rows grow to share the height (up to 72 px)
 let ROW_H = 16;
@@ -1973,7 +1978,7 @@ function buildRibbon() {
   for (const c of donorClouds) c.userData.items.forEach((s, j) => (s.column = j));
 
   // Ordered sequence of columns (with their width in thin units) and gaps, plus label spans
-  ribbon.items = []; ribbon.spans = [];
+  ribbon.items = []; ribbon.spans = []; ribbon.runs = [];
   let divisionsAdded = 0;
   for (const div of REGION_LAYOUT) {
     const divStart = ribbon.items.length;
@@ -1989,7 +1994,17 @@ function buildRibbon() {
         ribbon.groupOf.set(key, `${div.division} · ${g.name}`);
         const list = byRegion.get(key).sort((a, b) =>
           donorOrder.indexOf(a.donor) - donorOrder.indexOf(b.donor) || a.mni[0] - b.mni[0] || b.mni[1] - a.mni[1]);
-        for (const s of list) ribbon.items.push({ s, units: div.wide ? THICK : 1 });
+        // With "Donors" on, each donor's run within the region gets a gap and an outline
+        let runStart = ribbon.items.length;
+        list.forEach((s, i) => {
+          if (ribbon.donorGroups && i && s.donor !== list[i - 1].donor) {
+            ribbon.runs.push({ from: runStart, to: ribbon.items.length });
+            ribbon.items.push({ gap: GAP_DONOR, donorGap: true });
+            runStart = ribbon.items.length;
+          }
+          ribbon.items.push({ s, units: div.wide ? THICK : 1 });
+        });
+        if (ribbon.donorGroups) ribbon.runs.push({ from: runStart, to: ribbon.items.length });
       });
       ribbon.spans.push({ cls: "slabel", text: g.short ?? g.name, title: g.name, from: groupStart, to: ribbon.items.length });
       groupsAdded++;
@@ -2009,7 +2024,11 @@ function buildRibbon() {
 function layoutRibbon() {
   const scroll = ribbonCanvas.parentElement;
   const available = Math.max(200, scroll.clientWidth);
-  const gapPx = ribbon.items.reduce((a, it) => a + (it.gap ?? 0), 0);
+  // Donor gaps take at most a third of the width, so they shrink when zoomed out
+  const nDonorGaps = ribbon.items.filter(it => it.donorGap).length;
+  const donorGap = nDonorGaps ? Math.min(GAP_DONOR, available * ribbon.zoom / 3 / nDonorGaps) : 0;
+  const gapOf = it => (it.donorGap ? donorGap : it.gap ?? 0);
+  const gapPx = ribbon.items.reduce((a, it) => a + gapOf(it), 0);
   const units = ribbon.items.reduce((a, it) => a + (it.units ?? 0), 0);
   const unitPx = Math.max(0.02, (available * ribbon.zoom - gapPx) / units);
   let x = 0;
@@ -2017,12 +2036,13 @@ function layoutRibbon() {
   ribbon.cols = [];
   for (const it of ribbon.items) {
     xs.push(x);
-    if (it.gap) { x += it.gap; continue; }
+    if (it.gap) { x += gapOf(it); continue; }
     const w = it.units * unitPx;
     ribbon.cols.push({ s: it.s, x, w });
     x += w;
   }
   xs.push(x);
+  ribbon.xs = xs;
   ribbon.width = x;
   const axis = $e("ribbon-axis");
   axis.style.width = `${ribbon.width}px`;
@@ -2138,6 +2158,14 @@ function drawRibbon() {
     ctx.strokeStyle = colour; ctx.lineWidth = 1.5;
     ctx.strokeRect(col.x - 1, 0.75, col.w + 2, h - 1.5);
   };
+  // Donor groups: a dark outline around each donor's samples within a region
+  if (ribbon.donorGroups) {
+    ctx.strokeStyle = "#0b0d10"; ctx.lineWidth = 1;
+    for (const r of ribbon.runs) {
+      const x0 = ribbon.xs[r.from], x1 = ribbon.xs[r.to];
+      if (x1 - x0 >= 2) ctx.strokeRect(x0 + 0.5, 0.5, x1 - x0 - 1, h - 1);
+    }
+  }
   const sel = ribbon.cols.find(c => c.s === selected);
   if (sel) outline(sel, "#ffd21f");
   if (ribbon.hoverCol >= 0) outline(ribbon.cols[ribbon.hoverCol], "#ffffff");
@@ -2210,6 +2238,10 @@ function setRibbonMin(min) {
   if (!min) { layoutRibbon(); drawRibbon(); }
 }
 $e("ribbon-min").addEventListener("click", () => setRibbonMin(true));
+$e("ribbon-donors").addEventListener("change", e => {
+  ribbon.donorGroups = e.target.checked;
+  if (ribbon.built) { buildRibbon(); drawRibbon(); }
+});
 $e("ribbon-bar").addEventListener("click", () => setRibbonMin(false));
 
 // Column under a canvas x position (columns are sorted by x)
