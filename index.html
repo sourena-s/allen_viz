@@ -73,6 +73,22 @@
   input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: 0; border-radius: 50%; background: var(--frost); }
 
   .views { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+  /* View buttons in the bottom-left corner of the square 3D view */
+  .view-corner {
+    position: fixed; z-index: 2; left: calc(var(--sx) + 8px); top: calc(var(--sy) + var(--ss) - 34px);
+    grid-template-columns: repeat(6, 26px); gap: 3px;
+  }
+  html .view-corner button {
+    padding: 4px 0; font-size: 11px; color: #3e444d; background: rgba(255, 255, 255, 0.7);
+    border-color: rgba(62, 68, 77, 0.2); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  }
+  html .view-corner button:hover { background: rgba(62, 68, 77, 0.12); }
+  html body.phone .view-corner button { padding: 7px 0; font-size: 12px; }
+  body.phone .view-corner { grid-template-columns: repeat(6, 30px); top: calc(var(--sy) + var(--ss) - 38px); }
+  html body .ribbon-head input.gene-box { padding: 1px 6px; }
+  body.phone .ribbon-head input.gene-box { width: 8ch; font-size: 16px; }
+  body.phone .ribbon-head { flex-wrap: wrap; row-gap: 6px; }
+  body.phone.panel-open .view-corner, html body.ribbon-full .view-corner { display: none; }
   .views button, .text-button, .file-button {
     font: 500 12px var(--sans); color: var(--ink); background: var(--field);
     border: 1px solid var(--edge); border-radius: 999px; padding: 6px 0; cursor: pointer; transition: background .15s;
@@ -139,6 +155,15 @@
   }
   .ribbon-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; min-width: 0; }
   .ribbon-head .title { font-weight: 600; }
+  /* Gene box: looks like the ribbon's title, editable */
+  html .ribbon-head .gene-box {
+    font: 600 13px var(--sans); color: var(--ink); width: 11ch; padding: 1px 6px; margin: -2px 0 -2px -6px;
+    border: 1px solid transparent; border-radius: 7px; background: transparent;
+  }
+  html .ribbon-head .gene-box:hover { border-color: var(--edge); }
+  html .ribbon-head .gene-box:focus { border-color: var(--edge); background: var(--field); outline: none; }
+  .ribbon-head .gene-box::placeholder { color: var(--muted); font-weight: 500; }
+  #gene-suggestions { position: fixed; z-index: 8; width: 260px; margin: 0; background: rgba(62, 68, 77, 0.95); color: var(--ink); }
   .ribbon-head .probe { font: 11.5px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .ribbon-head .meta { flex: 1; min-width: 0; font: 11px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ribbon-fit { flex: none; margin-left: auto; padding: 3px 12px; font-size: 11px; }
@@ -161,7 +186,7 @@
   html body.ribbon-min #ribbon { display: none; }
   /* Landscape: the ribbon covers the screen; .ribbon-rot also turns it for an upright phone */
   html body.ribbon-full #ribbon {
-    background: #2f343b; -webkit-backdrop-filter: none; backdrop-filter: none;
+    background: #878b91; -webkit-backdrop-filter: none; backdrop-filter: none;
     left: 0; right: 0; top: 0; bottom: 0; z-index: 6; border-radius: 0; border: 0; max-height: none;
     overflow-y: auto; padding: calc(12px + env(safe-area-inset-top, 0px)) 14px 14px;
   }
@@ -215,7 +240,7 @@
   body.phone #dl-dialog h2 { font-size: 18px; }
   body.phone .dl-folder .text-button, body.phone .dl-actions .text-button { padding: 12px 16px; }
 
-  /* Cut sliders on the square's edges: left = axial (z), right = coronal (y), bottom =
+  /* Cut sliders on the square's edges: left = coronal (y), right = axial (z), bottom =
      sagittal (x). Dragging one turns its cut on (and the others off); a tap toggles it. */
   .edge-rail { position: fixed; z-index: 2; touch-action: none; cursor: pointer; -webkit-tap-highlight-color: transparent; outline: none; }
   .edge-rail.v { top: var(--sy); height: var(--ss); width: var(--rail); cursor: ns-resize; }
@@ -377,10 +402,6 @@
     <div class="progress" id="expr-progress" hidden><div></div></div>
     <div id="expr-list" class="hint"></div>
     <div class="group" id="expr-gene-controls" hidden>
-      <label class="label" for="gene-input">Gene or probe</label>
-      <input type="text" id="gene-input" role="combobox" aria-autocomplete="list" aria-expanded="false"
-             aria-controls="gene-suggestions" placeholder="Gene symbol, e.g. CNTNAP2" autocomplete="off" spellcheck="false">
-      <ul class="suggestions" id="gene-suggestions" role="listbox" hidden></ul>
       <div class="row"><input type="checkbox" id="size-by-z" checked><label for="size-by-z">Scale point size by z-score</label></div>
       <div class="row"><input type="checkbox" id="z-filter"><label for="z-filter">Hide samples by z-score</label></div>
       <div class="group" id="z-filter-controls" hidden>
@@ -412,21 +433,22 @@
   </div>
 
   <div class="group">
-    <span class="label">View</span>
-    <div class="views">
-      <button data-view="L" title="Left">L</button><button data-view="R" title="Right">R</button>
-      <button data-view="A" title="Anterior">A</button><button data-view="P" title="Posterior">P</button>
-      <button data-view="S" title="Superior">S</button><button data-view="I" title="Inferior">I</button>
-    </div>
     <span class="hint" id="controls-hint">Drag to rotate · middle- or right-drag to pan · scroll to zoom</span>
   </div>
 </aside>
+
+<div class="views view-corner">
+      <button data-view="L" title="Left">L</button><button data-view="R" title="Right">R</button>
+      <button data-view="A" title="Anterior">A</button><button data-view="P" title="Posterior">P</button>
+      <button data-view="S" title="Superior">S</button><button data-view="I" title="Inferior">I</button>
+</div>
 
 <button class="panel-toggle glass" id="panel-toggle" aria-expanded="false" aria-controls="panel" aria-label="Controls"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
 
 <section id="ribbon" class="glass" hidden aria-label="Expression z-score of every sample, one row per probe">
   <div class="ribbon-head">
-    <span class="title" id="ribbon-title"></span><span class="probe" id="ribbon-probe"></span>
+    <input type="text" class="title gene-box" id="gene-input" role="combobox" aria-autocomplete="list" aria-expanded="false"
+           aria-controls="gene-suggestions" aria-label="Gene or probe" placeholder="Gene…" autocomplete="off" spellcheck="false"><span class="probe" id="ribbon-probe"></span>
     <label class="ribbon-donors" title="Group each region's samples by donor"><input type="checkbox" id="ribbon-donors">Donors</label>
     <button class="text-button ribbon-fit" id="ribbon-min" type="button" aria-label="Minimise the ribbon" title="Minimise">–</button>
     <button class="text-button ribbon-fit ribbon-fit2" id="ribbon-orient" type="button" aria-pressed="false" title="Show the ribbon full screen (landscape) or docked (portrait)">Landscape</button>
@@ -441,9 +463,10 @@
   </div>
 </section>
 <div id="ribbon-tip" hidden></div>
+<ul class="suggestions" id="gene-suggestions" role="listbox" hidden></ul>
 <button id="ribbon-bar" type="button" hidden aria-label="Show the ribbon" title="Show the ribbon"></button>
-<div class="edge-rail v left" data-rail="axial" role="slider" tabindex="0" aria-label="Axial cut (z)" aria-orientation="vertical"><div class="rail-track"></div><div class="rail-thumb"><span></span></div></div>
-<div class="edge-rail v right" data-rail="coronal" role="slider" tabindex="0" aria-label="Coronal cut (y)" aria-orientation="vertical"><div class="rail-track"></div><div class="rail-thumb"><span></span></div></div>
+<div class="edge-rail v left" data-rail="coronal" role="slider" tabindex="0" aria-label="Coronal cut (y)" aria-orientation="vertical"><div class="rail-track"></div><div class="rail-thumb"><span></span></div></div>
+<div class="edge-rail v right" data-rail="axial" role="slider" tabindex="0" aria-label="Axial cut (z)" aria-orientation="vertical"><div class="rail-track"></div><div class="rail-thumb"><span></span></div></div>
 <div class="edge-rail h" data-rail="sagittal" role="slider" tabindex="0" aria-label="Sagittal cut (x)" aria-orientation="horizontal"><div class="rail-track"></div><div class="rail-thumb"><span></span></div></div>
 
 <dialog id="dl-dialog" class="glass" aria-labelledby="dl-title">
@@ -809,7 +832,7 @@ const dot = (() => {
 const ring = (() => {
   const c = document.createElement("canvas"); c.width = c.height = 64;
   const g = c.getContext("2d");
-  g.lineWidth = 7; g.strokeStyle = "#ffd21f"; g.beginPath(); g.arc(32, 32, 27, 0, Math.PI * 2); g.stroke();
+  g.lineWidth = 10; g.strokeStyle = "#ffd21f"; g.beginPath(); g.arc(32, 32, 26, 0, Math.PI * 2); g.stroke();
   return new THREE.CanvasTexture(c);
 })();
 
@@ -852,7 +875,12 @@ function makeMarker(color, map = dot, order = 6) {
   m.material.clippingPlanes = null;   // a selected sample stays marked even when cut away
   return m;
 }
-const hoverMarker = makeMarker(HOVER_COLOR), selectMarker = makeMarker(0xffffff), selectRing = makeMarker(0x161a1f, ring, 7);
+const hoverMarker = makeMarker(HOVER_COLOR), selectMarker = makeMarker(0xffffff), selectRing = makeMarker(0xffd21f, ring, 7);
+// The yellow ring is drawn over everything, so a selected sample behind the brain still shows
+selectRing.material.depthTest = false;
+// Fixed on-screen size (px), so the ring stays visible however far the view is zoomed out
+selectRing.material.sizeAttenuation = false;
+selectRing.material.size = 22;
 function placeMarker(marker, s) {
   marker.visible = !!s;
   if (s) { marker.geometry.getAttribute("position").set(toScene(...shownMni(s))); marker.geometry.getAttribute("position").needsUpdate = true; }
@@ -870,7 +898,6 @@ function updateSelectMarker() {
   const size = pointSize * sampleScale(selected) * SELECT_SCALE;
   selectMarker.material.color.set(sampleColor(selected));
   selectMarker.material.size = size;
-  selectRing.material.size = size * 1.9;   // yellow rim just outside the unchanged dot
 }
 function updateHoverMarker() {
   const s = hovered && hovered !== selected ? hovered : null;
@@ -953,7 +980,7 @@ document.getElementById("point-size").addEventListener("input", e => {
 // Hover highlights a sample; click pins it (click empty space to clear)
 const raycaster = new THREE.Raycaster(), mouse = new THREE.Vector2();
 const readout = document.getElementById("readout");
-let hovered = null, selected = null;
+let hovered = null, selected = null, flashUntil = 0;
 
 function pick(e) {
   const r = renderer.domElement.getBoundingClientRect();
@@ -1460,6 +1487,7 @@ async function loadExpressionFiles(files, donor = $e("expr-donor").value) {
     $e("gene-input").placeholder = expr.bySymbol.size ? "Gene, probe name or probe_id" : "probe_id, e.g. 1058685";
     buildSearchIndex();
     $e("expr-gene-controls").hidden = false;
+    renderRibbon();
     if (colouringActive() || $e("gene-input").value.trim()) onGeneChosen();   // include the new donor
   } catch (err) {
     bar.hidden = true;
@@ -1557,6 +1585,11 @@ function showSuggestions(limit) {
   else if (limit === PARTIAL_LIMIT && total) items.unshift(note(`${total.toLocaleString()} partial match${total > 1 ? "es" : ""}`));
   suggestList.replaceChildren(...items);
   suggestList.hidden = !items.length;
+  // The list floats above the ribbon (which clips its own overflow), under or over the box
+  const r = searchBox.getBoundingClientRect(), below = innerHeight - r.bottom > 260;
+  suggestList.style.left = `${Math.min(innerWidth - 268, Math.max(8, r.left))}px`;
+  suggestList.style.top = below ? `${r.bottom + 4}px` : "";
+  suggestList.style.bottom = below ? "" : `${innerHeight - r.top + 4}px`;
   searchBox.setAttribute("aria-expanded", !suggestList.hidden);
 }
 
@@ -2144,15 +2177,15 @@ function cellValue(s, probeId) {
 }
 
 function renderRibbon() {
-  const active = colouringActive();
+  const active = expr.byDonor.size > 0;   // shown once a donor is loaded, so its gene box can be used
   $e("ribbon").hidden = !active;
   document.body.classList.toggle("has-ribbon", active);
   if (!active) layoutStage();
   $e("ribbon-bar").hidden = !active || !document.body.classList.contains("ribbon-min");
   if (!active) { ribbonTip(null); return; }
   if (!ribbon.built) buildRibbon();
-  ribbon.rows = ribbonRows();
-  $e("ribbon-title").textContent = expr.gene;
+  ribbon.rows = colouringActive() ? ribbonRows() : [];
+  if (document.activeElement !== searchBox && expr.gene) searchBox.value = expr.gene;
   showRibbonProbe(ribbon.rows.find(r => r.id === ribbon.shownProbe));
   // Row names double as the probe selector for the brain colours
   $e("ribbon-names").replaceChildren(...ribbon.rows.map(r => {
@@ -2193,7 +2226,7 @@ function drawRibbon() {
   if (!ribbon.built || $e("ribbon").hidden) return;
   fitRowHeight();
   // Canvases wider than ~32k device pixels fail, so high zoom lowers the resolution instead
-  const dpr = Math.min(devicePixelRatio || 1, 2, 32000 / Math.max(1, ribbon.width)), h = ribbon.rows.length * (ROW_H + ROW_GAP) - ROW_GAP;
+  const dpr = Math.min(devicePixelRatio || 1, 2, 32000 / Math.max(1, ribbon.width)), h = Math.max(0, ribbon.rows.length * (ROW_H + ROW_GAP) - ROW_GAP);
   ribbonCanvas.width = Math.ceil(ribbon.width * dpr); ribbonCanvas.height = Math.ceil(h * dpr);
   ribbonCanvas.style.width = `${ribbon.width}px`; ribbonCanvas.style.height = `${h}px`;
   const ctx = ribbonCtx;
@@ -2345,6 +2378,7 @@ ribbonCanvas.addEventListener("click", e => {
   if (ci >= 0) {
     const s = ribbon.cols[ci].s, cut = activeCut();
     setSelected(s);
+    flashUntil = performance.now() + 2000;
     if (cut) setCutPos(shownMni(s)[CUTS[cut].axis]);   // move the slice to this sample's level
   }
   const row = ribbon.rows[Math.floor(p.y / (ROW_H + ROW_GAP))];
@@ -2378,7 +2412,13 @@ function resize() {
 }
 layoutStage();
 setView([-0.62, 0.35, -0.7].map(v => v / Math.hypot(-0.62, 0.35, -0.7)));
-renderer.setAnimationLoop(() => { stepFocus(0.15); controls.update(); renderer.render(scene, camera); });
+renderer.setAnimationLoop(() => {
+  stepFocus(0.15); controls.update();
+  // A sample picked in the ribbon flashes its yellow ring for 2 s; otherwise the ring is steady
+  const flashing = performance.now() < flashUntil;
+  selectRing.visible = !!selected && !(flashing && Math.floor(performance.now() / 110) % 2);
+  renderer.render(scene, camera);
+});
 
 // Handle for inspecting the scene from the browser console
 window.viewer = { THREE, scene, camera, controls, setView, toScene, get samples() { return samples; }, loadExpressionFiles: files => loadExpressionFiles(files), select: s => setSelected(s) };
