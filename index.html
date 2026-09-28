@@ -181,7 +181,7 @@
   .ribbon-axis > div { position: absolute; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ribbon-axis .dlabel {
     top: 0; font-size: 11px; font-weight: 600; color: var(--ink);
-    border-bottom: 1px solid var(--edge); padding-bottom: 1px;
+    border-bottom: 2px solid var(--edge); padding-bottom: 1px; min-height: 15px; box-sizing: border-box;
   }
   .ribbon-axis .slabel { top: 18px; font-size: 10px; color: var(--muted); }
   #ribbon-canvas { display: block; cursor: pointer; }
@@ -307,9 +307,9 @@
 
   body.phone #ribbon { left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); padding: 8px; max-height: 42dvh; overflow-y: auto; }
   body.phone #expr-clear { display: none; }
-  body.phone .rname input[type=checkbox] { width: 20px; height: 12px; }
-  body.phone .rname input[type=checkbox]::after { top: 2px; left: 2px; width: 8px; height: 8px; }
-  body.phone .rname input[type=checkbox]:checked::after { transform: translateX(8px); }
+  body.phone .rname input, body.phone .ribbon-donors input[type=checkbox] { width: 20px; height: 12px; }
+  body.phone .rname input, body.phone .ribbon-donors input[type=checkbox]::after { top: 2px; left: 2px; width: 8px; height: 8px; }
+  body.phone .rname input, body.phone .ribbon-donors input[type=checkbox]:checked::after { transform: translateX(8px); }
   body.phone .ribbon-fit { padding: 6px 12px; }
   body.phone #ribbon-tip { max-width: calc(100vw - 24px); }
 </style>
@@ -1951,6 +1951,8 @@ function regionName(s) {
 // pixel, so neighbouring samples blend); the mouse wheel zooms in around the cursor, and
 // "Fit" or a double-click returns to the full view.
 const THICK = 4;                                            // hippocampus/amygdala width, in thin-column units
+// Underline colour of each top-level division (cortex, hippocampus, ...), in layout order
+const DIVISION_COLORS = ["#e8a33d", "#5fb3e6", "#e0697a", "#8bc86a", "#b48ae6", "#4fc6b0", "#e6d35a", "#c58b5f", "#9aa4b1"];
 const GAP_DONOR = 3;                                        // px between donors' runs when grouped
 const GAP_REGION = 0.6, GAP_GROUP = 3, GAP_DIVISION = 8;    // px between structures / subgroups / divisions
 // Row height: 16 px docked; full screen, rows grow to share the height (up to 72 px)
@@ -2012,7 +2014,8 @@ function buildRibbon() {
     if (groupsAdded) {
       // the division label starts after the gap that precedes it
       const from = ribbon.items[divStart]?.gap ? divStart + 1 : divStart;
-      ribbon.spans.push({ cls: "dlabel", text: div.division, title: div.division, from, to: ribbon.items.length });
+      ribbon.spans.push({ cls: "dlabel", text: div.division, title: div.division, from, to: ribbon.items.length,
+        color: DIVISION_COLORS[REGION_LAYOUT.indexOf(div) % DIVISION_COLORS.length] });
       divisionsAdded++;
     }
   }
@@ -2049,10 +2052,16 @@ function layoutRibbon() {
   axis.replaceChildren(...ribbon.spans.map(sp => {
     const el = Object.assign(document.createElement("div"), { className: sp.cls, textContent: sp.text, title: sp.title });
     el.style.left = `${xs[sp.from]}px`; el.style.width = `${Math.max(0, xs[sp.to] - xs[sp.from])}px`;
+    if (sp.color) el.style.borderBottomColor = sp.color;
     return el;
   }));
   // Labels that do not fit are hidden rather than cut to fragments; zooming in reveals them
-  for (const el of axis.children) el.style.visibility = el.scrollWidth > el.clientWidth + 1 ? "hidden" : "";
+  // Division names that do not fit keep their coloured underline; subregion names just hide
+  for (const el of axis.children) {
+    const fits = el.scrollWidth <= el.clientWidth + 1;
+    if (el.classList.contains("dlabel")) el.style.color = fits ? "" : "transparent";
+    else el.style.visibility = fits ? "" : "hidden";
+  }
 }
 
 // Pointer position in an element's own (unrotated) coordinates. In portrait-rotated full
