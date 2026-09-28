@@ -242,9 +242,11 @@ function surfaceNets(field, [dx, dy, dz], iso) {
     if (here !== (at(x, y + 1, z) > iso)) quad(cell(x - 1, y, z - 1), cell(x - 1, y, z), cell(x, y, z), cell(x, y, z - 1), here);
     if (here !== (at(x, y, z + 1) > iso)) quad(cell(x - 1, y - 1, z), cell(x, y - 1, z), cell(x, y, z), cell(x - 1, y, z), here);
   }
-  function quad(a, b, c, d, flip) {
+  // `inside` = the edge starts inside the surface; winding is chosen so faces (and the
+  // normals three.js derives from them) point outward, away from the inside.
+  function quad(a, b, c, d, inside) {
     if (a < 0 || b < 0 || c < 0 || d < 0) return;
-    if (flip) indices.push(a, d, c, a, c, b); else indices.push(a, b, c, a, c, d);
+    if (inside) indices.push(a, b, c, a, c, d); else indices.push(a, d, c, a, c, b);
   }
   return { positions: new Float32Array(positions), indices };
 }
