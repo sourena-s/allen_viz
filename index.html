@@ -136,12 +136,20 @@
   .ribbon-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; min-width: 0; }
   .ribbon-head .title { font-weight: 600; }
   .ribbon-head .meta { flex: 1; min-width: 0; font: 11px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .ribbon-fit { flex: none; padding: 3px 12px; font-size: 11px; }
+  .ribbon-fit { flex: none; margin-left: auto; padding: 3px 12px; font-size: 11px; }
   .ribbon-grid { display: flex; gap: 8px; }
-  .ribbon-names { flex: none; width: 92px; padding-top: 34px; display: flex; flex-direction: column; gap: 2px; }
-  .rname { height: 16px; line-height: 16px; font: 11px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .rname.chosen { color: var(--ink); }
-  .rname.chosen::before { content: "● "; color: var(--frost); }
+  .ribbon-names { flex: none; width: 124px; padding-top: 34px; display: flex; flex-direction: column; gap: 2px; }
+  .rname { height: 16px; display: flex; align-items: center; gap: 6px; }
+  .rname input[type=checkbox] { width: 20px; height: 12px; }
+  .rname input[type=checkbox]::after { top: 2px; left: 2px; width: 8px; height: 8px; }
+  .rname input[type=checkbox]:checked::after { transform: translateX(8px); }
+  .rname .pname {
+    all: unset; flex: 1; min-width: 0; cursor: pointer; font: 11px var(--mono); color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .rname.chosen .pname { color: var(--ink); }
+  .rname .pname:hover { text-decoration: underline; }
+  .rname .pname:focus-visible { outline: 1.5px solid var(--frost); border-radius: 3px; }
   .ribbon-scroll { flex: 1; min-width: 0; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; scrollbar-color: var(--track) transparent; }
   .ribbon-axis { position: relative; height: 32px; margin-bottom: 2px; }
   .ribbon-axis > div { position: absolute; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -157,7 +165,7 @@
   }
   #ribbon-tip .meta { font: 11px var(--mono); color: var(--muted); margin-top: 2px; }
   body.phone #ribbon { left: 8px; right: 8px; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); padding: 8px; }
-  body.phone .ribbon-names { width: 64px; }
+  body.phone .ribbon-names { width: 96px; }
   body.phone.panel-open #ribbon { display: none; }
 
   .panel-toggle {
@@ -240,11 +248,6 @@
       <input type="text" id="gene-input" role="combobox" aria-autocomplete="list" aria-expanded="false"
              aria-controls="gene-suggestions" placeholder="Gene symbol, e.g. CNTNAP2" autocomplete="off" spellcheck="false">
       <ul class="suggestions" id="gene-suggestions" role="listbox" hidden></ul>
-      <div class="group" id="probe-box" hidden>
-        <span class="label" id="probe-box-title">Probes</span>
-        <div class="probe-list" id="probe-list"></div>
-        <span class="hint">Click a probe name to show it alone. Switch several on to show their average.</span>
-      </div>
       <div class="row"><input type="checkbox" id="size-by-z"><label for="size-by-z">Scale point size by z-score</label></div>
       <div class="row"><input type="checkbox" id="z-filter"><label for="z-filter">Hide samples by z-score</label></div>
       <div class="group" id="z-filter-controls" hidden>
@@ -261,11 +264,13 @@
       <div class="group" id="expr-scale" hidden>
         <div class="row range-row">
           <label class="label" for="z-min">Colour range, z</label>
-          <input type="text" id="z-min" value="-2" inputmode="decimal" aria-label="Lowest z-score (full blue)">
+          <input type="text" id="z-min" value="-2" inputmode="decimal" aria-label="Lowest z-score (first colour of the palette)">
           <span class="count">to</span>
-          <input type="text" id="z-max" value="2" inputmode="decimal" aria-label="Highest z-score (full red)">
+          <input type="text" id="z-max" value="2" inputmode="decimal" aria-label="Highest z-score (last colour of the palette)">
         </div>
-        <div class="scale-bar"></div>
+        <label class="label" for="palette">Colour palette</label>
+        <select id="palette"></select>
+        <div class="scale-bar" id="scale-bar"></div>
         <div class="scale-labels"><span id="scale-lo"></span><span id="scale-mid"></span><span id="scale-hi"></span></div>
         <span class="hint" id="scale-note"></span>
       </div>
@@ -288,7 +293,7 @@
 
 <section id="ribbon" class="glass" hidden aria-label="Expression z-score of every sample, one row per probe">
   <div class="ribbon-head">
-    <span class="title" id="ribbon-title"></span><span class="meta" id="ribbon-meta"></span>
+    <span class="title" id="ribbon-title"></span>
     <button class="text-button ribbon-fit" id="ribbon-fit" type="button" title="Show the whole ribbon (or double-click it). Scroll the wheel over the ribbon to zoom.">Zoom <span id="ribbon-zoom">fit</span></button>
   </div>
   <div class="ribbon-grid">
@@ -970,12 +975,26 @@ applyLayout();
 // MicroarrayExpression.csv (Allen format): no header; column 1 = probe_id, then one column
 // per sample in the same order as that donor's SampleAnnot.csv, which is also the order of
 // that donor's rows in SampleAnnot_all.csv. Probes.csv maps probe_id to gene_symbol.
-// Choosing a gene colours the donor's samples by z-score across its samples:
-// full blue at zRange[0], white at its midpoint (the donor mean for the default -2..2),
-// full red at zRange[1]; values outside are clipped. Other donors turn grey.
+// Choosing a gene colours the samples by z-score (within each donor). The colour range
+// zRange maps onto the chosen palette from its first to its last colour; values outside are
+// clipped. Donors without data are grey.
 const OTHER_DONOR_COLOR = 0x39414c;
 let zRange = [-2, 2];   // editable in the "Colour range, z" boxes
-const SCALE = [new THREE.Color(0x2166ac), new THREE.Color(0xf7f7f7), new THREE.Color(0xb2182b)];
+// Palettes as evenly spaced colour stops, low -> high. Diverging ones centre on the range's
+// midpoint (z = 0 by default); the perceptually uniform sequential ones (viridis family)
+// suit reading magnitudes; "heat" is the classic black-red-yellow-white.
+const PALETTES = {
+  "Blue–white–red (diverging)": ["#2166ac", "#67a9cf", "#d1e5f0", "#f7f7f7", "#fddbc7", "#ef8a62", "#b2182b"],
+  "Cool–warm (diverging)": ["#3b4cc0", "#6f92f3", "#aac7fd", "#dddcdc", "#f7b89c", "#e7745b", "#b40426"],
+  "Red–yellow–blue (diverging)": ["#313695", "#4575b4", "#74add1", "#abd9e9", "#ffffbf", "#fdae61", "#f46d43", "#d73027", "#a50026"],
+  "Viridis": ["#440154", "#482878", "#3e4a89", "#31688e", "#26828e", "#1f9e89", "#35b779", "#6ece58", "#b5de2b", "#fde725"],
+  "Magma": ["#000004", "#1c1044", "#4f127b", "#812581", "#b5367a", "#e55964", "#fb8761", "#fec287", "#fcfdbf"],
+  "Inferno": ["#000004", "#1f0c48", "#550f6d", "#88226a", "#ba3655", "#e35933", "#f98e09", "#f9c932", "#fcffa4"],
+  "Plasma": ["#0d0887", "#46039f", "#7201a8", "#9c179e", "#bd3786", "#d8576b", "#ed7953", "#fb9f3a", "#fdca26", "#f0f921"],
+  "Cividis (colour-blind safe)": ["#00204d", "#123570", "#3b496c", "#575d6d", "#707173", "#8a8779", "#a69d75", "#c4b56c", "#e4cf5b", "#ffea46"],
+  "Heat": ["#000000", "#5c0000", "#b80000", "#ff2a00", "#ff8000", "#ffd400", "#ffff80", "#ffffff"],
+};
+let paletteStops = PALETTES["Blue–white–red (diverging)"].map(c => new THREE.Color(c));
 // One expression matrix per loaded donor (probe_id -> values in that donor's sample order).
 // For display, values are z-scored within each donor (per probe in the ribbon rows).
 const expr = { byDonor: new Map(), probeName: new Map(), bySymbol: new Map() };
@@ -994,9 +1013,20 @@ function rangePosition(z) {
   return Math.max(-1, Math.min(1, (z - mid) / half));
 }
 function scaleColor(z) {
-  const t = rangePosition(z);
-  return t < 0 ? SCALE[1].clone().lerp(SCALE[0], -t) : SCALE[1].clone().lerp(SCALE[2], t);
+  const u = (rangePosition(z) + 1) / 2 * (paletteStops.length - 1);   // 0 .. last stop
+  const i = Math.min(paletteStops.length - 2, Math.floor(u));
+  return paletteStops[i].clone().lerp(paletteStops[i + 1], u - i);
 }
+
+// Palette menu: repaints the brain, the ribbon and the colour bar
+$e("palette").replaceChildren(...Object.keys(PALETTES).map(name => Object.assign(document.createElement("option"), { value: name, textContent: name })));
+function setPalette(name) {
+  paletteStops = PALETTES[name].map(c => new THREE.Color(c));
+  $e("scale-bar").style.background = `linear-gradient(90deg, ${PALETTES[name].join(", ")})`;
+  if (colouringActive()) applyColouring();
+}
+$e("palette").addEventListener("change", e => setPalette(e.target.value));
+setPalette($e("palette").value);
 
 // Colour range boxes: apply when both are numbers and low < high, otherwise mark them
 function readZRange() {
@@ -1236,36 +1266,17 @@ searchBox.addEventListener("keydown", e => {
 // midpoint, 2× at the high end
 const zScale = z => 2 ** rangePosition(z);
 
-// Probe box: every probe of the chosen gene with a switch. All are on at first (their
-// average is shown). Clicking a name shows that probe alone; the switches pick several.
+// Chosen gene and the probes used for the brain colours (their average). The choice is made
+// in the ribbon's row names: a switch per probe, or click a name to use that probe alone.
 function showProbeBox(query, ids) {
-  $e("probe-box-title").textContent = ids.length > 1 ? `${query}: ${ids.length} probes` : `${query}: 1 probe`;
-  $e("probe-list").replaceChildren(...ids.map((id, i) => {
-    const row = Object.assign(document.createElement("div"), { className: "row" });
-    const toggle = Object.assign(document.createElement("input"), { type: "checkbox", id: `probe-${i}`, checked: true });
-    toggle.dataset.probe = id;
-    toggle.setAttribute("aria-label", `Include probe ${id} in the average`);
-    const name = Object.assign(document.createElement("button"), { type: "button", className: "name", textContent: `${expr.probeName.get(id) ?? id}` });
-    name.title = `Show only probe ${id}`;
-    const count = Object.assign(document.createElement("span"), { className: "count", textContent: id });
-    toggle.addEventListener("change", () => {
-      if (!chosenProbes().length) toggle.checked = true;   // keep at least one probe on
-      applyColouring();
-    });
-    name.addEventListener("click", () => {
-      $e("probe-list").querySelectorAll("input").forEach(t => (t.checked = t === toggle));
-      applyColouring();
-    });
-    row.append(toggle, name, count);
-    return row;
-  }));
-  $e("probe-box").hidden = false;
+  expr.gene = query;
+  expr.chosen = new Set(ids);   // all probes on at first
 }
-const chosenProbes = () => [...$e("probe-list").querySelectorAll("input:checked")].map(t => t.dataset.probe);
+const chosenProbes = () => [...(expr.chosen ?? [])];
 
 function onGeneChosen() {
   const query = $e("gene-input").value.trim(), ids = probesFor(query);
-  if (!ids.length) { $e("probe-box").hidden = true; if (query) setScaleNote(`No probes found for "${query}" in this file.`); return; }
+  if (!ids.length) { if (query) setScaleNote(`No probes found for "${query}" in this file.`); return; }
   // A gene lists all its probes; a single probe picked by id or name lists just that one
   const symbol = expr.bySymbol.has(query) || expr.bySymbol.has(query.toUpperCase()) ? query : (expr.probeName.get(ids[0]) ?? ids[0]);
   showProbeBox(symbol, ids);
@@ -1314,7 +1325,7 @@ function applyColouring() {
   if (!ids.length) return;
   const use = chosenProbes().filter(id => ids.includes(id));
   if (!use.length) return;
-  const gene = $e("probe-box-title").textContent.split(":")[0];
+  const gene = expr.gene;
   const label = use.length > 1 ? `${gene} (mean of ${use.length} probes)` : `${gene === expr.probeName.get(use[0]) ? gene : `${gene} ${expr.probeName.get(use[0]) ?? use[0]}`}`;
   // Each loaded donor: expression averaged over the chosen probes it has, then z-scored
   // across that donor's samples (value - donor mean) / donor SD
@@ -1333,7 +1344,7 @@ function applyColouring() {
   $e("scale-mid").textContent = `${(zLo + zHi) / 2}`;
   $e("scale-hi").textContent = `z ${zHi}`;
   const withData = loadedDonors().filter(d => samples.some(s => s.donor === d && s.expr));
-  setScaleNote(`${label}: z-scored within each donor, coloured from ${zLo} (blue) to ${zHi} (red). Donors with data: ${withData.join(", ") || "none"}. Others are grey.`);
+  setScaleNote(`${label}: z-scored within each donor, ${$e("palette").value} from z ${zLo} to ${zHi}. Donors with data: ${withData.join(", ") || "none"}. Others are grey.`);
   updateZFilter();   // also re-applies point sizes
   renderRibbon();
   showReadout();
@@ -1361,7 +1372,7 @@ $e("expr-files").addEventListener("change", e => { loadExpressionFiles(e.target.
 $e("size-by-z").addEventListener("change", applyScales);
 for (const id of ["z-filter", "z-filter-mode"]) $e(id).addEventListener("change", updateZFilter);
 $e("z-threshold").addEventListener("input", updateZFilter);
-$e("expr-clear").addEventListener("click", () => { $e("gene-input").value = ""; $e("probe-box").hidden = true; hideSuggestions(); clearColouring(); });
+$e("expr-clear").addEventListener("click", () => { $e("gene-input").value = ""; expr.gene = null; expr.chosen = null; hideSuggestions(); clearColouring(); });
 
 // ---------------------------------------------------------------- region ribbon
 // Mean z-score of the loaded donor's samples in each brain structure, as a strip of cells
@@ -1543,13 +1554,23 @@ function renderRibbon() {
   if (!active) { ribbonTip(null); return; }
   if (!ribbon.built) buildRibbon();
   ribbon.rows = ribbonRows();
-  $e("ribbon-title").textContent = $e("probe-box-title").textContent.split(":")[0];
-  const withData = new Set(samples.filter(s => s.expr).map(s => s.donor));
-  $e("ribbon-meta").textContent = `${ribbon.rows.length} probe${ribbon.rows.length > 1 ? "s" : ""} · ${ribbon.cols.length.toLocaleString()} samples from ${donors().length} donors · data for ${withData.size ? [...withData].join(", ") : "none"} · grey = no data`;
+  $e("ribbon-title").textContent = expr.gene;
+  // Row names double as the probe selector for the brain colours
   $e("ribbon-names").replaceChildren(...ribbon.rows.map(r => {
-    const el = Object.assign(document.createElement("div"), { className: `rname${r.chosen ? " chosen" : ""}`, textContent: r.name });
-    el.title = `probe ${r.id}${r.chosen ? " (used for the brain colours)" : ""}`;
-    return el;
+    const row = Object.assign(document.createElement("div"), { className: `rname${r.chosen ? " chosen" : ""}` });
+    const toggle = Object.assign(document.createElement("input"), { type: "checkbox", checked: r.chosen });
+    toggle.setAttribute("aria-label", `Include probe ${r.name} in the brain colours`);
+    toggle.title = "Include in the average shown on the brain";
+    toggle.addEventListener("change", () => {
+      if (toggle.checked) expr.chosen.add(r.id);
+      else if (expr.chosen.size > 1) expr.chosen.delete(r.id);   // keep at least one probe on
+      applyColouring();
+    });
+    const name = Object.assign(document.createElement("button"), { type: "button", className: "pname", textContent: r.name });
+    name.title = `probe ${r.id}: click to show only this probe on the brain`;
+    name.addEventListener("click", () => { expr.chosen = new Set([r.id]); applyColouring(); });
+    row.append(toggle, name);
+    return row;
   }));
   drawRibbon();
   // Keep the sample details box above the ribbon, whatever its height (rows)
