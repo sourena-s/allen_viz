@@ -5,17 +5,19 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Geist:wght@400;500;600&display=swap">
 <style>
-  /* Frosted-glass controls over a dark neutral stage */
+  /* Frosted-glass controls over a white stage */
   :root {
-    color-scheme: dark;
-    --ground: #0b0d10;
-    --glass: rgba(196, 204, 214, 0.15);
-    --glass-hover: rgba(196, 204, 214, 0.24);
-    --edge: rgba(255, 255, 255, 0.11);
-    --ink: #eceff2;
-    --muted: rgba(226, 231, 236, 0.56);
-    --frost: #d9e0e7;
-    --track: rgba(255, 255, 255, 0.16);
+    color-scheme: light;
+    --ground: #ffffff;
+    --glass: rgba(246, 247, 249, 0.78);
+    --glass-hover: rgba(20, 28, 38, 0.07);
+    --edge: rgba(20, 28, 38, 0.10);
+    --ink: #161a1f;
+    --muted: rgba(22, 26, 31, 0.58);
+    --frost: #2b3139;
+    --track: rgba(20, 28, 38, 0.14);
+    --field: rgba(20, 28, 38, 0.04);
+    --sheet: rgba(250, 251, 252, 0.94);
     --sans: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
     --mono: "Geist Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
   }
@@ -28,7 +30,7 @@
   .glass {
     background: var(--glass);
     -webkit-backdrop-filter: blur(22px) saturate(140%); backdrop-filter: blur(22px) saturate(140%);
-    border: 1px solid var(--edge); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+    border: 1px solid var(--edge); box-shadow: 0 10px 34px rgba(20, 28, 38, 0.12);
   }
   .panel {
     position: fixed; top: calc(16px + env(safe-area-inset-top, 0px)); left: 16px;
@@ -54,9 +56,9 @@
   }
   input[type=checkbox]::after {
     content: ""; position: absolute; top: 2px; left: 2px; width: 11px; height: 11px; border-radius: 50%;
-    background: rgba(255, 255, 255, 0.7); transition: transform .15s, background .15s;
+    background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25); transition: transform .15s, background .15s;
   }
-  input[type=checkbox]:checked { background: rgba(217, 224, 231, 0.55); }
+  input[type=checkbox]:checked { background: var(--frost); }
   input[type=checkbox]:checked::after { transform: translateX(11px); background: #fff; }
 
   /* Thin sliders with a frosted thumb */
@@ -65,13 +67,13 @@
   input[type=range]::-moz-range-track { height: 2px; background: var(--track); border-radius: 2px; }
   input[type=range]::-webkit-slider-thumb {
     -webkit-appearance: none; width: 13px; height: 13px; margin-top: -5.5px; border-radius: 50%;
-    background: var(--frost); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+    background: var(--frost); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   }
   input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: 0; border-radius: 50%; background: var(--frost); }
 
   .views { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
   .views button, .text-button, .file-button {
-    font: 500 12px var(--sans); color: var(--ink); background: rgba(255, 255, 255, 0.06);
+    font: 500 12px var(--sans); color: var(--ink); background: var(--field);
     border: 1px solid var(--edge); border-radius: 999px; padding: 6px 0; cursor: pointer; transition: background .15s;
   }
   .views button { font-family: var(--mono); }
@@ -81,10 +83,10 @@
   #legend { display: flex; flex-direction: column; gap: 4px; }
 
   select, input[type=text] {
-    font: 13px var(--sans); color: var(--ink); background: rgba(255, 255, 255, 0.06);
+    font: 13px var(--sans); color: var(--ink); background: var(--field);
     border: 1px solid var(--edge); border-radius: 10px; padding: 7px 10px; width: 100%; box-sizing: border-box;
   }
-  select option { background: #1b1f24; }
+  select option { background: #fff; }
   .progress { height: 2px; background: var(--track); border-radius: 2px; overflow: hidden; }
   .progress > div { height: 100%; width: 0; background: var(--frost); }
   .scale-bar { height: 8px; border-radius: 999px; background: linear-gradient(90deg, #2166ac, #f7f7f7, #b2182b); }
@@ -93,12 +95,12 @@
   /* Gene / probe search results, shown in the panel's flow right under the search box */
   .suggestions {
     list-style: none; margin: -4px 0 0; padding: 4px; max-height: 240px; overflow-y: auto;
-    border: 1px solid var(--edge); border-radius: 10px; background: rgba(20, 24, 29, 0.55);
+    border: 1px solid var(--edge); border-radius: 10px; background: rgba(255, 255, 255, 0.9);
     scrollbar-width: thin; scrollbar-color: var(--track) transparent;
   }
   .suggestions li { display: flex; align-items: baseline; gap: 8px; padding: 5px 8px; border-radius: 7px; cursor: pointer; }
   .suggestions li .text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .suggestions li mark { background: none; color: #fff; font-weight: 600; }
+  .suggestions li mark { background: none; color: var(--ink); font-weight: 600; }
   .suggestions li .kind { font: 11px var(--mono); color: var(--muted); white-space: nowrap; }
   .suggestions li[aria-selected=true], .suggestions li:hover { background: var(--glass-hover); }
   .suggestions li.note { cursor: default; color: var(--muted); font-size: 11.5px; }
@@ -140,8 +142,20 @@
   .ribbon-head .meta { flex: 1; min-width: 0; font: 11px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ribbon-fit { flex: none; margin-left: auto; padding: 3px 12px; font-size: 11px; }
   .ribbon-grid { display: flex; gap: 8px; }
+  .ribbon-fit2 { margin-left: 0; }
+  /* Landscape: the ribbon covers the screen; .ribbon-rot also turns it for an upright phone */
+  html body.ribbon-full #ribbon {
+    background: #fbfbfc; -webkit-backdrop-filter: none; backdrop-filter: none;
+    left: 0; right: 0; top: 0; bottom: 0; z-index: 6; border-radius: 0; border: 0; max-height: none;
+    overflow-y: auto; padding: calc(12px + env(safe-area-inset-top, 0px)) 14px 14px;
+  }
+  html body.ribbon-full.ribbon-rot #ribbon {
+    width: 100vh; width: 100dvh; height: 100vw; right: auto; bottom: auto; left: 100vw;
+    transform-origin: top left; transform: rotate(90deg); padding: 12px 14px;
+  }
+  html body.ribbon-full #readout, html body.ribbon-full .panel-toggle, html body.ribbon-full #cut-rail { display: none; }
   .ribbon-names { flex: none; width: 20px; padding-top: 34px; display: flex; flex-direction: column; gap: 2px; }
-  .rname { height: 16px; display: flex; align-items: center; gap: 6px; }
+  .rname { height: var(--row-h, 16px); display: flex; align-items: center; gap: 6px; }
   .rname input[type=checkbox] { width: 20px; height: 12px; }
   .rname input[type=checkbox]::after { top: 2px; left: 2px; width: 8px; height: 8px; }
   .rname input[type=checkbox]:checked::after { transform: translateX(8px); }
@@ -155,8 +169,8 @@
   .ribbon-axis .slabel { top: 18px; font-size: 10px; color: var(--muted); }
   #ribbon-canvas { display: block; cursor: pointer; }
   #ribbon-tip {
-    position: fixed; z-index: 5; pointer-events: none; border-radius: 10px; padding: 7px 10px;
-    font-size: 12px; max-width: 300px; background: rgba(24, 28, 34, 0.92); border: 1px solid var(--edge);
+    position: fixed; z-index: 7; pointer-events: none; border-radius: 10px; padding: 7px 10px;
+    font-size: 12px; max-width: 300px; color: var(--ink); background: rgba(255, 255, 255, 0.96); box-shadow: 0 6px 20px rgba(20, 28, 38, 0.15); border: 1px solid var(--edge);
   }
   #ribbon-tip .meta { font: 11px var(--mono); color: var(--muted); margin-top: 2px; }
   body.phone #ribbon { left: 8px; right: 8px; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); padding: 8px; }
@@ -165,9 +179,9 @@
   /* Donor data download dialog */
   #dl-dialog {
     width: min(420px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); box-sizing: border-box; padding: 0;
-    border-radius: 16px; color: var(--ink); background: rgba(28, 32, 38, 0.92); overflow-y: auto;
+    border-radius: 16px; color: var(--ink); background: var(--sheet); overflow-y: auto;
   }
-  #dl-dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
+  #dl-dialog::backdrop { background: rgba(20, 28, 38, 0.3); }
   #dl-dialog form { display: flex; flex-direction: column; gap: 14px; margin: 0; padding: 18px; }
   #dl-dialog h2 { margin: 0; font-size: 15px; font-weight: 600; }
   #dl-dialog .row .count { margin-left: auto; }
@@ -176,8 +190,8 @@
   .dl-folder .text-button { flex: none; padding: 6px 12px; }
   .dl-actions { display: flex; gap: 8px; justify-content: flex-end; }
   .dl-actions .text-button { padding: 7px 16px; }
-  .dl-actions .primary { background: rgba(217, 224, 231, 0.85); color: #0b0d10; border-color: transparent; }
-  .dl-actions .primary:hover { background: #fff; }
+  .dl-actions .primary { background: var(--frost); color: #fff; border-color: transparent; }
+  .dl-actions .primary:hover { background: #000; }
   .dl-actions .primary:disabled { opacity: .4; cursor: default; }
   #dl-log { display: flex; flex-direction: column; gap: 2px; }
   .expr-buttons { display: flex; flex-direction: column; gap: 6px; }
@@ -192,16 +206,16 @@
     height: min(46vh, 380px); width: 36px; display: flex; justify-content: center;
     cursor: ns-resize; touch-action: none; -webkit-tap-highlight-color: transparent; outline: none;
   }
-  .rail-track { position: relative; width: 3px; height: 100%; border-radius: 3px; background: rgba(255, 255, 255, 0.14); }
-  .rail-fill { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 3px; background: rgba(217, 224, 231, 0.55); }
+  .rail-track { position: relative; width: 3px; height: 100%; border-radius: 3px; background: var(--track); }
+  .rail-fill { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 3px; background: rgba(43, 49, 57, 0.55); }
   .rail-thumb {
     position: absolute; left: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%;
-    background: var(--frost); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5); transition: transform .12s;
+    background: var(--frost); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25); transition: transform .12s;
   }
   #cut-rail:hover .rail-thumb, #cut-rail.dragging .rail-thumb, #cut-rail:focus-visible .rail-thumb { transform: scale(1.2); }
   .rail-thumb span {
     position: absolute; right: 26px; top: 50%; transform: translateY(-50%); white-space: nowrap;
-    font: 11px var(--mono); color: var(--ink); background: rgba(24, 28, 34, 0.8); padding: 3px 7px; border-radius: 999px;
+    font: 11px var(--mono); color: var(--ink); background: rgba(255, 255, 255, 0.9); padding: 3px 7px; border-radius: 999px;
     border: 1px solid var(--edge);
   }
   body.has-ribbon #cut-rail { top: calc((100% - var(--ribbon-h, 150px) - 28px) / 2); height: min(34vh, 300px); }
@@ -225,7 +239,7 @@
   body.phone .panel-toggle { display: inline-flex; }
   body.phone.panel-open .panel-toggle { display: none; }
   body.phone #scrim {
-    display: block; position: fixed; inset: 0; z-index: 3; background: rgba(0, 0, 0, 0.35);
+    display: block; position: fixed; inset: 0; z-index: 3; background: rgba(20, 28, 38, 0.22);
     opacity: 0; pointer-events: none; transition: opacity .2s; -webkit-tap-highlight-color: transparent;
   }
   body.phone.panel-open #scrim { opacity: 1; pointer-events: auto; }
@@ -233,7 +247,7 @@
     z-index: 4; top: auto; left: 0; right: 0; bottom: 0; width: auto; max-width: none;
     max-height: min(78dvh, 78vh); border-radius: 22px 22px 0 0; border-bottom: 0;
     padding: 0 18px calc(22px + env(safe-area-inset-bottom, 0px)); gap: 22px;
-    overscroll-behavior: contain; background: rgba(28, 32, 38, 0.82);
+    overscroll-behavior: contain; background: var(--sheet);
     transform: translateY(105%); visibility: hidden;
     transition: transform .28s cubic-bezier(.2, .8, .2, 1), visibility 0s linear .28s;
   }
@@ -244,7 +258,7 @@
     background: inherit; touch-action: none; cursor: grab;
   }
   body.phone .sheet-handle::before {
-    content: ""; display: block; margin: 0 auto; width: 40px; height: 5px; border-radius: 999px; background: rgba(255, 255, 255, 0.3);
+    content: ""; display: block; margin: 0 auto; width: 40px; height: 5px; border-radius: 999px; background: rgba(20, 28, 38, 0.25);
   }
   body.phone h1 { font-size: 18px; }
   body.phone .sub { font-size: 13.5px; }
@@ -296,12 +310,12 @@
 
   <div class="group">
     <span class="label">Brain surface</span>
-    <div class="row"><span class="swatch mesh-swatch" style="background:#8fc4ff"></span><input type="checkbox" id="show-brain" checked><label for="show-brain">Cortex, cerebellum and brainstem</label></div>
+    <div class="row"><span class="swatch mesh-swatch" style="background:#8a9099"></span><input type="checkbox" id="show-brain" checked><label for="show-brain">Cortex, cerebellum and brainstem</label></div>
     <div class="row"><input type="checkbox" id="show-hippocampus"><label for="show-hippocampus">Hippocampus</label></div>
     <div class="row"><input type="checkbox" id="show-amygdala"><label for="show-amygdala">Amygdala</label></div>
     <div class="row"><span class="swatch mesh-swatch" style="background:transparent"></span><input type="checkbox" id="mirror"><label for="mirror">Mirror right hemisphere onto the left</label></div>
     <label class="label" for="opacity">Surface opacity</label>
-    <input type="range" id="opacity" min="0" max="0.6" step="0.01" value="0.06">
+    <input type="range" id="opacity" min="0" max="0.6" step="0.01" value="0.1">
   </div>
 
   <div class="group">
@@ -392,7 +406,8 @@
 <section id="ribbon" class="glass" hidden aria-label="Expression z-score of every sample, one row per probe">
   <div class="ribbon-head">
     <span class="title" id="ribbon-title"></span><span class="probe" id="ribbon-probe"></span>
-    <button class="text-button ribbon-fit" id="ribbon-fit" type="button" title="Show the whole ribbon (or double-click it). Scroll the wheel over the ribbon, or pinch it, to zoom.">Fit</button>
+    <button class="text-button ribbon-fit" id="ribbon-orient" type="button" aria-pressed="false" title="Show the ribbon full screen (landscape) or docked (portrait)">Landscape</button>
+    <button class="text-button ribbon-fit ribbon-fit2" id="ribbon-fit" type="button" title="Show the whole ribbon (or double-click it). Scroll the wheel over the ribbon, or pinch it, to zoom.">Fit</button>
   </div>
   <div class="ribbon-grid">
     <div class="ribbon-names" id="ribbon-names"></div>
@@ -450,7 +465,19 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 // MNI (x = right, y = anterior, z = superior) -> three.js (y up)
 const toScene = (x, y, z) => [x, z, -y];
 
-const BRAIN_COLOR = 0x8fc4ff;
+const BRAIN_COLOR = 0x8a9099;
+// The six Allen donors, keyed by the donor_id in SampleAnnot_all.csv (also the id of their
+// data download). Ids share the prefix 17823, so donors are shown by their last four digits.
+const DONOR_INFO = {
+  178238387: { name: "H0351.2001", age: 24, sex: "M" },
+  178238373: { name: "H0351.2002", age: 39, sex: "M" },
+  178238359: { name: "H0351.1009", age: 57, sex: "M" },
+  178238316: { name: "H0351.1012", age: 31, sex: "M" },
+  178238266: { name: "H0351.1015", age: 49, sex: "F" },
+  178236545: { name: "H0351.1016", age: 55, sex: "M" },
+};
+const donorShort = d => String(d).slice(-4);
+const donorAgeSex = d => DONOR_INFO[d] ? `${DONOR_INFO[d].age} y, ${DONOR_INFO[d].sex}` : "";
 // Allen atlas label indices (assets/AllenAtlas.nii.gz; names in niivue-demo-images Allen/AllenAtlas.json)
 const AMYGDALA_LABELS = [16, 17, 18, 19, 20, 21, 22, 23, 24];   // AMY, AAA, CEN, La, BL, BM, CoA, CoP, Me
 const HIPPOCAMPUS_LABELS = [105, 106, 107];                    // HiH, HiB, HiT (head, body, tail)
@@ -639,7 +666,7 @@ function parseSamples(text) {
 const stage = document.getElementById("stage");
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.setClearColor(0x0b0d10);
+renderer.setClearColor(0xffffff);
 stage.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -763,7 +790,7 @@ const ring = (() => {
 })();
 
 // One point cloud per donor so each can be switched off; every sample is the same green.
-const SAMPLE_COLOR = 0x4ade80, HOVER_COLOR = 0xffffff;
+const SAMPLE_COLOR = 0x22b35e, HOVER_COLOR = 0x161a1f;
 const SELECT_SCALE = 1, HOVER_SCALE = 2;   // marker size relative to the sample's own dot (selection: same size)
 let samples = [], donorClouds = [], pointSize = 5.5;
 
@@ -801,7 +828,7 @@ function makeMarker(color, map = dot, order = 6) {
   m.material.clippingPlanes = null;   // a selected sample stays marked even when cut away
   return m;
 }
-const hoverMarker = makeMarker(HOVER_COLOR), selectMarker = makeMarker(0xffffff), selectRing = makeMarker(0xffffff, ring, 7);
+const hoverMarker = makeMarker(HOVER_COLOR), selectMarker = makeMarker(0xffffff), selectRing = makeMarker(0x161a1f, ring, 7);
 function placeMarker(marker, s) {
   marker.visible = !!s;
   if (s) { marker.geometry.getAttribute("position").set(toScene(...shownMni(s))); marker.geometry.getAttribute("position").needsUpdate = true; }
@@ -850,7 +877,7 @@ function addSamples(list) {
     return cloud;
   });
   document.getElementById("legend").innerHTML = donorClouds.map((c, i) =>
-    `<div class="row"><input type="checkbox" id="donor-${i}" checked><label for="donor-${i}">Donor ${c.userData.donor}</label><span class="count">${c.userData.items.length}</span></div>`
+    `<div class="row"><input type="checkbox" id="donor-${i}" checked><label for="donor-${i}">Donor ${donorShort(c.userData.donor)} <span class="count">${donorAgeSex(c.userData.donor)}</span></label><span class="count" title="samples">${c.userData.items.length}</span></div>`
   ).join("");
   donorClouds.forEach((cloud, i) => document.getElementById(`donor-${i}`).addEventListener("change", e => {
     cloud.visible = e.target.checked;
@@ -923,7 +950,7 @@ function showReadout() {
   }
   readout.innerHTML = `<div class="name"></div><div class="meta"></div>`;
   readout.querySelector(".name").textContent = `${s.name} (${s.acronym})`;
-  readout.querySelector(".meta").textContent = `Donor ${s.donor} · ${s.slab} · MNI ${s.mni.map(v => v.toFixed(0)).join(", ")}${mirrored && s.mni[0] > 0 ? " (drawn mirrored)" : ""}`;
+  readout.querySelector(".meta").textContent = `Donor ${donorShort(s.donor)} · ${s.slab} · MNI ${s.mni.map(v => v.toFixed(0)).join(", ")}${mirrored && s.mni[0] > 0 ? " (drawn mirrored)" : ""}`;
   if (s.expr) {
     const line = document.createElement("div");
     line.className = "meta";
@@ -1360,7 +1387,7 @@ async function loadExpressionFiles(files, donor = $e("expr-donor").value) {
       });
       const nCols = rows.values().next().value?.length ?? 0;
       if (nCols !== cloud.userData.items.length) {
-        throw new Error(`${exprFile.name} has ${nCols} sample columns, but donor ${donor} has ${cloud.userData.items.length} samples. Check that the file belongs to this donor.`);
+        throw new Error(`${exprFile.name} has ${nCols} sample columns, but donor ${donorShort(donor)} has ${cloud.userData.items.length} samples. Check that the file belongs to this donor.`);
       }
       expr.byDonor.set(donor, rows);   // adds to (or replaces) this donor; other donors stay loaded
       ribbon.probeStats.clear();
@@ -1381,7 +1408,7 @@ async function loadExpressionFiles(files, donor = $e("expr-donor").value) {
 
 function showLoadedStatus() {
   setExprStatus([
-    ...loadedDonors().map(d => `Donor ${d}: ${expr.byDonor.get(d).size.toLocaleString()} probes × ${donorClouds.find(c => c.userData.donor === d).userData.items.length} samples`),
+    ...loadedDonors().map(d => `Donor ${donorShort(d)}: ${expr.byDonor.get(d).size.toLocaleString()} probes × ${donorClouds.find(c => c.userData.donor === d).userData.items.length} samples`),
     expr.bySymbol.size ? `${expr.bySymbol.size.toLocaleString()} gene symbols` : "No Probes.csv: type a probe_id",
   ]);
 }
@@ -1591,7 +1618,7 @@ function applyColouring() {
   $e("scale-mid").textContent = `${(zLo + zHi) / 2}`;
   $e("scale-hi").textContent = `z ${zHi}`;
   const withData = loadedDonors().filter(d => samples.some(s => s.donor === d && s.expr));
-  setScaleNote(`${label}: z-scored within each donor, ${$e("palette").value} from z ${zLo} to ${zHi}. Donors with data: ${withData.join(", ") || "none"}. Others are grey.`);
+  setScaleNote(`${label}: z-scored within each donor, ${$e("palette").value} from z ${zLo} to ${zHi}. Donors with data: ${withData.map(donorShort).join(", ") || "none"}. Others are grey.`);
   updateZFilter();   // also re-applies point sizes
   renderRibbon();
   showReadout();
@@ -1609,12 +1636,12 @@ function clearColouring() {
 }
 
 function initExpressionPanel() {
-  $e("expr-donor").replaceChildren(...donors().map(d => Object.assign(document.createElement("option"), { value: d, textContent: `Donor ${d}` })));
+  $e("expr-donor").replaceChildren(...donors().map(d => Object.assign(document.createElement("option"), { value: d, textContent: `Donor ${donorShort(d)} (${donorAgeSex(d)})` })));
   // The donor list only says which donor the next MicroarrayExpression.csv belongs to;
   // donors already loaded stay loaded
   $e("expr-donor").addEventListener("change", () => {
     const d = $e("expr-donor").value;
-    if (!expr.byDonor.has(d)) setExprStatus([...(expr.byDonor.size ? [`Loaded: donors ${loadedDonors().join(", ")}`] : []), `Choose MicroarrayExpression.csv for donor ${d}.`]);
+    if (!expr.byDonor.has(d)) setExprStatus([...(expr.byDonor.size ? [`Loaded: donors ${loadedDonors().map(donorShort).join(", ")}`] : []), `Choose MicroarrayExpression.csv for donor ${donorShort(d)}.`]);
   });
 }
 $e("expr-files").addEventListener("change", e => { loadExpressionFiles(e.target.files); e.target.value = ""; });
@@ -1677,11 +1704,7 @@ async function zipEntries(blob) {
 // and the zip removed; the folder handle is kept in IndexedDB (and its name in a cookie) so
 // later visits can load the saved donors without downloading again. Elsewhere the zips
 // download as normal files, to be loaded with "Choose files…".
-const DONOR_NAMES = {
-  178238387: "H0351.2001", 178238373: "H0351.2002", 178238359: "H0351.1009",
-  178238316: "H0351.1012", 178238266: "H0351.1015", 178236545: "H0351.1016",
-};
-const donorLabel = d => DONOR_NAMES[d] ? `${DONOR_NAMES[d]} (${d})` : d;
+const donorLabel = d => DONOR_INFO[d] ? `${donorShort(d)} (${donorAgeSex(d)})` : d;
 const donorUrl = d => `https://human.brain-map.org/api/v2/well_known_file_download/${d}`;
 const hasFsAccess = "showDirectoryPicker" in window;
 const DIR_COOKIE = "allen-data-dir";
@@ -1910,7 +1933,9 @@ function regionName(s) {
 // "Fit" or a double-click returns to the full view.
 const THICK = 4;                                            // hippocampus/amygdala width, in thin-column units
 const GAP_REGION = 0.6, GAP_GROUP = 3, GAP_DIVISION = 8;    // px between structures / subgroups / divisions
-const ROW_H = 16, ROW_GAP = 2, NO_DATA = "rgba(255,255,255,0.10)", MAX_ZOOM = 12;   // canvases wider than ~32k device px fail
+// Row height: 16 px docked; full screen, rows grow to share the height (up to 72 px)
+let ROW_H = 16;
+const ROW_GAP = 2, NO_DATA = "rgba(20,28,38,0.08)", MAX_ZOOM = 20;
 const ribbon = {
   names: new Map(), groupOf: new Map(), probeStats: new Map(),
   items: [], spans: [], cols: [], rows: [], built: false, hoverCol: -1, zoom: 1,
@@ -1995,14 +2020,23 @@ function layoutRibbon() {
   for (const el of axis.children) el.style.visibility = el.scrollWidth > el.clientWidth + 1 ? "hidden" : "";
 }
 
-function setRibbonZoom(zoom, anchorClientX) {
-  const scroll = ribbonCanvas.parentElement, rect = scroll.getBoundingClientRect();
-  const anchor = anchorClientX ?? rect.left + rect.width / 2;
-  const frac = (scroll.scrollLeft + anchor - rect.left) / Math.max(1, ribbon.width);   // keep this spot under the cursor
+// Pointer position in an element's own (unrotated) coordinates. In portrait-rotated full
+// screen the ribbon is turned 90° clockwise: its x runs down the screen, its y leftwards.
+const ribbonRotated = () => document.body.classList.contains("ribbon-rot");
+function ribbonLocal(clientX, clientY, el = ribbonCanvas) {
+  const r = el.getBoundingClientRect();
+  return ribbonRotated() ? { x: clientY - r.top, y: r.right - clientX } : { x: clientX - r.left, y: clientY - r.top };
+}
+
+// anchor: x in the scroll box's own pixels that stays put (default: its centre)
+function setRibbonZoom(zoom, anchor) {
+  const scroll = ribbonCanvas.parentElement;
+  anchor ??= scroll.clientWidth / 2;
+  const frac = (scroll.scrollLeft + anchor) / Math.max(1, ribbon.width);   // keep this spot under the cursor
   ribbon.zoom = Math.min(MAX_ZOOM, Math.max(1, zoom));
   layoutRibbon();
   drawRibbon();
-  scroll.scrollLeft = frac * ribbon.width - (anchor - rect.left);
+  scroll.scrollLeft = frac * ribbon.width - anchor;
 }
 
 // Rows: every probe of the chosen gene; a cell is that sample's value for the probe
@@ -2055,9 +2089,21 @@ function showRibbonProbe(r) {
   $e("ribbon-probe").textContent = r ? r.name : "";
 }
 
+function fitRowHeight() {
+  const n = Math.max(1, ribbon.rows.length), box = $e("ribbon");
+  ROW_H = 16;
+  if (document.body.classList.contains("ribbon-full")) {
+    const free = box.clientHeight - 110 - (n - 1) * ROW_GAP;   // minus header, axis labels and padding
+    ROW_H = Math.max(16, Math.min(72, Math.floor(free / n)));
+  }
+  box.style.setProperty("--row-h", `${ROW_H}px`);
+}
+
 function drawRibbon() {
   if (!ribbon.built || $e("ribbon").hidden) return;
-  const dpr = Math.min(devicePixelRatio || 1, 2), h = ribbon.rows.length * (ROW_H + ROW_GAP) - ROW_GAP;
+  fitRowHeight();
+  // Canvases wider than ~32k device pixels fail, so high zoom lowers the resolution instead
+  const dpr = Math.min(devicePixelRatio || 1, 2, 32000 / Math.max(1, ribbon.width)), h = ribbon.rows.length * (ROW_H + ROW_GAP) - ROW_GAP;
   ribbonCanvas.width = Math.ceil(ribbon.width * dpr); ribbonCanvas.height = Math.ceil(h * dpr);
   ribbonCanvas.style.width = `${ribbon.width}px`; ribbonCanvas.style.height = `${h}px`;
   const ctx = ribbonCtx;
@@ -2077,8 +2123,8 @@ function drawRibbon() {
     ctx.strokeRect(col.x - 1, 0.75, col.w + 2, h - 1.5);
   };
   const sel = ribbon.cols.find(c => c.s === selected);
-  if (sel) outline(sel, "#ffd21f");
-  if (ribbon.hoverCol >= 0) outline(ribbon.cols[ribbon.hoverCol], "#ffffff");
+  if (sel) outline(sel, "#e0a100");
+  if (ribbon.hoverCol >= 0) outline(ribbon.cols[ribbon.hoverCol], "#161a1f");
 }
 // Redraw for a new selection and scroll its column into view if it is off screen
 function markPickedRegion() {
@@ -2093,7 +2139,7 @@ function markPickedRegion() {
 ribbonCanvas.parentElement.addEventListener("wheel", e => {
   if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
   e.preventDefault();
-  setRibbonZoom(ribbon.zoom * Math.exp(-e.deltaY * 0.0015), e.clientX);
+  setRibbonZoom(ribbon.zoom * Math.exp(-e.deltaY * 0.0015), ribbonLocal(e.clientX, e.clientY, ribbonCanvas.parentElement).x);
 }, { passive: false });
 ribbonCanvas.addEventListener("dblclick", () => setRibbonZoom(1));
 // Touch: pinch zooms around the fingers, one or two fingers drag to pan (sideways scrolls the
@@ -2115,9 +2161,10 @@ ribbonCanvas.addEventListener("dblclick", () => setRibbonZoom(1));
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
     const g = gesture();
     if (g.n !== last.n) { last = g; return; }
-    if (g.n > 1 && last.dist > 0) setRibbonZoom(ribbon.zoom * g.dist / last.dist, g.x);
-    scroll.scrollLeft -= g.x - last.x;
-    $e("ribbon").scrollTop -= g.y - last.y;
+    const a = ribbonLocal(g.x, g.y, scroll), b = ribbonLocal(last.x, last.y, scroll);
+    if (g.n > 1 && last.dist > 0) setRibbonZoom(ribbon.zoom * g.dist / last.dist, a.x);
+    scroll.scrollLeft -= a.x - b.x;
+    $e("ribbon").scrollTop -= a.y - b.y;
     last = g;
   });
   const lift = e => { if (pts.delete(e.pointerId)) last = pts.size ? gesture() : null; };
@@ -2125,7 +2172,21 @@ ribbonCanvas.addEventListener("dblclick", () => setRibbonZoom(1));
   scroll.addEventListener("pointercancel", lift);
 }
 $e("ribbon-fit").addEventListener("click", () => setRibbonZoom(1));
-addEventListener("resize", () => { if (ribbon.built && !$e("ribbon").hidden) { layoutRibbon(); drawRibbon(); } });
+// Landscape: the ribbon fills the whole screen; on a phone held upright it is also turned
+// 90° so its long axis runs down the long side of the screen. Portrait: the docked strip.
+function applyRibbonOrientation() {
+  const full = document.body.classList.contains("ribbon-full");
+  document.body.classList.toggle("ribbon-rot", full && innerHeight > innerWidth);
+  $e("ribbon-orient").textContent = full ? "Portrait" : "Landscape";
+  $e("ribbon-orient").setAttribute("aria-pressed", full);
+  if (ribbon.built && !$e("ribbon").hidden) { layoutRibbon(); drawRibbon(); }
+}
+$e("ribbon-orient").addEventListener("click", () => {
+  document.body.classList.toggle("ribbon-full");
+  ribbonTip(null);
+  applyRibbonOrientation();
+});
+addEventListener("resize", applyRibbonOrientation);
 
 // Column under a canvas x position (columns are sorted by x)
 function columnAt(x) {
@@ -2149,30 +2210,28 @@ function ribbonTip(content, clientX, clientY) {
 
 // Hover: details + the sample highlighted in 3D; click: select it
 ribbonCanvas.addEventListener("mousemove", e => {
-  const rect = ribbonCanvas.getBoundingClientRect();
-  const x = e.clientX - rect.left, row = Math.floor((e.clientY - rect.top) / (ROW_H + ROW_GAP));
-  const ci = columnAt(x);
+  const ci = columnAt(ribbonLocal(e.clientX, e.clientY).x);
   if (ci !== ribbon.hoverCol) { ribbon.hoverCol = ci; drawRibbon(); }
   if (ci >= 0 && hovered !== ribbon.cols[ci].s) setHovered(ribbon.cols[ci].s);
 });
 // Click (tap): select the sample and show its details for the probe row under the pointer
 function ribbonCellTip(e) {
-  const rect = ribbonCanvas.getBoundingClientRect();
-  const ci = columnAt(e.clientX - rect.left), row = Math.floor((e.clientY - rect.top) / (ROW_H + ROW_GAP));
+  const p = ribbonLocal(e.clientX, e.clientY);
+  const ci = columnAt(p.x), row = Math.floor(p.y / (ROW_H + ROW_GAP));
   if (ci < 0 || !ribbon.rows[row]) { ribbonTip(null); return; }
   const s = ribbon.cols[ci].s, probe = ribbon.rows[row], v = cellValue(s, probe.id);
   const hemi = /right/.test(s.name) ? "right" : /left/.test(s.name) ? "left" : "midline";
   ribbonTip([
     ["", `${ribbon.names.get(s.region)} (${s.region}), ${hemi}`],
-    ["meta", `${ribbon.groupOf.get(s.region)} · donor ${s.donor}`],
+    ["meta", `${ribbon.groupOf.get(s.region)} · donor ${donorShort(s.donor)}`],
     ["meta", `${probe.name}: ${v == null ? (expr.byDonor.has(s.donor) ? "probe not in this donor's file" : "donor not loaded") : `z = ${v >= 0 ? "+" : ""}${v.toFixed(2)}`}`],
-  ], e.clientX, rect.top);
+  ], e.clientX, document.body.classList.contains("ribbon-full") ? e.clientY - 12 : ribbonCanvas.getBoundingClientRect().top);
 }
 ribbonCanvas.addEventListener("mouseleave", () => { ribbon.hoverCol = -1; drawRibbon(); ribbonTip(null); setHovered(null); });
 ribbonCanvas.addEventListener("click", e => {
-  const ci = columnAt(e.clientX - ribbonCanvas.getBoundingClientRect().left);
+  const p = ribbonLocal(e.clientX, e.clientY), ci = columnAt(p.x);
   if (ci >= 0) setSelected(ribbon.cols[ci].s);
-  const row = ribbon.rows[Math.floor((e.clientY - ribbonCanvas.getBoundingClientRect().top) / (ROW_H + ROW_GAP))];
+  const row = ribbon.rows[Math.floor(p.y / (ROW_H + ROW_GAP))];
   if (row) showRibbonProbe(row);
   ribbonCellTip(e);
 });
