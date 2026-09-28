@@ -110,16 +110,21 @@ ic_sample_loadings <- ica_result$A
 rownames(ic_sample_loadings) <- paste0("IC", seq_len(nrow(ic_sample_loadings)))
 colnames(ic_sample_loadings) <- colnames(long_gene_expression)
 
+# Source matrix: gene probes x independent components (20 IC weights per gene)
+gene_ic_weights <- ica_result$S
+rownames(gene_ic_weights) <- rownames(long_gene_expression)
+colnames(gene_ic_weights) <- rownames(ic_sample_loadings)
+
 #ic_distance <- dist(long_gene_expression)
 #sample_distance <- dist(t(long_gene_expression))
 
-ic_distance <- dist(ic_sample_loadings)
+gene_distance <- dist(gene_ic_weights)
 sample_distance <- dist(t(ic_sample_loadings))
 
-ic_clustering <- hclust(ic_distance, method = "average")
+gene_clustering <- hclust(gene_distance, method = "average")
 sample_clustering <- hclust(sample_distance, method = "average")
 
-gene_probe_order <- rownames(long_gene_expression)[ic_clustering$order]
+gene_probe_order <- rownames(long_gene_expression)[gene_clustering$order]
 sample_order <- colnames(long_gene_expression)[sample_clustering$order]
 #sample_order <- sort(colnames(long_gene_expression))
 
