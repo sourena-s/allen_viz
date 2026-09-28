@@ -77,20 +77,14 @@
   </div>
 
   <div class="group">
-    <span class="label">Surfaces</span>
-    <div class="row"><span class="swatch mesh-swatch" style="background:#8fc4ff"></span><input type="checkbox" id="show-cortex" checked><label for="show-cortex">Cortex (ICBM152 pial)</label></div>
-    <div class="row"><span class="swatch mesh-swatch" style="background:#6fa8ff"></span><input type="checkbox" id="show-cerebellum" checked><label for="show-cerebellum">Cerebellum</label></div>
-    <div class="row"><span class="swatch mesh-swatch" style="background:#9ad8ff"></span><input type="checkbox" id="show-brainstem" checked><label for="show-brainstem">Brainstem</label></div>
+    <span class="label">Brain surface</span>
+    <div class="row"><span class="swatch mesh-swatch" style="background:#8fc4ff"></span><input type="checkbox" id="show-brain" checked><label for="show-brain">Cortex, cerebellum and brainstem</label></div>
     <label class="label" for="opacity">Surface opacity</label>
     <input type="range" id="opacity" min="0" max="0.6" step="0.01" value="0.06">
   </div>
 
   <div class="group">
-    <span class="label">Samples</span>
-    <div class="seg" role="group" aria-label="Colour samples by">
-      <button id="by-slab" aria-pressed="true">By slab type</button>
-      <button id="by-donor" aria-pressed="false">By donor</button>
-    </div>
+    <span class="label">Donors</span>
     <div id="legend"></div>
     <label class="label" for="point-size">Point size (mm)</label>
     <input type="range" id="point-size" min="0.5" max="6" step="0.1" value="2.2">
@@ -107,7 +101,7 @@
   </div>
 </aside>
 
-<div id="readout"><div class="name">Hover a sample</div><div class="meta">MNI x, y, z (mm)</div></div>
+<div id="readout"><div class="name">Hover or click a sample</div><div class="meta">MNI x, y, z (mm)</div></div>
 <div id="status">Loading meshes…</div>
 
 <script src="assets/bundle.js"></script>
@@ -129,9 +123,7 @@ const toScene = (x, y, z) => [x, z, -y];
 const CEREBELLUM_LABELS = [62, 63, 64, 120, 121];
 const BRAINSTEM_LABELS = [111, 112, 113, 114, 115, 116, 117, 118, 119, 122, 123, 124, 125, 126, 127, 128, 129];
 
-const SLAB_COLORS = { CX: "#ff7a59", CB: "#58d0f0", BS: "#f3cf55" };
-const SLAB_NAMES = { CX: "Cerebrum (CX)", CB: "Cerebellum (CB)", BS: "Brainstem (BS)" };
-const DONOR_COLORS = ["#ff7a59", "#58d0f0", "#f3cf55", "#a98bf5", "#6ee29b", "#f58bc6"];
+const BRAIN_COLOR = 0x8fc4ff;
 
 const statusEl = document.getElementById("status");
 
@@ -368,8 +360,8 @@ function addCortex(mz3) {
   }
   const rhFaces = new Uint32Array(faces.length);
   for (let i = 0; i < faces.length; i += 3) rhFaces.set([faces[i], faces[i + 2], faces[i + 1]], i);
-  addSurface("cortex", lh, faces, 0x8fc4ff);
-  addSurface("cortex", rh, rhFaces, 0x8fc4ff);
+  addSurface("brain", lh, faces, BRAIN_COLOR);
+  addSurface("brain", rh, rhFaces, BRAIN_COLOR);
 }
 
 // Round point sprite
@@ -381,47 +373,55 @@ const dot = (() => {
   return new THREE.CanvasTexture(c);
 })();
 
-let samples = [], points = null, colorMode = "slab";
+// One point cloud per donor so each can be switched off; every sample is the same green.
+const SAMPLE_COLOR = 0x4ade80, HOVER_COLOR = 0xffffff, SELECT_COLOR = 0xffb020;
+let samples = [], donorClouds = [], pointSize = 2.2;
 
-function addSamples(list) {
-  samples = list;
+function pointsFrom(list, color, size) {
   const pos = new Float32Array(list.length * 3);
   list.forEach((s, i) => pos.set(toScene(...s.mni), i * 3));
   const geom = new THREE.BufferGeometry();
   geom.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-  geom.setAttribute("color", new THREE.BufferAttribute(new Float32Array(list.length * 3), 3));
-  points = new THREE.Points(geom, new THREE.PointsMaterial({
-    size: 2.2, map: dot, vertexColors: true, alphaTest: 0.5, transparent: true, depthTest: false, depthWrite: false,
+  const cloud = new THREE.Points(geom, new THREE.PointsMaterial({
+    size, color, map: dot, alphaTest: 0.5, transparent: true, depthTest: false, depthWrite: false,
   }));
-  points.renderOrder = 2;
-  scene.add(points);
-  recolor();
+  cloud.renderOrder = 2;
+  return cloud;
 }
 
-const donors = () => [...new Set(samples.map(s => s.donor))];
+// Single-point markers drawn over the cloud for the hovered and the clicked sample
+function makeMarker(color) {
+  const m = pointsFrom([{ mni: [0, 0, 0] }], color, pointSize * 3.2);
+  m.renderOrder = 3; m.visible = false; m.frustumCulled = false; scene.add(m);
+  return m;
+}
+const hoverMarker = makeMarker(HOVER_COLOR), selectMarker = makeMarker(SELECT_COLOR);
+function placeMarker(marker, s) {
+  marker.visible = !!s;
+  if (s) { marker.geometry.getAttribute("position").set(toScene(...s.mni)); marker.geometry.getAttribute("position").needsUpdate = true; }
+}
 
-function recolor() {
-  const attr = points.geometry.getAttribute("color"), c = new THREE.Color();
-  const donorList = donors();
-  samples.forEach((s, i) => {
-    c.set(colorMode === "slab" ? (SLAB_COLORS[s.slab] ?? "#cccccc") : DONOR_COLORS[donorList.indexOf(s.donor) % DONOR_COLORS.length]);
-    attr.setXYZ(i, c.r, c.g, c.b);
+function addSamples(list) {
+  samples = list;
+  const byDonor = new Map();
+  for (const s of list) (byDonor.get(s.donor) ?? byDonor.set(s.donor, []).get(s.donor)).push(s);
+  donorClouds = [...byDonor].map(([donor, items]) => {
+    const cloud = pointsFrom(items, SAMPLE_COLOR, pointSize);
+    cloud.userData = { donor, items };
+    scene.add(cloud);
+    return cloud;
   });
-  attr.needsUpdate = true;
-  renderLegend();
+  document.getElementById("legend").innerHTML = donorClouds.map((c, i) =>
+    `<div class="row"><input type="checkbox" id="donor-${i}" checked><label for="donor-${i}">Donor ${c.userData.donor}</label><span class="count">${c.userData.items.length}</span></div>`
+  ).join("");
+  donorClouds.forEach((cloud, i) => document.getElementById(`donor-${i}`).addEventListener("change", e => {
+    cloud.visible = e.target.checked;
+    if (hovered?.donor === cloud.userData.donor) setHovered(null);
+    if (selected?.donor === cloud.userData.donor) setSelected(null);
+  }));
 }
 
-function renderLegend() {
-  const counts = new Map();
-  for (const s of samples) { const k = colorMode === "slab" ? s.slab : s.donor; counts.set(k, (counts.get(k) ?? 0) + 1); }
-  const donorList = donors();
-  const keys = colorMode === "slab" ? ["CX", "CB", "BS"].filter(k => counts.has(k)).concat([...counts.keys()].filter(k => !SLAB_COLORS[k])) : donorList;
-  document.getElementById("legend").innerHTML = keys.map(k => {
-    const color = colorMode === "slab" ? (SLAB_COLORS[k] ?? "#cccccc") : DONOR_COLORS[donorList.indexOf(k) % DONOR_COLORS.length];
-    const name = colorMode === "slab" ? (SLAB_NAMES[k] ?? k) : `Donor ${k}`;
-    return `<div class="row"><span class="swatch" style="background:${color}"></span><span style="flex:1">${name}</span><span class="count">${counts.get(k)}</span></div>`;
-  }).join("");
-}
+const donors = () => donorClouds.map(c => c.userData.donor);
 
 // ---------------------------------------------------------------- views & UI
 const VIEWS = { L: [-1, 0, 0], R: [1, 0, 0], A: [0, 0, -1], P: [0, 0, 1], S: [0, 1, 0], I: [0, -1, 0] };
@@ -434,37 +434,49 @@ function setView(dir, dist = 420) {
 }
 document.querySelectorAll("[data-view]").forEach(b => b.addEventListener("click", () => setView(VIEWS[b.dataset.view])));
 
-for (const key of ["cortex", "cerebellum", "brainstem"]) {
-  document.getElementById(`show-${key}`).addEventListener("change", e => (surfaces[key] ?? []).forEach(s => (s.group.visible = e.target.checked)));
-}
+document.getElementById("show-brain").addEventListener("change", e => (surfaces.brain ?? []).forEach(s => (s.group.visible = e.target.checked)));
 document.getElementById("opacity").addEventListener("input", e => {
   Object.values(surfaces).flat().forEach(s => (s.shade.material.uniforms.opacity.value = +e.target.value));
 });
-document.getElementById("point-size").addEventListener("input", e => { if (points) points.material.size = +e.target.value; });
-for (const [id, mode] of [["by-slab", "slab"], ["by-donor", "donor"]]) {
-  document.getElementById(id).addEventListener("click", () => {
-    colorMode = mode;
-    document.getElementById("by-slab").setAttribute("aria-pressed", mode === "slab");
-    document.getElementById("by-donor").setAttribute("aria-pressed", mode === "donor");
-    if (points) recolor();
-  });
-}
+document.getElementById("point-size").addEventListener("input", e => {
+  pointSize = +e.target.value;
+  donorClouds.forEach(c => (c.material.size = pointSize));
+  hoverMarker.material.size = selectMarker.material.size = pointSize * 3.2;
+});
 
-// Hover readout
+// Hover highlights a sample; click pins it (click empty space to clear)
 const raycaster = new THREE.Raycaster(), mouse = new THREE.Vector2();
 const readout = document.getElementById("readout");
-renderer.domElement.addEventListener("pointermove", e => {
-  if (!points) return;
+let hovered = null, selected = null;
+
+function pick(e) {
   const r = renderer.domElement.getBoundingClientRect();
   mouse.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
-  raycaster.params.Points.threshold = points.material.size * 0.6;
+  raycaster.params.Points.threshold = pointSize * 0.6;
   raycaster.setFromCamera(mouse, camera);
-  const hit = raycaster.intersectObject(points)[0];
-  if (!hit) return;
-  const s = samples[hit.index];
+  const hit = raycaster.intersectObjects(donorClouds.filter(c => c.visible))[0];
+  return hit ? hit.object.userData.items[hit.index] : null;
+}
+
+function showReadout() {
+  const s = selected ?? hovered;
+  if (!s) {
+    readout.innerHTML = `<div class="name">Hover or click a sample</div><div class="meta">MNI x, y, z (mm)</div>`;
+    return;
+  }
   readout.innerHTML = `<div class="name"></div><div class="meta"></div>`;
-  readout.querySelector(".name").textContent = `${s.name} (${s.acronym})`;
+  readout.querySelector(".name").textContent = `${selected ? "Selected: " : ""}${s.name} (${s.acronym})`;
   readout.querySelector(".meta").textContent = `Donor ${s.donor} · ${s.slab} · MNI ${s.mni.map(v => v.toFixed(0)).join(", ")}`;
+}
+function setHovered(s) { hovered = s; placeMarker(hoverMarker, s && s !== selected ? s : null); showReadout(); }
+function setSelected(s) { selected = s; placeMarker(selectMarker, s); placeMarker(hoverMarker, null); showReadout(); }
+
+renderer.domElement.addEventListener("pointermove", e => { if (samples.length) setHovered(pick(e)); });
+let downAt = null;
+renderer.domElement.addEventListener("pointerdown", e => (downAt = [e.clientX, e.clientY]));
+renderer.domElement.addEventListener("pointerup", e => {
+  if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 4) return;   // a drag, not a click
+  setSelected(pick(e));
 });
 
 function resize() {
@@ -490,9 +502,9 @@ try {
   await new Promise(r => setTimeout(r, 30));
   const atlas = parseNifti(atlasBytes);
   const cb = labelSurface(atlas, CEREBELLUM_LABELS);
-  addSurface("cerebellum", cb.positions, cb.indices, 0x6fa8ff);
+  addSurface("brain", cb.positions, cb.indices, BRAIN_COLOR);
   const bs = labelSurface(atlas, BRAINSTEM_LABELS);
-  addSurface("brainstem", bs.positions, bs.indices, 0x9ad8ff);
+  addSurface("brain", bs.positions, bs.indices, BRAIN_COLOR);
   const list = parseSamples(sampleText);
   addSamples(list);
   document.getElementById("summary").textContent = `${list.length.toLocaleString()} samples from ${donors().length} donors, in MNI space`;
