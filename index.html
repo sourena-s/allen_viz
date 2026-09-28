@@ -70,6 +70,18 @@
   }
   .file-button:hover { border-color: var(--accent); }
   #expr-list { display: flex; flex-direction: column; gap: 2px; }
+  select, input[type=text] {
+    font: 13px var(--sans); color: var(--ink); background: var(--ground);
+    border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; width: 100%; box-sizing: border-box;
+  }
+  .progress { height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }
+  .progress > div { height: 100%; width: 0; background: var(--accent); }
+  .scale-bar { height: 10px; border-radius: 3px; background: linear-gradient(90deg, #2166ac, #f7f7f7, #b2182b); }
+  .scale-labels { display: flex; justify-content: space-between; font: 11px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+  .text-button {
+    font: 500 12px var(--sans); color: var(--muted); background: transparent;
+    border: 1px solid var(--line); border-radius: 6px; padding: 6px; cursor: pointer;
+  }
   .panel-toggle {
     display: none; position: fixed; left: 12px; z-index: 2;
     bottom: calc(12px + env(safe-area-inset-bottom, 0px));
@@ -134,11 +146,26 @@
   </div>
 
   <div class="group">
-    <span class="label">Gene expression (coming soon)</span>
-    <span class="hint">Load Allen Human Brain Atlas files for a donor (MicroarrayExpression.csv, Probes.csv, SampleAnnot.csv) to colour samples by a gene. Files are read on this device only.</span>
+    <span class="label">Gene expression</span>
+    <label class="label" for="expr-donor">Donor</label>
+    <select id="expr-donor"></select>
+    <span class="hint">Choose that donor's MicroarrayExpression.csv, and Probes.csv to search by gene symbol. Files are read on this device only.</span>
     <label class="file-button" for="expr-files">Choose files…</label>
     <input type="file" id="expr-files" multiple accept=".csv,.txt,.gz" hidden>
+    <div class="progress" id="expr-progress" hidden><div></div></div>
     <div id="expr-list" class="hint"></div>
+    <div class="group" id="expr-gene-controls" hidden>
+      <label class="label" for="gene-input">Gene or probe</label>
+      <input type="text" id="gene-input" list="gene-options" placeholder="Gene symbol, e.g. CNTNAP2" autocomplete="off">
+      <datalist id="gene-options"></datalist>
+      <select id="probe-select" hidden></select>
+      <div class="group" id="expr-scale" hidden>
+        <div class="scale-bar"></div>
+        <div class="scale-labels"><span id="scale-lo"></span><span id="scale-mid"></span><span id="scale-hi"></span></div>
+        <span class="hint" id="scale-note"></span>
+      </div>
+      <button class="text-button" id="expr-clear" type="button">Clear colouring</button>
+    </div>
   </div>
 
   <div class="group">
@@ -454,6 +481,13 @@ function placeMarker(marker, s) {
   if (s) { marker.geometry.getAttribute("position").set(toScene(...shownMni(s))); marker.geometry.getAttribute("position").needsUpdate = true; }
 }
 
+const paintColor = new THREE.Color();
+function paintCloud(cloud, colorOf) {
+  const attr = cloud.geometry.getAttribute("color");
+  cloud.userData.items.forEach((s, i) => { paintColor.set(colorOf(s)); attr.setXYZ(i, paintColor.r, paintColor.g, paintColor.b); });
+  attr.needsUpdate = true;
+}
+
 function addSamples(list) {
   samples = list;
   const byDonor = new Map();
@@ -461,6 +495,11 @@ function addSamples(list) {
   donorClouds = [...byDonor].map(([donor, items]) => {
     const cloud = pointsFrom(items, SAMPLE_COLOR, pointSize);
     cloud.userData = { donor, items };
+    // Per-sample colours (green by default, expression colours once a gene is chosen)
+    cloud.geometry.setAttribute("color", new THREE.BufferAttribute(new Float32Array(items.length * 3), 3));
+    cloud.material.vertexColors = true;
+    cloud.material.color.set(0xffffff);
+    paintCloud(cloud, () => SAMPLE_COLOR);
     scene.add(cloud);
     return cloud;
   });
@@ -535,6 +574,12 @@ function showReadout() {
   readout.innerHTML = `<div class="name"></div><div class="meta"></div>`;
   readout.querySelector(".name").textContent = `${selected ? "Selected: " : ""}${s.name} (${s.acronym})`;
   readout.querySelector(".meta").textContent = `Donor ${s.donor} · ${s.slab} · MNI ${s.mni.map(v => v.toFixed(0)).join(", ")}${mirrored && s.mni[0] > 0 ? " (drawn mirrored)" : ""}`;
+  if (s.expr) {
+    const line = document.createElement("div");
+    line.className = "meta";
+    line.textContent = `${s.expr.label}: ${s.expr.value.toFixed(2)} (z = ${s.expr.z >= 0 ? "+" : ""}${s.expr.z.toFixed(2)})`;
+    readout.append(line);
+  }
 }
 function setHovered(s) { hovered = s; placeMarker(hoverMarker, s && s !== selected ? s : null); showReadout(); }
 function setSelected(s) { selected = s; placeMarker(selectMarker, s); placeMarker(hoverMarker, null); showReadout(); }
@@ -697,21 +742,176 @@ phoneQuery.addEventListener("change", applyLayout);
 panelToggle.addEventListener("click", () => setPanelOpen(!document.body.classList.contains("panel-open")));
 applyLayout();
 
-// ---------------------------------------------------------------- gene expression (placeholder)
-// Lists the chosen Allen files. Parsing them and colouring samples by a gene is not built yet;
-// loadExpressionFiles is where that will go.
-const ALLEN_FILES = { "microarrayexpression": "expression matrix", "probes": "probe list", "sampleannot": "sample annotation" };
-function describeFile(file) {
-  const kind = Object.entries(ALLEN_FILES).find(([key]) => file.name.toLowerCase().startsWith(key))?.[1] ?? "unrecognised file";
-  const mb = file.size / 1e6;
-  return `${file.name} · ${mb >= 1 ? mb.toFixed(1) + " MB" : Math.ceil(file.size / 1e3) + " kB"} · ${kind}`;
+// ---------------------------------------------------------------- gene expression
+// MicroarrayExpression.csv (Allen format): no header; column 1 = probe_id, then one column
+// per sample in the same order as that donor's SampleAnnot.csv, which is also the order of
+// that donor's rows in SampleAnnot_all.csv. Probes.csv maps probe_id to gene_symbol.
+// Choosing a gene colours the donor's samples by z-score across its samples:
+// blue (low) - white (donor mean) - red (high), clipped at ±Z_CLIP. Other donors turn grey.
+const Z_CLIP = 2.5, OTHER_DONOR_COLOR = 0x39414c;
+const SCALE = [new THREE.Color(0x2166ac), new THREE.Color(0xf7f7f7), new THREE.Color(0xb2182b)];
+const expr = { donor: null, rows: null, probeName: new Map(), bySymbol: new Map() };
+const $e = id => document.getElementById(id);
+
+function scaleColor(z) {
+  const t = Math.max(-1, Math.min(1, z / Z_CLIP));
+  return t < 0 ? SCALE[1].clone().lerp(SCALE[0], -t) : SCALE[1].clone().lerp(SCALE[2], t);
 }
-function loadExpressionFiles(files) {
-  const list = document.getElementById("expr-list");
-  list.replaceChildren(...[...files].map(f => Object.assign(document.createElement("span"), { textContent: describeFile(f) })));
-  if (files.length) list.append(Object.assign(document.createElement("span"), { textContent: "Selected, not loaded yet: expression colouring is still to be built." }));
+
+function setExprStatus(lines) {
+  $e("expr-list").replaceChildren(...lines.map(t => Object.assign(document.createElement("span"), { textContent: t })));
 }
-document.getElementById("expr-files").addEventListener("change", e => loadExpressionFiles(e.target.files));
+
+// Stream the expression file line by line so the whole text never sits in memory;
+// each probe's values are kept as a Float32Array keyed by probe_id.
+async function readExpressionFile(file, onProgress) {
+  let stream = file.stream();
+  const gz = file.name.toLowerCase().endsWith(".gz");
+  if (gz) stream = stream.pipeThrough(new DecompressionStream("gzip"));
+  const reader = stream.pipeThrough(new TextDecoderStream()).getReader();
+  const rows = new Map();
+  let rest = "", readChars = 0;
+  const addLine = line => {
+    if (!line.trim()) return;
+    const parts = line.split(",");
+    const id = parts[0].replace(/"/g, "").trim();
+    const values = new Float32Array(parts.length - 1);
+    for (let i = 1; i < parts.length; i++) values[i - 1] = parseFloat(parts[i]);
+    rows.set(id, values);
+  };
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    readChars += value.length;
+    const text = rest + value;
+    let start = 0, nl;
+    while ((nl = text.indexOf("\n", start)) >= 0) { addLine(text.slice(start, nl)); start = nl + 1; }
+    rest = text.slice(start);
+    onProgress(gz ? null : readChars / file.size, rows.size);
+  }
+  addLine(rest);
+  return rows;
+}
+
+async function readProbesFile(file) {
+  const [headerLine, ...lines] = (await file.text()).split(/\r?\n/).filter(l => l.trim());
+  const header = parseCsvLine(headerLine).map(h => h.trim().toLowerCase());
+  const col = name => header.indexOf(name);
+  const [idCol, nameCol, symCol] = [col("probe_id"), col("probe_name"), col("gene_symbol")];
+  if (idCol < 0 || symCol < 0) throw new Error(`${file.name} has no probe_id / gene_symbol columns`);
+  const probeName = new Map(), bySymbol = new Map();
+  for (const line of lines) {
+    const c = parseCsvLine(line);
+    const id = c[idCol].trim(), sym = c[symCol].trim();
+    probeName.set(id, nameCol >= 0 ? c[nameCol] : id);
+    if (sym) (bySymbol.get(sym) ?? bySymbol.set(sym, []).get(sym)).push(id);
+  }
+  return { probeName, bySymbol };
+}
+
+async function loadExpressionFiles(files) {
+  const donor = $e("expr-donor").value;
+  const cloud = donorClouds.find(c => c.userData.donor === donor);
+  const exprFile = [...files].find(f => /microarrayexpression/i.test(f.name));
+  const probesFile = [...files].find(f => /^probes/i.test(f.name));
+  if (!exprFile && !probesFile) { setExprStatus(["Choose MicroarrayExpression.csv (and Probes.csv) for the selected donor."]); return; }
+  const bar = $e("expr-progress"), fill = bar.firstElementChild;
+  try {
+    if (probesFile) {
+      setExprStatus([`Reading ${probesFile.name}…`]);
+      Object.assign(expr, await readProbesFile(probesFile));
+      $e("gene-options").replaceChildren(...[...expr.bySymbol.keys()].sort().map(s => Object.assign(document.createElement("option"), { value: s })));
+    }
+    if (exprFile) {
+      bar.hidden = false;
+      const rows = await readExpressionFile(exprFile, (frac, n) => {
+        fill.style.width = frac == null ? "100%" : `${(frac * 100).toFixed(1)}%`;
+        setExprStatus([`Reading ${exprFile.name}… ${n.toLocaleString()} probes`]);
+      });
+      const nCols = rows.values().next().value?.length ?? 0;
+      if (nCols !== cloud.userData.items.length) {
+        throw new Error(`${exprFile.name} has ${nCols} sample columns, but donor ${donor} has ${cloud.userData.items.length} samples. Check that the file belongs to this donor.`);
+      }
+      clearColouring();
+      expr.donor = donor; expr.rows = rows;
+    }
+    bar.hidden = true;
+    if (!expr.rows) { setExprStatus([`Probes loaded (${expr.bySymbol.size.toLocaleString()} genes). Now choose MicroarrayExpression.csv.`]); return; }
+    setExprStatus([
+      `Donor ${expr.donor}: ${expr.rows.size.toLocaleString()} probes × ${cloud.userData.items.length} samples`,
+      expr.bySymbol.size ? `${expr.bySymbol.size.toLocaleString()} gene symbols` : "No Probes.csv: type a probe_id",
+    ]);
+    $e("gene-input").placeholder = expr.bySymbol.size ? "Gene symbol, e.g. CNTNAP2" : "probe_id, e.g. 1058685";
+    $e("expr-gene-controls").hidden = false;
+  } catch (err) {
+    bar.hidden = true;
+    setExprStatus([err.message]);
+    console.error(err);
+  }
+}
+
+// Probe ids for the typed gene symbol (or a raw probe_id); only probes present in the file
+function probesFor(query) {
+  const q = query.trim();
+  const ids = expr.bySymbol.get(q) ?? expr.bySymbol.get(q.toUpperCase()) ?? [q];
+  return ids.filter(id => expr.rows?.has(id));
+}
+
+function onGeneChosen() {
+  const query = $e("gene-input").value, ids = probesFor(query), select = $e("probe-select");
+  if (!ids.length) { select.hidden = true; if (query.trim()) setScaleNote(`No probes found for "${query.trim()}" in this file.`); return; }
+  select.replaceChildren(
+    ...(ids.length > 1 ? [Object.assign(document.createElement("option"), { value: "mean", textContent: `Mean of ${ids.length} probes` })] : []),
+    ...ids.map(id => Object.assign(document.createElement("option"), { value: id, textContent: `${expr.probeName.get(id) ?? id} (probe ${id})` })),
+  );
+  select.hidden = ids.length < 2;
+  applyColouring();
+}
+
+function setScaleNote(text) { $e("expr-scale").hidden = false; $e("scale-note").textContent = text; }
+
+function applyColouring() {
+  const query = $e("gene-input").value.trim(), ids = probesFor(query);
+  if (!ids.length) return;
+  const choice = $e("probe-select").value;
+  const use = choice && choice !== "mean" && ids.includes(choice) ? [choice] : ids;
+  const cloud = donorClouds.find(c => c.userData.donor === expr.donor), items = cloud.userData.items;
+  const values = items.map((_, j) => use.reduce((sum, id) => sum + expr.rows.get(id)[j], 0) / use.length);
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const sd = Math.sqrt(values.reduce((a, v) => a + (v - mean) ** 2, 0) / values.length) || 1;
+  const label = use.length > 1 ? `${query} (mean of ${use.length} probes)` : `${query} ${expr.probeName.get(use[0]) ?? ""}`.trim();
+  items.forEach((s, j) => { s.expr = { label, value: values[j], z: (values[j] - mean) / sd }; });
+  for (const c of donorClouds) paintCloud(c, s => (c === cloud ? scaleColor(s.expr.z) : OTHER_DONOR_COLOR));
+  $e("scale-lo").textContent = (mean - Z_CLIP * sd).toFixed(1);
+  $e("scale-mid").textContent = mean.toFixed(1);
+  $e("scale-hi").textContent = (mean + Z_CLIP * sd).toFixed(1);
+  setScaleNote(`${label}, donor ${expr.donor}: log2 expression, mean ± ${Z_CLIP} SD across its ${items.length} samples. Other donors are grey.`);
+  showReadout();
+}
+
+function clearColouring() {
+  for (const s of samples) delete s.expr;
+  for (const c of donorClouds) paintCloud(c, () => SAMPLE_COLOR);
+  $e("expr-scale").hidden = true;
+  showReadout();
+}
+
+function initExpressionPanel() {
+  $e("expr-donor").replaceChildren(...donors().map(d => Object.assign(document.createElement("option"), { value: d, textContent: `Donor ${d}` })));
+  $e("expr-donor").addEventListener("change", () => {
+    // A loaded matrix belongs to one donor; switching donor means loading that donor's file
+    if (expr.rows && $e("expr-donor").value !== expr.donor) {
+      clearColouring();
+      expr.rows = null; expr.donor = null;
+      $e("expr-gene-controls").hidden = true;
+      setExprStatus([`Choose MicroarrayExpression.csv for donor ${$e("expr-donor").value}.`]);
+    }
+  });
+}
+$e("expr-files").addEventListener("change", e => { loadExpressionFiles(e.target.files); e.target.value = ""; });
+$e("gene-input").addEventListener("change", onGeneChosen);
+$e("probe-select").addEventListener("change", applyColouring);
+$e("expr-clear").addEventListener("click", () => { $e("gene-input").value = ""; $e("probe-select").hidden = true; clearColouring(); });
 
 function resize() {
   const w = stage.clientWidth, h = stage.clientHeight;
@@ -723,7 +923,7 @@ setView([-0.62, 0.35, -0.7].map(v => v / Math.hypot(-0.62, 0.35, -0.7)));
 renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
 
 // Handle for inspecting the scene from the browser console
-window.viewer = { THREE, scene, camera, controls, setView, toScene, get samples() { return samples; } };
+window.viewer = { THREE, scene, camera, controls, setView, toScene, get samples() { return samples; }, loadExpressionFiles: files => loadExpressionFiles(files) };
 
 // ---------------------------------------------------------------- go
 try {
@@ -739,6 +939,7 @@ try {
   addSurface("brain", brain.positions, brain.indices, BRAIN_COLOR);
   const list = parseSamples(sampleText);
   addSamples(list);
+  initExpressionPanel();
   updateCut();
   document.getElementById("summary").textContent = `${list.length.toLocaleString()} samples from ${donors().length} donors, in MNI space`;
   statusEl.hidden = true;
