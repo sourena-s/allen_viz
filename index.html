@@ -127,6 +127,45 @@
   #readout .meta { font: 11.5px var(--mono); color: var(--muted); margin-top: 3px; }
   #status { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); color: var(--muted); font: 12px var(--mono); }
 
+  /* Region ribbon: mean z per brain structure along the bottom, grouped by division */
+  #ribbon {
+    position: fixed; left: 300px; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    border-radius: 14px; padding: 10px 12px 12px; box-sizing: border-box;
+  }
+  body.has-ribbon #readout { bottom: calc(150px + env(safe-area-inset-bottom, 0px)); }
+  .ribbon-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+  .ribbon-head .title { font-weight: 500; }
+  .ribbon-head .meta { font: 11px var(--mono); color: var(--muted); }
+  .ribbon-scroll { overflow-x: auto; scrollbar-width: thin; scrollbar-color: var(--track) transparent; }
+  .ribbon-body { display: flex; gap: 10px; min-width: 1040px; }
+  .division { display: flex; flex-direction: column; min-width: max-content; }
+  .division > .dlabel {
+    font-size: 11px; font-weight: 600; letter-spacing: .01em; color: var(--ink);
+    border-bottom: 1px solid var(--edge); padding-bottom: 2px; margin-bottom: 3px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .subgroups { display: flex; gap: 3px; }
+  .subgroup { display: flex; flex-direction: column; min-width: max-content; }
+  .subgroup > .slabel {
+    font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    margin-bottom: 3px; height: 13px;
+  }
+  .cells { display: flex; gap: 1px; height: 30px; }
+  .cell {
+    flex: 1 1 0; min-width: 3px; border-radius: 2px; cursor: default;
+    background: rgba(255, 255, 255, 0.05); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  }
+  .cell.empty { background: repeating-linear-gradient(135deg, rgba(255,255,255,.05) 0 2px, transparent 2px 5px); }
+  .cell.hot { box-shadow: inset 0 0 0 1.5px #fff; }
+  .cell.picked { box-shadow: 0 0 0 2px #ffd21f; position: relative; z-index: 1; }
+  #ribbon-tip {
+    position: fixed; z-index: 5; pointer-events: none; border-radius: 10px; padding: 7px 10px;
+    font-size: 12px; max-width: 280px; background: rgba(24, 28, 34, 0.92); border: 1px solid var(--edge);
+  }
+  #ribbon-tip .meta { font: 11px var(--mono); color: var(--muted); margin-top: 2px; }
+  body.phone #ribbon { left: 8px; right: 8px; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); padding: 8px; }
+  body.phone.panel-open #ribbon { display: none; }
+
   .panel-toggle {
     display: none; position: fixed; left: 12px; z-index: 2;
     bottom: calc(12px + env(safe-area-inset-bottom, 0px));
@@ -252,6 +291,12 @@
 </aside>
 
 <button class="panel-toggle glass" id="panel-toggle" aria-expanded="false" aria-controls="panel">Controls</button>
+
+<section id="ribbon" class="glass" hidden aria-label="Mean z-score per brain region">
+  <div class="ribbon-head"><span class="title" id="ribbon-title"></span><span class="meta" id="ribbon-meta"></span></div>
+  <div class="ribbon-scroll"><div class="ribbon-body" id="ribbon-body"></div></div>
+</section>
+<div id="ribbon-tip" hidden></div>
 
 <div id="readout" class="glass"><div class="name">Hover or click a sample</div><div class="meta">MNI x, y, z (mm)</div></div>
 <div id="status">Loading meshes…</div>
@@ -632,6 +677,7 @@ const sampleScale = s => (s.expr && document.getElementById("size-by-z").checked
 
 function updateSelectMarker() {
   placeMarker(selectMarker, selected); placeMarker(selectRing, selected);
+  if (ribbon.built) markPickedRegion();
   if (!selected) return;
   const size = pointSize * sampleScale(selected) * SELECT_SCALE;
   selectMarker.material.color.set(sampleColor(selected));
@@ -1236,7 +1282,8 @@ function updateZFilter() {
 function applyScales() {
   for (const cloud of donorClouds) {
     const attr = cloud.geometry.getAttribute("pointScale");
-    cloud.userData.items.forEach((s, i) => attr.setX(i, passesZ(s) ? sampleScale(s) : 0));
+    const hot = ribbon.hoverKey;   // structure hovered in the region ribbon is drawn 2× larger
+    cloud.userData.items.forEach((s, i) => attr.setX(i, passesZ(s) ? sampleScale(s) * (hot && s.region === hot ? 2 : 1) : 0));
     attr.needsUpdate = true;
   }
   updateSelectMarker(); updateHoverMarker();
@@ -1262,11 +1309,13 @@ function applyColouring() {
   $e("scale-hi").textContent = (mean + zHi * sd).toFixed(1);
   setScaleNote(`${label}, donor ${expr.donor}: log2 expression, z from ${zLo} to ${zHi} (mean ${mean.toFixed(2)}, SD ${sd.toFixed(2)} across its ${items.length} samples). Other donors are grey.`);
   updateZFilter();   // also re-applies point sizes
+  renderRibbon();
   showReadout();
 }
 
 function clearColouring() {
   for (const s of samples) delete s.expr;
+  renderRibbon();   // hides it
   for (const c of donorClouds) paintCloud(c, () => SAMPLE_COLOR);
   $e("expr-scale").hidden = true;
   updateZFilter();
@@ -1290,6 +1339,161 @@ $e("size-by-z").addEventListener("change", applyScales);
 for (const id of ["z-filter", "z-filter-mode"]) $e(id).addEventListener("change", updateZFilter);
 $e("z-threshold").addEventListener("input", updateZFilter);
 $e("expr-clear").addEventListener("click", () => { $e("gene-input").value = ""; $e("probe-box").hidden = true; hideSuggestions(); clearColouring(); });
+
+// ---------------------------------------------------------------- region ribbon
+// Mean z-score of the loaded donor's samples in each brain structure, as a strip of cells
+// along the bottom. Structures are grouped into divisions and subgroups in anatomical order;
+// cortical banks are merged into their gyrus and cerebellar zones into their lobule, while
+// hippocampal fields and amygdala nuclei keep their own wider, labelled cells.
+const REGION_LAYOUT = [
+  { division: "Cortex", groups: [
+    { name: "Frontal", keys: ["FP", "GRe", "MOrG", "AOrG", "LOrG", "POrG", "SRoG", "IRoG", "PaOG", "SFG", "MFG", "trIFG", "orIFG", "opIFG", "fro", "PrG", "PCLa"] },
+    { name: "Insula", short: "Ins", keys: ["SIG", "LIG"] },
+    { name: "Temporal", keys: ["TP", "STG", "PLP", "HG", "TG", "PLT", "MTG", "ITG", "FuG", "OTG"] },
+    { name: "Parietal", short: "Parietal", keys: ["PoG", "SPL", "SMG", "AnG", "Pcu", "PCLp"] },
+    { name: "Occipital", short: "Occ", keys: ["Cun", "LiG", "SOG", "IOG", "OP"] },
+    { name: "Limbic", keys: ["CgGf", "CgGp", "CgGr", "SCG", "PTG", "PHG", "Pir"] },
+  ] },
+  { division: "Hippocampus", wide: true, groups: [["CA1", "CA1"], ["CA2", "CA2"], ["CA3", "CA3"], ["CA4", "CA4"], ["DG", "DG"], ["S", "Sub"]].map(([k, n]) => ({ name: n, keys: [k] })) },
+  { division: "Amygdala", wide: true, groups: [["LA", "La"], ["BLA", "BL"], ["BMA", "BM"], ["CeA", "Ce"], ["COMA", "CoM"], ["ATZ", "AHi"]].map(([k, n]) => ({ name: n, keys: [k] })) },
+  { division: "Basal ganglia", groups: [
+    { name: "Striatum", short: "Str", keys: ["HCd", "BCd", "TCd", "Pu", "Acb", "OlfT"] },
+    { name: "Pallidum", short: "Pal", keys: ["GPe", "GPi"] },
+    { name: "Basal forebrain", short: "BF", keys: ["SptN", "BST", "SI", "nbM", "DBh", "DBv"] },
+    { name: "Claustrum", short: "Cl", keys: ["Cl"] },
+  ] },
+  { division: "Diencephalon", groups: [
+    { name: "Thalamus", keys: ["DTA", "DTM", "ILr", "ILc", "Pa", "DTLd", "DTLv", "DTP", "R", "LGd", "MG", "Hm", "Hl", "PIN"] },
+    { name: "Hypothalamus", keys: ["PrOR", "AHA", "SO", "PVH", "LHA", "DMH", "VMH", "ARH", "LHT", "LTu", "PeF", "PalHy", "TM", "LHM", "SuM", "MM", "LM", "MB", "PHA"] },
+    { name: "Subthalamus", short: "STh", keys: ["Sb", "ZI"] },
+  ] },
+  { division: "Brainstem", groups: [
+    { name: "Midbrain", keys: ["PTec", "SC", "IC", "CGMB", "MBRa", "MBRF", "CnF", "SubCn", "Dk", "ICjl", "EW", "3", "4", "RN", "SNC", "SNR", "VTA"] },
+    { name: "Pons", keys: ["Pn", "PRF", "RPn", "CGPo", "LC", "SubC", "MPB", "LPB", "Pr5", "Mo5", "SOC", "6", "7"] },
+    { name: "Medulla", keys: ["8Ve", "8Co", "Sp5", "Cu", "Gr", "10", "12", "GiRt", "CMRt", "LMRt", "RaM", "Arc", "IO", "CGS"] },
+  ] },
+  { division: "Cerebellum", groups: [
+    { name: "Cortex", keys: ["I-II", "III", "IV", "V", "VI", "Crus I", "Crus II", "VIIAf", "VIIAt", "VIIB", "VIIIA", "VIIIB", "IX", "X"] },
+    { name: "Nuclei", short: "Nuc", keys: ["Dt", "Emb", "Glo", "Fas"] },
+  ] },
+  { division: "Other", groups: [{ name: "White matter and ventricles", short: "WM", keys: ["cc", "cgb", "CPLV"] }] },
+];
+const CEREBELLAR_NUCLEI = new Set(["Dt", "Emb", "Glo", "Fas"]);
+const WIDE_WEIGHT = 4.5;   // hippocampus / amygdala cells are wider so each can carry a label
+
+// Structure key of a sample: gyrus for cortex (bank suffix dropped), lobule for cerebellar cortex
+function regionKey(s) {
+  if (s.slab === "CB") return CEREBELLAR_NUCLEI.has(s.acronym) ? s.acronym : s.name.split(",")[0].trim();
+  if (/^FP/.test(s.acronym)) return "FP";
+  if (/^OP[ils]$/.test(s.acronym)) return "OP";
+  return s.acronym.split("-")[0];
+}
+// Readable structure name: drop hemisphere and bank/aspect qualifiers
+function regionName(s) {
+  if (s.slab === "CB" && !CEREBELLAR_NUCLEI.has(s.acronym)) return `cerebellar lobule ${regionKey(s)}`;
+  return s.name.split(", ").filter(p => !/^(left|right)$|bank|aspect|striate|lateral hemisphere|paravermis/.test(p)).join(", ");
+}
+
+const ribbon = { cells: new Map(), names: new Map(), groupOf: new Map(), hoverKey: null, built: false };
+
+function buildRibbon() {
+  for (const s of samples) {
+    s.region = regionKey(s);
+    if (!ribbon.names.has(s.region)) ribbon.names.set(s.region, regionName(s));
+  }
+  // Structures not in the layout go to "Other"
+  const placed = new Set(REGION_LAYOUT.flatMap(d => d.groups.flatMap(g => g.keys)));
+  const other = REGION_LAYOUT.at(-1).groups[0];
+  for (const key of ribbon.names.keys()) if (!placed.has(key)) other.keys.push(key);
+
+  const body = $e("ribbon-body");
+  for (const div of REGION_LAYOUT) {
+    const groups = div.groups.map(g => ({ ...g, keys: g.keys.filter(k => ribbon.names.has(k)) })).filter(g => g.keys.length);
+    if (!groups.length) continue;
+    const weight = k => (div.wide ? WIDE_WEIGHT : 1);
+    const divEl = Object.assign(document.createElement("div"), { className: "division" });
+    divEl.style.flex = `${groups.reduce((a, g) => a + g.keys.reduce((b, k) => b + weight(k), 0), 0)} 1 0`;
+    divEl.append(Object.assign(document.createElement("div"), { className: "dlabel", textContent: div.division, title: div.division }));
+    const subs = Object.assign(document.createElement("div"), { className: "subgroups" });
+    for (const g of groups) {
+      const sub = Object.assign(document.createElement("div"), { className: "subgroup" });
+      sub.style.flex = `${g.keys.reduce((b, k) => b + weight(k), 0)} 1 0`;
+      sub.append(Object.assign(document.createElement("div"), { className: "slabel", textContent: g.short ?? g.name, title: g.name }));
+      const cells = Object.assign(document.createElement("div"), { className: "cells" });
+      for (const key of g.keys) {
+        const cell = Object.assign(document.createElement("div"), { className: "cell" });
+        cell.addEventListener("mouseenter", () => hoverRegion(key, cell));
+        cell.addEventListener("mouseleave", () => hoverRegion(null));
+        cells.append(cell);
+        ribbon.cells.set(key, cell);
+        ribbon.groupOf.set(key, `${div.division} · ${g.name}`);
+      }
+      sub.append(cells);
+      subs.append(sub);
+    }
+    divEl.append(subs);
+    body.append(divEl);
+  }
+  ribbon.built = true;
+}
+
+// Mean z per structure for the coloured donor; cells without samples from it are hatched
+function regionStats() {
+  const stats = new Map();
+  for (const s of samples) {
+    if (!s.expr) continue;
+    const st = stats.get(s.region) ?? stats.set(s.region, { sum: 0, n: 0 }).get(s.region);
+    st.sum += s.expr.z; st.n++;
+  }
+  return stats;
+}
+
+function renderRibbon() {
+  const active = colouringActive();
+  $e("ribbon").hidden = !active;
+  document.body.classList.toggle("has-ribbon", active);
+  if (!active) { hoverRegion(null); return; }
+  if (!ribbon.built) buildRibbon();
+  ribbon.stats = regionStats();
+  for (const [key, cell] of ribbon.cells) {
+    const st = ribbon.stats.get(key);
+    cell.classList.toggle("empty", !st);
+    cell.style.background = st ? scaleColor(st.sum / st.n).getStyle() : "";
+  }
+  const label = samples.find(s => s.expr).expr.label;
+  $e("ribbon-title").textContent = label;
+  $e("ribbon-meta").textContent = `donor ${expr.donor} · mean z per region · ${ribbon.stats.size} of ${ribbon.cells.size} regions sampled`;
+  markPickedRegion();
+}
+
+// Hovering a cell shows its details and enlarges that structure's samples in 3D
+function hoverRegion(key, cell) {
+  for (const c of ribbon.cells.values()) c.classList.remove("hot");
+  ribbon.hoverKey = key;
+  const tip = $e("ribbon-tip");
+  if (!key) { tip.hidden = true; applyScales(); return; }
+  cell.classList.add("hot");
+  const st = ribbon.stats?.get(key);
+  tip.replaceChildren(
+    Object.assign(document.createElement("div"), { textContent: `${ribbon.names.get(key)} (${key})` }),
+    Object.assign(document.createElement("div"), { className: "meta", textContent: ribbon.groupOf.get(key) }),
+    Object.assign(document.createElement("div"), {
+      className: "meta",
+      textContent: st ? `mean z ${st.sum / st.n >= 0 ? "+" : ""}${(st.sum / st.n).toFixed(2)} · ${st.n} sample${st.n > 1 ? "s" : ""}` : `no samples from donor ${expr.donor}`,
+    }),
+  );
+  tip.hidden = false;
+  const r = cell.getBoundingClientRect(), t = tip.getBoundingClientRect();
+  tip.style.left = `${Math.min(innerWidth - t.width - 8, Math.max(8, r.left + r.width / 2 - t.width / 2))}px`;
+  tip.style.top = `${r.top - t.height - 8}px`;
+  applyScales();
+}
+
+// Yellow outline on the selected sample's structure
+function markPickedRegion() {
+  for (const c of ribbon.cells.values()) c.classList.remove("picked");
+  if (selected?.region) ribbon.cells.get(selected.region)?.classList.add("picked");
+}
 
 function resize() {
   const w = stage.clientWidth, h = stage.clientHeight;
