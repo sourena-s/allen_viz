@@ -10,6 +10,10 @@ library(seriation)
 
 donor_ids <- c(178236545, 178238266, 178238316, 178238359, 178238373, 178238387)
 
+# TRUE: flip right-hemisphere samples onto the left hemisphere (x -> -|x|) before any
+# coordinate-based calculation
+mirror_hemispheres <- FALSE
+
 # Probe annotation (identical across donors)
 probe_annotation <- read.csv(
   file.path("raw", donor_ids[1], "Probes.csv"),
@@ -86,6 +90,13 @@ rownames(all_donors_expression) <- reference_probe_ids
 
 # Samples x (mni_x, mni_y, mni_z), rows in the same order as the expression columns
 all_donors_mni <- do.call(rbind, lapply(donor_data, function(x) x$mni))
+
+# Mirror hemispheres: move every right-hemisphere sample (mni_x > 0) onto the left
+# by flipping the sign of its x coordinate, so all coordinate-based steps below
+# (e.g. spatial sample ordering) treat the brain as one left hemisphere.
+if (mirror_hemispheres) {
+  all_donors_mni[, "mni_x"] <- -abs(all_donors_mni[, "mni_x"])
+}
 
 dim(all_donors_expression)
 head(colnames(all_donors_expression))
