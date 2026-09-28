@@ -127,43 +127,36 @@
   #readout .meta { font: 11.5px var(--mono); color: var(--muted); margin-top: 3px; }
   #status { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); color: var(--muted); font: 12px var(--mono); }
 
-  /* Region ribbon: mean z per brain structure along the bottom, grouped by division */
+  /* Region ribbon: one column per sample (all donors), one row per probe, grouped by region */
   #ribbon {
     position: fixed; left: 300px; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-    border-radius: 14px; padding: 10px 12px 12px; box-sizing: border-box;
+    border-radius: 14px; padding: 10px 12px 10px; box-sizing: border-box;
   }
-  body.has-ribbon #readout { bottom: calc(150px + env(safe-area-inset-bottom, 0px)); }
-  .ribbon-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
-  .ribbon-head .title { font-weight: 500; }
-  .ribbon-head .meta { font: 11px var(--mono); color: var(--muted); }
-  .ribbon-scroll { overflow-x: auto; scrollbar-width: thin; scrollbar-color: var(--track) transparent; }
-  .ribbon-body { display: flex; gap: 10px; min-width: 1040px; }
-  .division { display: flex; flex-direction: column; min-width: max-content; }
-  .division > .dlabel {
-    font-size: 11px; font-weight: 600; letter-spacing: .01em; color: var(--ink);
-    border-bottom: 1px solid var(--edge); padding-bottom: 2px; margin-bottom: 3px;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  body.has-ribbon #readout { bottom: calc(var(--ribbon-h, 150px) + 28px + env(safe-area-inset-bottom, 0px)); }
+  .ribbon-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; min-width: 0; }
+  .ribbon-head .title { font-weight: 600; }
+  .ribbon-head .meta { font: 11px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ribbon-grid { display: flex; gap: 8px; }
+  .ribbon-names { flex: none; width: 92px; padding-top: 34px; display: flex; flex-direction: column; gap: 2px; }
+  .rname { height: 16px; line-height: 16px; font: 11px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rname.chosen { color: var(--ink); }
+  .rname.chosen::before { content: "● "; color: var(--frost); }
+  .ribbon-scroll { flex: 1; min-width: 0; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; scrollbar-color: var(--track) transparent; }
+  .ribbon-axis { position: relative; height: 32px; margin-bottom: 2px; }
+  .ribbon-axis > div { position: absolute; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ribbon-axis .dlabel {
+    top: 0; font-size: 11px; font-weight: 600; color: var(--ink);
+    border-bottom: 1px solid var(--edge); padding-bottom: 1px;
   }
-  .subgroups { display: flex; gap: 3px; }
-  .subgroup { display: flex; flex-direction: column; min-width: max-content; }
-  .subgroup > .slabel {
-    font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    margin-bottom: 3px; height: 13px;
-  }
-  .cells { display: flex; gap: 1px; height: 30px; }
-  .cell {
-    flex: 1 1 0; min-width: 3px; border-radius: 2px; cursor: default;
-    background: rgba(255, 255, 255, 0.05); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
-  }
-  .cell.empty { background: repeating-linear-gradient(135deg, rgba(255,255,255,.05) 0 2px, transparent 2px 5px); }
-  .cell.hot { box-shadow: inset 0 0 0 1.5px #fff; }
-  .cell.picked { box-shadow: 0 0 0 2px #ffd21f; position: relative; z-index: 1; }
+  .ribbon-axis .slabel { top: 18px; font-size: 10px; color: var(--muted); }
+  #ribbon-canvas { display: block; cursor: pointer; }
   #ribbon-tip {
     position: fixed; z-index: 5; pointer-events: none; border-radius: 10px; padding: 7px 10px;
-    font-size: 12px; max-width: 280px; background: rgba(24, 28, 34, 0.92); border: 1px solid var(--edge);
+    font-size: 12px; max-width: 300px; background: rgba(24, 28, 34, 0.92); border: 1px solid var(--edge);
   }
   #ribbon-tip .meta { font: 11px var(--mono); color: var(--muted); margin-top: 2px; }
   body.phone #ribbon { left: 8px; right: 8px; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); padding: 8px; }
+  body.phone .ribbon-names { width: 64px; }
   body.phone.panel-open #ribbon { display: none; }
 
   .panel-toggle {
@@ -292,9 +285,15 @@
 
 <button class="panel-toggle glass" id="panel-toggle" aria-expanded="false" aria-controls="panel">Controls</button>
 
-<section id="ribbon" class="glass" hidden aria-label="Mean z-score per brain region">
+<section id="ribbon" class="glass" hidden aria-label="Expression z-score of every sample, one row per probe">
   <div class="ribbon-head"><span class="title" id="ribbon-title"></span><span class="meta" id="ribbon-meta"></span></div>
-  <div class="ribbon-scroll"><div class="ribbon-body" id="ribbon-body"></div></div>
+  <div class="ribbon-grid">
+    <div class="ribbon-names" id="ribbon-names"></div>
+    <div class="ribbon-scroll">
+      <div class="ribbon-axis" id="ribbon-axis"></div>
+      <canvas id="ribbon-canvas"></canvas>
+    </div>
+  </div>
 </section>
 <div id="ribbon-tip" hidden></div>
 
@@ -790,7 +789,7 @@ function showReadout() {
   if (s.expr) {
     const line = document.createElement("div");
     line.className = "meta";
-    line.textContent = `${s.expr.label}: ${s.expr.value.toFixed(2)} (z = ${s.expr.z >= 0 ? "+" : ""}${s.expr.z.toFixed(2)})`;
+    line.textContent = `${s.expr.label}: z = ${s.expr.z >= 0 ? "+" : ""}${s.expr.z.toFixed(2)}`;
     readout.append(line);
   }
 }
@@ -970,7 +969,11 @@ applyLayout();
 const OTHER_DONOR_COLOR = 0x39414c;
 let zRange = [-2, 2];   // editable in the "Colour range, z" boxes
 const SCALE = [new THREE.Color(0x2166ac), new THREE.Color(0xf7f7f7), new THREE.Color(0xb2182b)];
-const expr = { donor: null, rows: null, probeName: new Map(), bySymbol: new Map() };
+// One expression matrix per loaded donor (probe_id -> values in that donor's sample order).
+// Values are used exactly as loaded: they are treated as z-scores, with no transform.
+const expr = { byDonor: new Map(), probeName: new Map(), bySymbol: new Map() };
+const loadedDonors = () => [...expr.byDonor.keys()];
+const hasProbe = id => [...expr.byDonor.values()].some(rows => rows.has(id));
 const $e = id => document.getElementById(id);
 
 // Position of z within the colour range, from -1 (low end) to +1 (high end)
@@ -1070,18 +1073,15 @@ async function loadExpressionFiles(files) {
       if (nCols !== cloud.userData.items.length) {
         throw new Error(`${exprFile.name} has ${nCols} sample columns, but donor ${donor} has ${cloud.userData.items.length} samples. Check that the file belongs to this donor.`);
       }
-      clearColouring();
-      expr.donor = donor; expr.rows = rows;
+      expr.byDonor.set(donor, rows);   // adds to (or replaces) this donor; other donors stay loaded
     }
     bar.hidden = true;
-    if (!expr.rows) { setExprStatus([`Probes loaded (${expr.bySymbol.size.toLocaleString()} genes). Now choose MicroarrayExpression.csv.`]); return; }
-    setExprStatus([
-      `Donor ${expr.donor}: ${expr.rows.size.toLocaleString()} probes × ${cloud.userData.items.length} samples`,
-      expr.bySymbol.size ? `${expr.bySymbol.size.toLocaleString()} gene symbols` : "No Probes.csv: type a probe_id",
-    ]);
+    if (!expr.byDonor.size) { setExprStatus([`Probes loaded (${expr.bySymbol.size.toLocaleString()} genes). Now choose MicroarrayExpression.csv.`]); return; }
+    showLoadedStatus();
     $e("gene-input").placeholder = expr.bySymbol.size ? "Gene, probe name or probe_id" : "probe_id, e.g. 1058685";
     buildSearchIndex();
     $e("expr-gene-controls").hidden = false;
+    if (colouringActive() || $e("gene-input").value.trim()) onGeneChosen();   // include the new donor
   } catch (err) {
     bar.hidden = true;
     setExprStatus([err.message]);
@@ -1089,11 +1089,18 @@ async function loadExpressionFiles(files) {
   }
 }
 
-// Probe ids for a gene symbol, probe name or probe_id; only probes present in the file
+function showLoadedStatus() {
+  setExprStatus([
+    ...loadedDonors().map(d => `Donor ${d}: ${expr.byDonor.get(d).size.toLocaleString()} probes × ${donorClouds.find(c => c.userData.donor === d).userData.items.length} samples`),
+    expr.bySymbol.size ? `${expr.bySymbol.size.toLocaleString()} gene symbols` : "No Probes.csv: type a probe_id",
+  ]);
+}
+
+// Probe ids for a gene symbol, probe name or probe_id; only probes present in a loaded file
 function probesFor(query) {
   const q = query.trim();
   const ids = expr.bySymbol.get(q) ?? expr.bySymbol.get(q.toUpperCase()) ?? [expr.nameToId?.get(q) ?? q];
-  return ids.filter(id => expr.rows?.has(id));
+  return ids.filter(hasProbe);
 }
 
 // ---------------------------------------------------------------- gene / probe search box
@@ -1110,10 +1117,11 @@ function buildSearchIndex() {
   for (const [sym, ids] of expr.bySymbol) for (const id of ids) symbolOf.set(id, sym);
   searchIndex = [];
   for (const [sym, ids] of expr.bySymbol) {
-    const n = ids.filter(id => expr.rows.has(id)).length;
+    const n = ids.filter(hasProbe).length;
     if (n) searchIndex.push({ kind: "gene", value: sym, keys: [sym.toLowerCase()], text: sym, info: `gene · ${n} probe${n > 1 ? "s" : ""}` });
   }
-  for (const id of expr.rows.keys()) {
+  const allProbeIds = new Set([...expr.byDonor.values()].flatMap(rows => [...rows.keys()]));
+  for (const id of allProbeIds) {
     const name = expr.probeName.get(id), sym = symbolOf.get(id);
     if (name) expr.nameToId.set(name, id);
     searchIndex.push({
@@ -1271,7 +1279,7 @@ function updateZFilter() {
   $e("z-threshold-value").textContent = t.toFixed(1);
   const coloured = samples.filter(s => s.expr);
   $e("z-filter-note").textContent = on && coloured.length
-    ? `${coloured.filter(passesZ).length} of ${coloured.length} samples of donor ${expr.donor} shown.`
+    ? `${coloured.filter(passesZ).length} of ${coloured.length} samples with data shown.`
     : on ? "Choose a gene first: the filter uses its z-scores." : "";
   if (hovered && !passesZ(hovered)) setHovered(null);   // the selection is kept even if hidden
   applyScales();
@@ -1282,8 +1290,7 @@ function updateZFilter() {
 function applyScales() {
   for (const cloud of donorClouds) {
     const attr = cloud.geometry.getAttribute("pointScale");
-    const hot = ribbon.hoverKey;   // structure hovered in the region ribbon is drawn 2× larger
-    cloud.userData.items.forEach((s, i) => attr.setX(i, passesZ(s) ? sampleScale(s) * (hot && s.region === hot ? 2 : 1) : 0));
+    cloud.userData.items.forEach((s, i) => attr.setX(i, passesZ(s) ? sampleScale(s) : 0));
     attr.needsUpdate = true;
   }
   updateSelectMarker(); updateHoverMarker();
@@ -1294,20 +1301,25 @@ function applyColouring() {
   if (!ids.length) return;
   const use = chosenProbes().filter(id => ids.includes(id));
   if (!use.length) return;
-  const cloud = donorClouds.find(c => c.userData.donor === expr.donor), items = cloud.userData.items;
-  const values = items.map((_, j) => use.reduce((sum, id) => sum + expr.rows.get(id)[j], 0) / use.length);
-  const mean = values.reduce((a, b) => a + b, 0) / values.length;
-  const sd = Math.sqrt(values.reduce((a, v) => a + (v - mean) ** 2, 0) / values.length) || 1;
   const gene = $e("probe-box-title").textContent.split(":")[0];
   const label = use.length > 1 ? `${gene} (mean of ${use.length} probes)` : `${gene === expr.probeName.get(use[0]) ? gene : `${gene} ${expr.probeName.get(use[0]) ?? use[0]}`}`;
-  items.forEach((s, j) => { s.expr = { label, value: values[j], z: (values[j] - mean) / sd }; });
-  for (const c of donorClouds) paintCloud(c, s => (c === cloud ? scaleColor(s.expr.z) : OTHER_DONOR_COLOR));
-  // Bar labels in log2 expression units at the range's low end, midpoint and high end
+  // Each loaded donor: the value (z-score as loaded, averaged over the chosen probes it has)
+  for (const s of samples) delete s.expr;
+  for (const [donor, rows] of expr.byDonor) {
+    const have = use.filter(id => rows.has(id));
+    if (!have.length) continue;
+    donorClouds.find(c => c.userData.donor === donor).userData.items.forEach((s, j) => {
+      const z = have.reduce((sum, id) => sum + rows.get(id)[j], 0) / have.length;
+      s.expr = { label, z };
+    });
+  }
+  for (const c of donorClouds) paintCloud(c, s => sampleColor(s));
   const [zLo, zHi] = zRange;
-  $e("scale-lo").textContent = (mean + zLo * sd).toFixed(1);
-  $e("scale-mid").textContent = (mean + (zLo + zHi) / 2 * sd).toFixed(1);
-  $e("scale-hi").textContent = (mean + zHi * sd).toFixed(1);
-  setScaleNote(`${label}, donor ${expr.donor}: log2 expression, z from ${zLo} to ${zHi} (mean ${mean.toFixed(2)}, SD ${sd.toFixed(2)} across its ${items.length} samples). Other donors are grey.`);
+  $e("scale-lo").textContent = `${zLo}`;
+  $e("scale-mid").textContent = `${(zLo + zHi) / 2}`;
+  $e("scale-hi").textContent = `${zHi}`;
+  const withData = loadedDonors().filter(d => samples.some(s => s.donor === d && s.expr));
+  setScaleNote(`${label}: z-scores as loaded, coloured from ${zLo} (blue) to ${zHi} (red). Donors with data: ${withData.join(", ") || "none"}. Others are grey.`);
   updateZFilter();   // also re-applies point sizes
   renderRibbon();
   showReadout();
@@ -1324,14 +1336,11 @@ function clearColouring() {
 
 function initExpressionPanel() {
   $e("expr-donor").replaceChildren(...donors().map(d => Object.assign(document.createElement("option"), { value: d, textContent: `Donor ${d}` })));
+  // The donor list only says which donor the next MicroarrayExpression.csv belongs to;
+  // donors already loaded stay loaded
   $e("expr-donor").addEventListener("change", () => {
-    // A loaded matrix belongs to one donor; switching donor means loading that donor's file
-    if (expr.rows && $e("expr-donor").value !== expr.donor) {
-      clearColouring();
-      expr.rows = null; expr.donor = null;
-      $e("expr-gene-controls").hidden = true;
-      setExprStatus([`Choose MicroarrayExpression.csv for donor ${$e("expr-donor").value}.`]);
-    }
+    const d = $e("expr-donor").value;
+    if (!expr.byDonor.has(d)) setExprStatus([...(expr.byDonor.size ? [`Loaded: donors ${loadedDonors().join(", ")}`] : []), `Choose MicroarrayExpression.csv for donor ${d}.`]);
   });
 }
 $e("expr-files").addEventListener("change", e => { loadExpressionFiles(e.target.files); e.target.value = ""; });
@@ -1379,8 +1388,6 @@ const REGION_LAYOUT = [
   { division: "Other", groups: [{ name: "White matter and ventricles", short: "WM", keys: ["cc", "cgb", "CPLV"] }] },
 ];
 const CEREBELLAR_NUCLEI = new Set(["Dt", "Emb", "Glo", "Fas"]);
-const WIDE_WEIGHT = 4.5;   // hippocampus / amygdala cells are wider so each can carry a label
-
 // Structure key of a sample: gyrus for cortex (bank suffix dropped), lobule for cerebellar cortex
 function regionKey(s) {
   if (s.slab === "CB") return CEREBELLAR_NUCLEI.has(s.acronym) ? s.acronym : s.name.split(",")[0].trim();
@@ -1394,106 +1401,176 @@ function regionName(s) {
   return s.name.split(", ").filter(p => !/^(left|right)$|bank|aspect|striate|lateral hemisphere|paravermis/.test(p)).join(", ");
 }
 
-const ribbon = { cells: new Map(), names: new Map(), groupOf: new Map(), hoverKey: null, built: false };
+// Every sample of every donor gets its own column, always, in anatomical order: division ->
+// subgroup -> structure -> donor -> hemisphere. Hippocampus and amygdala columns are thick,
+// all others thin; small gaps separate structures, larger ones subgroups and divisions.
+// There is one row per probe of the chosen gene. Columns of donors that are not loaded, or
+// that lack the probe, are grey.
+const THICK = 4, THIN = 1;                                  // column widths in CSS px
+const GAP_REGION = 1, GAP_GROUP = 5, GAP_DIVISION = 12;     // px between structures / subgroups / divisions
+const ROW_H = 16, ROW_GAP = 2, NO_DATA = "rgba(255,255,255,0.10)";
+const ribbon = { names: new Map(), groupOf: new Map(), cols: [], rows: [], built: false, hoverCol: -1 };
+const ribbonCanvas = $e("ribbon-canvas"), ribbonCtx = ribbonCanvas.getContext("2d");
 
 function buildRibbon() {
   for (const s of samples) {
     s.region = regionKey(s);
     if (!ribbon.names.has(s.region)) ribbon.names.set(s.region, regionName(s));
   }
-  // Structures not in the layout go to "Other"
   const placed = new Set(REGION_LAYOUT.flatMap(d => d.groups.flatMap(g => g.keys)));
   const other = REGION_LAYOUT.at(-1).groups[0];
   for (const key of ribbon.names.keys()) if (!placed.has(key)) other.keys.push(key);
 
-  const body = $e("ribbon-body");
+  const byRegion = new Map();
+  for (const s of samples) (byRegion.get(s.region) ?? byRegion.set(s.region, []).get(s.region)).push(s);
+  const donorOrder = donors();
+  // Column index of each sample within its donor's matrix (the donor's SampleAnnot order)
+  for (const c of donorClouds) c.userData.items.forEach((s, j) => (s.column = j));
+
+  const axis = $e("ribbon-axis");
+  axis.replaceChildren();
+  const label = (cls, text, title, x0, x1) => {
+    const el = Object.assign(document.createElement("div"), { className: cls, textContent: text, title });
+    el.style.left = `${x0}px`; el.style.width = `${Math.max(0, x1 - x0)}px`;
+    axis.append(el);
+  };
+  let x = 0;
+  ribbon.cols = [];
   for (const div of REGION_LAYOUT) {
-    const groups = div.groups.map(g => ({ ...g, keys: g.keys.filter(k => ribbon.names.has(k)) })).filter(g => g.keys.length);
-    if (!groups.length) continue;
-    const weight = k => (div.wide ? WIDE_WEIGHT : 1);
-    const divEl = Object.assign(document.createElement("div"), { className: "division" });
-    divEl.style.flex = `${groups.reduce((a, g) => a + g.keys.reduce((b, k) => b + weight(k), 0), 0)} 1 0`;
-    divEl.append(Object.assign(document.createElement("div"), { className: "dlabel", textContent: div.division, title: div.division }));
-    const subs = Object.assign(document.createElement("div"), { className: "subgroups" });
-    for (const g of groups) {
-      const sub = Object.assign(document.createElement("div"), { className: "subgroup" });
-      sub.style.flex = `${g.keys.reduce((b, k) => b + weight(k), 0)} 1 0`;
-      sub.append(Object.assign(document.createElement("div"), { className: "slabel", textContent: g.short ?? g.name, title: g.name }));
-      const cells = Object.assign(document.createElement("div"), { className: "cells" });
-      for (const key of g.keys) {
-        const cell = Object.assign(document.createElement("div"), { className: "cell" });
-        cell.addEventListener("mouseenter", () => hoverRegion(key, cell));
-        cell.addEventListener("mouseleave", () => hoverRegion(null));
-        cells.append(cell);
-        ribbon.cells.set(key, cell);
+    const divStart = x;
+    let divHasCols = false;
+    for (const g of div.groups) {
+      const keys = g.keys.filter(k => byRegion.has(k));
+      if (!keys.length) continue;
+      if (divHasCols) x += GAP_GROUP;
+      const groupStart = x;
+      keys.forEach((key, ki) => {
+        if (ki) x += GAP_REGION;
         ribbon.groupOf.set(key, `${div.division} · ${g.name}`);
-      }
-      sub.append(cells);
-      subs.append(sub);
+        const list = byRegion.get(key).sort((a, b) =>
+          donorOrder.indexOf(a.donor) - donorOrder.indexOf(b.donor) || a.mni[0] - b.mni[0] || b.mni[1] - a.mni[1]);
+        const w = div.wide ? THICK : THIN;
+        for (const s of list) { ribbon.cols.push({ s, x, w }); x += w; }
+      });
+      label("slabel", g.short ?? g.name, g.name, groupStart, x);
+      divHasCols = true;
     }
-    divEl.append(subs);
-    body.append(divEl);
+    if (divHasCols) { label("dlabel", div.division, div.division, divStart, x); x += GAP_DIVISION; }
   }
+  ribbon.width = x - GAP_DIVISION;
+  axis.style.width = `${ribbon.width}px`;
   ribbon.built = true;
 }
 
-// Mean z per structure for the coloured donor; cells without samples from it are hatched
-function regionStats() {
-  const stats = new Map();
-  for (const s of samples) {
-    if (!s.expr) continue;
-    const st = stats.get(s.region) ?? stats.set(s.region, { sum: 0, n: 0 }).get(s.region);
-    st.sum += s.expr.z; st.n++;
-  }
-  return stats;
+// Rows: every probe of the chosen gene; a cell is that sample's value for the probe
+function ribbonRows() {
+  const ids = probesFor($e("gene-input").value), chosen = new Set(chosenProbes());
+  return ids.map(id => ({ id, name: expr.probeName.get(id) ?? id, chosen: chosen.has(id) }));
+}
+function cellValue(s, probeId) {
+  const rows = expr.byDonor.get(s.donor);
+  return rows?.has(probeId) ? rows.get(probeId)[s.column] : null;
 }
 
 function renderRibbon() {
   const active = colouringActive();
   $e("ribbon").hidden = !active;
   document.body.classList.toggle("has-ribbon", active);
-  if (!active) { hoverRegion(null); return; }
+  if (!active) { ribbonTip(null); return; }
   if (!ribbon.built) buildRibbon();
-  ribbon.stats = regionStats();
-  for (const [key, cell] of ribbon.cells) {
-    const st = ribbon.stats.get(key);
-    cell.classList.toggle("empty", !st);
-    cell.style.background = st ? scaleColor(st.sum / st.n).getStyle() : "";
-  }
-  const label = samples.find(s => s.expr).expr.label;
-  $e("ribbon-title").textContent = label;
-  $e("ribbon-meta").textContent = `donor ${expr.donor} · mean z per region · ${ribbon.stats.size} of ${ribbon.cells.size} regions sampled`;
-  markPickedRegion();
+  ribbon.rows = ribbonRows();
+  $e("ribbon-title").textContent = $e("probe-box-title").textContent.split(":")[0];
+  const withData = new Set(samples.filter(s => s.expr).map(s => s.donor));
+  $e("ribbon-meta").textContent = `${ribbon.rows.length} probe${ribbon.rows.length > 1 ? "s" : ""} · ${ribbon.cols.length.toLocaleString()} samples from ${donors().length} donors · data for ${withData.size ? [...withData].join(", ") : "none"} · grey = no data`;
+  $e("ribbon-names").replaceChildren(...ribbon.rows.map(r => {
+    const el = Object.assign(document.createElement("div"), { className: `rname${r.chosen ? " chosen" : ""}`, textContent: r.name });
+    el.title = `probe ${r.id}${r.chosen ? " (used for the brain colours)" : ""}`;
+    return el;
+  }));
+  drawRibbon();
+  // Keep the sample details box above the ribbon, whatever its height (rows)
+  document.body.style.setProperty("--ribbon-h", `${$e("ribbon").offsetHeight}px`);
 }
 
-// Hovering a cell shows its details and enlarges that structure's samples in 3D
-function hoverRegion(key, cell) {
-  for (const c of ribbon.cells.values()) c.classList.remove("hot");
-  ribbon.hoverKey = key;
-  const tip = $e("ribbon-tip");
-  if (!key) { tip.hidden = true; applyScales(); return; }
-  cell.classList.add("hot");
-  const st = ribbon.stats?.get(key);
-  tip.replaceChildren(
-    Object.assign(document.createElement("div"), { textContent: `${ribbon.names.get(key)} (${key})` }),
-    Object.assign(document.createElement("div"), { className: "meta", textContent: ribbon.groupOf.get(key) }),
-    Object.assign(document.createElement("div"), {
-      className: "meta",
-      textContent: st ? `mean z ${st.sum / st.n >= 0 ? "+" : ""}${(st.sum / st.n).toFixed(2)} · ${st.n} sample${st.n > 1 ? "s" : ""}` : `no samples from donor ${expr.donor}`,
-    }),
-  );
-  tip.hidden = false;
-  const r = cell.getBoundingClientRect(), t = tip.getBoundingClientRect();
-  tip.style.left = `${Math.min(innerWidth - t.width - 8, Math.max(8, r.left + r.width / 2 - t.width / 2))}px`;
-  tip.style.top = `${r.top - t.height - 8}px`;
-  applyScales();
+function drawRibbon() {
+  if (!ribbon.built || $e("ribbon").hidden) return;
+  const dpr = Math.min(devicePixelRatio || 1, 2), h = ribbon.rows.length * (ROW_H + ROW_GAP) - ROW_GAP;
+  ribbonCanvas.width = Math.ceil(ribbon.width * dpr); ribbonCanvas.height = Math.ceil(h * dpr);
+  ribbonCanvas.style.width = `${ribbon.width}px`; ribbonCanvas.style.height = `${h}px`;
+  const ctx = ribbonCtx;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, ribbon.width, h);
+  ribbon.rows.forEach((row, r) => {
+    const y = r * (ROW_H + ROW_GAP);
+    for (const col of ribbon.cols) {
+      const v = cellValue(col.s, row.id);
+      ctx.fillStyle = v == null ? NO_DATA : scaleColor(v).getStyle();
+      ctx.fillRect(col.x, y, col.w, ROW_H);
+    }
+  });
+  // Selected sample: yellow outline through all rows; hovered column: white
+  const outline = (col, colour) => {
+    ctx.strokeStyle = colour; ctx.lineWidth = 1.5;
+    ctx.strokeRect(col.x - 1, 0.75, col.w + 2, h - 1.5);
+  };
+  const sel = ribbon.cols.find(c => c.s === selected);
+  if (sel) outline(sel, "#ffd21f");
+  if (ribbon.hoverCol >= 0) outline(ribbon.cols[ribbon.hoverCol], "#ffffff");
 }
-
-// Yellow outline on the selected sample's structure
+// Redraw for a new selection and scroll its column into view if it is off screen
 function markPickedRegion() {
-  for (const c of ribbon.cells.values()) c.classList.remove("picked");
-  if (selected?.region) ribbon.cells.get(selected.region)?.classList.add("picked");
+  drawRibbon();
+  const col = ribbon.cols.find(c => c.s === selected), sc = ribbonCanvas.parentElement;
+  if (col && (col.x < sc.scrollLeft || col.x > sc.scrollLeft + sc.clientWidth)) {
+    sc.scrollTo({ left: col.x - sc.clientWidth / 2, behavior: "smooth" });
+  }
 }
+// The mouse wheel scrolls the ribbon sideways (it is much wider than the screen)
+ribbonCanvas.parentElement.addEventListener("wheel", e => {
+  if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { e.currentTarget.scrollLeft += e.deltaY; e.preventDefault(); }
+}, { passive: false });
+
+// Column under a canvas x position (columns are sorted by x)
+function columnAt(x) {
+  let lo = 0, hi = ribbon.cols.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1, c = ribbon.cols[mid];
+    if (x < c.x) hi = mid - 1; else if (x >= c.x + c.w) lo = mid + 1; else return mid;
+  }
+  return -1;
+}
+
+function ribbonTip(content, clientX, clientY) {
+  const tip = $e("ribbon-tip");
+  if (!content) { tip.hidden = true; return; }
+  tip.replaceChildren(...content.map(([cls, text]) => Object.assign(document.createElement("div"), { className: cls, textContent: text })));
+  tip.hidden = false;
+  const t = tip.getBoundingClientRect();
+  tip.style.left = `${Math.min(innerWidth - t.width - 8, Math.max(8, clientX - t.width / 2))}px`;
+  tip.style.top = `${clientY - t.height - 14}px`;
+}
+
+// Hover: details + the sample highlighted in 3D; click: select it
+ribbonCanvas.addEventListener("mousemove", e => {
+  const rect = ribbonCanvas.getBoundingClientRect();
+  const x = e.clientX - rect.left, row = Math.floor((e.clientY - rect.top) / (ROW_H + ROW_GAP));
+  const ci = columnAt(x);
+  if (ci !== ribbon.hoverCol) { ribbon.hoverCol = ci; drawRibbon(); }
+  if (ci < 0 || !ribbon.rows[row]) { ribbonTip(null); return; }
+  const s = ribbon.cols[ci].s, probe = ribbon.rows[row], v = cellValue(s, probe.id);
+  const hemi = /right/.test(s.name) ? "right" : /left/.test(s.name) ? "left" : "midline";
+  ribbonTip([
+    ["", `${ribbon.names.get(s.region)} (${s.region}), ${hemi}`],
+    ["meta", `${ribbon.groupOf.get(s.region)} · donor ${s.donor}`],
+    ["meta", `${probe.name}: ${v == null ? (expr.byDonor.has(s.donor) ? "probe not in this donor's file" : "donor not loaded") : `z = ${v >= 0 ? "+" : ""}${v.toFixed(2)}`}`],
+  ], e.clientX, rect.top);
+  if (hovered !== s) setHovered(s);
+});
+ribbonCanvas.addEventListener("mouseleave", () => { ribbon.hoverCol = -1; drawRibbon(); ribbonTip(null); setHovered(null); });
+ribbonCanvas.addEventListener("click", e => {
+  const ci = columnAt(e.clientX - ribbonCanvas.getBoundingClientRect().left);
+  if (ci >= 0) setSelected(ribbon.cols[ci].s);
+});
 
 function resize() {
   const w = stage.clientWidth, h = stage.clientHeight;
