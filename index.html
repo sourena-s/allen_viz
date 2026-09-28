@@ -262,6 +262,10 @@
 
   body.phone #ribbon { left: 8px; right: 8px; bottom: calc(72px + env(safe-area-inset-bottom, 0px)); padding: 8px; max-height: 42dvh; overflow-y: auto; }
   body.phone .ribbon-names { width: 92px; }
+  body.phone #expr-clear { display: none; }
+  body.phone .rname input[type=checkbox] { width: 20px; height: 12px; }
+  body.phone .rname input[type=checkbox]::after { top: 2px; left: 2px; width: 8px; height: 8px; }
+  body.phone .rname input[type=checkbox]:checked::after { transform: translateX(8px); }
   body.phone .ribbon-fit { padding: 6px 12px; }
   body.phone #ribbon-tip { max-width: calc(100vw - 24px); }
 </style>
@@ -288,13 +292,15 @@
 
   <div class="group">
     <span class="label">Cut (one at a time)</span>
-    <div class="row"><input type="checkbox" id="cut-axial" data-cut="axial"><label for="cut-axial">Axial: removes everything above</label></div>
-    <div class="row"><input type="checkbox" id="cut-coronal" data-cut="coronal"><label for="cut-coronal">Coronal: removes everything in front</label></div>
-    <div class="row"><input type="checkbox" id="cut-sagittal" data-cut="sagittal"><label for="cut-sagittal">Sagittal: removes everything to the right</label></div>
+    <div class="row"><input type="checkbox" id="cut-axial" data-cut="axial"><label for="cut-axial">Axial</label></div>
+    <div class="row"><input type="checkbox" id="cut-coronal" data-cut="coronal"><label for="cut-coronal">Coronal</label></div>
+    <div class="row"><input type="checkbox" id="cut-sagittal" data-cut="sagittal"><label for="cut-sagittal">Sagittal</label></div>
     <div class="group" id="cut-controls" hidden>
       <label class="label" for="cut-pos">Cut position <span class="count" id="cut-pos-value"></span></label>
       <input type="range" id="cut-pos" min="-70" max="85" step="1" value="20">
       <div class="row"><input type="checkbox" id="cut-band"><label for="cut-band">Only samples near the cut</label></div>
+      <div class="row"><input type="checkbox" id="cut-interp"><label for="cut-interp">Interpolated expression on the slice</label></div>
+      <span class="hint" id="cut-interp-note" hidden></span>
       <div class="group" id="band-controls" hidden>
         <label class="label" for="cut-tol">Distance from cut <span class="count" id="cut-tol-value"></span></label>
         <input type="range" id="cut-tol" min="1" max="10" step="1" value="5">
@@ -327,7 +333,7 @@
       <input type="text" id="gene-input" role="combobox" aria-autocomplete="list" aria-expanded="false"
              aria-controls="gene-suggestions" placeholder="Gene symbol, e.g. CNTNAP2" autocomplete="off" spellcheck="false">
       <ul class="suggestions" id="gene-suggestions" role="listbox" hidden></ul>
-      <div class="row"><input type="checkbox" id="size-by-z"><label for="size-by-z">Scale point size by z-score</label></div>
+      <div class="row"><input type="checkbox" id="size-by-z" checked><label for="size-by-z">Scale point size by z-score</label></div>
       <div class="row"><input type="checkbox" id="z-filter"><label for="z-filter">Hide samples by z-score</label></div>
       <div class="group" id="z-filter-controls" hidden>
         <label class="label" for="z-filter-mode">Show only samples with</label>
@@ -410,7 +416,7 @@
   </form>
 </dialog>
 
-<div id="readout" class="glass"><div class="name">Hover or click a sample</div><div class="meta">MNI x, y, z (mm)</div></div>
+<div id="readout" class="glass"><div class="name">Click a sample</div><div class="meta">MNI x, y, z (mm)</div></div>
 <div id="status">Loading meshes…</div>
 
 <script src="assets/bundle.js"></script>
@@ -894,13 +900,13 @@ function pick(e) {
 }
 
 function showReadout() {
-  const s = selected ?? hovered;
+  const s = selected;   // details only for a clicked (tapped) sample, not on hover
   if (!s) {
-    readout.innerHTML = `<div class="name">${document.body.classList.contains("phone") ? "Tap a sample" : "Hover or click a sample"}</div><div class="meta">MNI x, y, z (mm)</div>`;
+    readout.innerHTML = `<div class="name">${document.body.classList.contains("phone") ? "Tap a sample" : "Click a sample"}</div><div class="meta">MNI x, y, z (mm)</div>`;
     return;
   }
   readout.innerHTML = `<div class="name"></div><div class="meta"></div>`;
-  readout.querySelector(".name").textContent = `${selected ? "Selected: " : ""}${s.name} (${s.acronym})`;
+  readout.querySelector(".name").textContent = `${s.name} (${s.acronym})`;
   readout.querySelector(".meta").textContent = `Donor ${s.donor} · ${s.slab} · MNI ${s.mni.map(v => v.toFixed(0)).join(", ")}${mirrored && s.mni[0] > 0 ? " (drawn mirrored)" : ""}`;
   if (s.expr) {
     const line = document.createElement("div");
@@ -916,7 +922,6 @@ function setSelected(s) {
   focusOn(s ? sampleScenePos(s) : brainCenter);   // rotate around the selected sample
 }
 
-renderer.domElement.addEventListener("pointermove", e => { if (samples.length) setHovered(pick(e)); });
 let downAt = null;
 renderer.domElement.addEventListener("pointerdown", e => (downAt = [e.clientX, e.clientY]));
 renderer.domElement.addEventListener("pointerup", e => {
@@ -1000,6 +1005,7 @@ function drawSlice(axis, pos) {
     px[p] = px[p + 1] = px[p + 2] = g;
     px[p + 3] = val > t1Bg ? 255 : 0;   // background outside the brain is transparent
   }
+  if (interpOn()) overlayExpression(px, axis, pos, k, u, v, nu, nv);
   tex.needsUpdate = true;
   sliceMesh.material.map = tex;
   sliceMesh.material.needsUpdate = true;
@@ -1017,10 +1023,49 @@ function drawSlice(axis, pos) {
   attr.needsUpdate = true;
 }
 
+// Expression interpolated onto the slice: Gaussian kernel regression (Nadaraya-Watson) of the
+// samples' z-scores, weight exp(-d²/2σ²) on 3D distance, so samples off the plane count less.
+// Each sample is splatted into the pixels within 3σ, so the cost scales with the samples near
+// the cut, not with pixels × samples. Opacity follows the summed weight, so the colour fades
+// out where no sample is close; only brain voxels (above the background level) are coloured.
+const INTERP_SIGMA = 6, INTERP_OPACITY = 0.8;   // mm; strongest overlay opacity
+const interpOn = () => document.getElementById("cut-interp").checked && colouringActive();
+function overlayExpression(px, axis, pos, k, u, v, nu, nv) {
+  const srow = t1.srow, du = Math.abs(srow[u][u]), dv = Math.abs(srow[v][v]);
+  const R = 3 * INTERP_SIGMA, inv = 1 / (2 * INTERP_SIGMA * INTERP_SIGMA);
+  const W = new Float32Array(nu * nv), WZ = new Float32Array(nu * nv);
+  for (const s of samples) {
+    if (!s.expr || !Number.isFinite(s.expr.z)) continue;
+    const m = shownMni(s), off = m[axis] - pos;
+    if (Math.abs(off) > R) continue;
+    const cu = (m[u] - srow[u][3]) / srow[u][u], cv = (m[v] - srow[v][3]) / srow[v][v];
+    const ru = Math.ceil(R / du), rv = Math.ceil(R / dv);
+    for (let iv = Math.max(0, Math.floor(cv - rv)); iv <= Math.min(nv - 1, Math.ceil(cv + rv)); iv++) {
+      const dy = (iv - cv) * dv;
+      for (let iu = Math.max(0, Math.floor(cu - ru)); iu <= Math.min(nu - 1, Math.ceil(cu + ru)); iu++) {
+        const dx = (iu - cu) * du, d2 = dx * dx + dy * dy + off * off;
+        if (d2 > R * R) continue;
+        const w = Math.exp(-d2 * inv), i = iu + nu * iv;
+        W[i] += w; WZ[i] += w * s.expr.z;
+      }
+    }
+  }
+  for (let i = 0; i < W.length; i++) {
+    const p = i * 4;
+    if (!W[i] || !px[p + 3]) continue;
+    const a = INTERP_OPACITY * (1 - Math.exp(-W[i] / 0.3)), c = scaleColor(WZ[i] / W[i]);
+    px[p] += (c.r * 255 - px[p]) * a; px[p + 1] += (c.g * 255 - px[p + 1]) * a; px[p + 2] += (c.b * 255 - px[p + 2]) * a;
+  }
+}
+document.getElementById("cut-interp").addEventListener("change", updateCut);
+
 function updateCut() {
   const cut = activeCut(), pos = +cutSlider.value, tol = +tolSlider.value;
   document.getElementById("cut-controls").hidden = !cut;
   document.getElementById("band-controls").hidden = !bandToggle.checked;
+  const note = document.getElementById("cut-interp-note");
+  note.hidden = !document.getElementById("cut-interp").checked || colouringActive();
+  note.textContent = "Choose a gene under Gene expression to see its interpolated values.";
   document.getElementById("cut-tol-value").textContent = `± ${tol} mm`;
   if (!cut) {
     cutPlane.constant = pointTop.constant = pointBottom.constant = NO_CUT;
@@ -1477,6 +1522,7 @@ function applyColouring() {
   updateZFilter();   // also re-applies point sizes
   renderRibbon();
   showReadout();
+  updateCut();   // the interpolated slice overlay follows the colouring
 }
 
 function clearColouring() {
@@ -1486,6 +1532,7 @@ function clearColouring() {
   $e("expr-scale").hidden = true;
   updateZFilter();
   showReadout();
+  updateCut();
 }
 
 function initExpressionPanel() {
@@ -2029,6 +2076,12 @@ ribbonCanvas.addEventListener("mousemove", e => {
   const x = e.clientX - rect.left, row = Math.floor((e.clientY - rect.top) / (ROW_H + ROW_GAP));
   const ci = columnAt(x);
   if (ci !== ribbon.hoverCol) { ribbon.hoverCol = ci; drawRibbon(); }
+  if (ci >= 0 && hovered !== ribbon.cols[ci].s) setHovered(ribbon.cols[ci].s);
+});
+// Click (tap): select the sample and show its details for the probe row under the pointer
+function ribbonCellTip(e) {
+  const rect = ribbonCanvas.getBoundingClientRect();
+  const ci = columnAt(e.clientX - rect.left), row = Math.floor((e.clientY - rect.top) / (ROW_H + ROW_GAP));
   if (ci < 0 || !ribbon.rows[row]) { ribbonTip(null); return; }
   const s = ribbon.cols[ci].s, probe = ribbon.rows[row], v = cellValue(s, probe.id);
   const hemi = /right/.test(s.name) ? "right" : /left/.test(s.name) ? "left" : "midline";
@@ -2037,12 +2090,12 @@ ribbonCanvas.addEventListener("mousemove", e => {
     ["meta", `${ribbon.groupOf.get(s.region)} · donor ${s.donor}`],
     ["meta", `${probe.name}: ${v == null ? (expr.byDonor.has(s.donor) ? "probe not in this donor's file" : "donor not loaded") : `z = ${v >= 0 ? "+" : ""}${v.toFixed(2)}`}`],
   ], e.clientX, rect.top);
-  if (hovered !== s) setHovered(s);
-});
+}
 ribbonCanvas.addEventListener("mouseleave", () => { ribbon.hoverCol = -1; drawRibbon(); ribbonTip(null); setHovered(null); });
 ribbonCanvas.addEventListener("click", e => {
   const ci = columnAt(e.clientX - ribbonCanvas.getBoundingClientRect().left);
   if (ci >= 0) setSelected(ribbon.cols[ci].s);
+  ribbonCellTip(e);
 });
 
 function resize() {
