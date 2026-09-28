@@ -87,6 +87,7 @@
     <div class="group" id="cut-controls" hidden>
       <label class="label" for="cut-z">Cut height <span class="count" id="cut-z-value"></span></label>
       <input type="range" id="cut-z" min="-70" max="85" step="1" value="20">
+      <div class="row"><input type="checkbox" id="cut-band"><label for="cut-band">Only samples within ±5 mm of the cut</label></div>
     </div>
   </div>
 
@@ -307,6 +308,11 @@ const surfaces = {};
 // The normal points down, so what is kept is y <= constant; a huge constant means "no cut".
 const NO_CUT = 1e5;
 const cutPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), NO_CUT);
+// Sample clouds have their own pair of planes: normally just the cut (top), but with the
+// ±5 mm band option they keep only cut - 5 <= y <= cut + 5.
+const BAND_MM = 5;
+const pointTop = new THREE.Plane(new THREE.Vector3(0, -1, 0), NO_CUT);     // keeps y <= constant
+const pointBottom = new THREE.Plane(new THREE.Vector3(0, 1, 0), NO_CUT);   // keeps y >= -constant
 renderer.localClippingEnabled = true;
 
 // Glass look: nearly clear where the surface faces the viewer, brighter blue at
@@ -379,7 +385,7 @@ function pointsFrom(list, color, size) {
   geom.setAttribute("position", new THREE.BufferAttribute(pos, 3));
   const cloud = new THREE.Points(geom, new THREE.PointsMaterial({
     size, color, map: dot, alphaTest: 0.5, transparent: true, depthTest: false, depthWrite: false,
-    clippingPlanes: [cutPlane],
+    clippingPlanes: [pointTop, pointBottom],
   }));
   cloud.renderOrder = 2;
   return cloud;
@@ -389,6 +395,7 @@ function pointsFrom(list, color, size) {
 function makeMarker(color) {
   const m = pointsFrom([{ mni: [0, 0, 0] }], color, pointSize * 3.2);
   m.renderOrder = 3; m.visible = false; m.frustumCulled = false; scene.add(m);
+  m.material.clippingPlanes = null;   // a selected sample stays marked even when cut away
   return m;
 }
 const hoverMarker = makeMarker(HOVER_COLOR), selectMarker = makeMarker(SELECT_COLOR);
@@ -412,8 +419,7 @@ function addSamples(list) {
   ).join("");
   donorClouds.forEach((cloud, i) => document.getElementById(`donor-${i}`).addEventListener("change", e => {
     cloud.visible = e.target.checked;
-    if (hovered?.donor === cloud.userData.donor) setHovered(null);
-    if (selected?.donor === cloud.userData.donor) setSelected(null);
+    if (hovered?.donor === cloud.userData.donor) setHovered(null);   // the selection is kept
   }));
 }
 
@@ -464,7 +470,7 @@ function pick(e) {
   raycaster.params.Points.threshold = pointSize * 0.6;
   raycaster.setFromCamera(mouse, camera);
   const hit = raycaster.intersectObjects(donorClouds.filter(c => c.visible))
-    .find(h => shownMni(h.object.userData.items[h.index])[2] <= cutZ());   // ignore samples cut away
+    .find(h => sampleShown(shownMni(h.object.userData.items[h.index])[2]));   // ignore samples cut away
   return hit ? hit.object.userData.items[hit.index] : null;
 }
 
@@ -497,7 +503,11 @@ let t1 = null, sliceMesh = null, sliceTexture = null;
 let t1Lo = 0, t1Hi = 1, t1Bg = 0;
 const percentile = (sorted, q) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))];
 const cutToggle = document.getElementById("axial-cut"), cutSlider = document.getElementById("cut-z");
+const bandToggle = document.getElementById("cut-band");
 const cutZ = () => (cutToggle.checked ? +cutSlider.value : NO_CUT);
+const bandOn = () => cutToggle.checked && bandToggle.checked;
+// Whether a sample at MNI height z is currently drawn (same rule as pointTop/pointBottom)
+const sampleShown = z => (bandOn() ? Math.abs(z - cutZ()) <= BAND_MM : z <= cutZ());
 
 function setupSlice(vol) {
   t1 = vol;
@@ -530,8 +540,10 @@ function updateCut() {
   document.getElementById("cut-controls").hidden = !on;
   document.getElementById("cut-z-value").textContent = `z = ${z} mm`;
   cutPlane.constant = on ? z : NO_CUT;
-  if (hovered && shownMni(hovered)[2] > cutZ()) setHovered(null);
-  if (selected && shownMni(selected)[2] > cutZ()) setSelected(null);
+  pointTop.constant = !on ? NO_CUT : bandOn() ? z + BAND_MM : z;
+  pointBottom.constant = bandOn() ? -(z - BAND_MM) : NO_CUT;
+  // Hover follows what is drawn; a selected sample stays selected even if it is cut away
+  if (hovered && !sampleShown(shownMni(hovered)[2])) setHovered(null);
   if (!t1 || !sliceMesh) return;
   sliceMesh.visible = on;
   if (!on) return;
@@ -551,6 +563,7 @@ function updateCut() {
 }
 cutToggle.addEventListener("change", updateCut);
 cutSlider.addEventListener("input", updateCut);
+bandToggle.addEventListener("change", updateCut);
 
 function resize() {
   const w = stage.clientWidth, h = stage.clientHeight;
