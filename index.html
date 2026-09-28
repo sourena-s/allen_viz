@@ -151,7 +151,7 @@
   .rname.chosen .pname { color: var(--ink); }
   .rname .pname:hover { text-decoration: underline; }
   .rname .pname:focus-visible { outline: 1.5px solid var(--frost); border-radius: 3px; }
-  .ribbon-scroll { flex: 1; min-width: 0; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; scrollbar-color: var(--track) transparent; }
+  .ribbon-scroll { flex: 1; min-width: 0; overflow-x: auto; touch-action: none; padding-bottom: 4px; scrollbar-width: thin; scrollbar-color: var(--track) transparent; }
   .ribbon-axis { position: relative; height: 32px; margin-bottom: 2px; }
   .ribbon-axis > div { position: absolute; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ribbon-axis .dlabel {
@@ -373,7 +373,7 @@
 <section id="ribbon" class="glass" hidden aria-label="Expression z-score of every sample, one row per probe">
   <div class="ribbon-head">
     <span class="title" id="ribbon-title"></span>
-    <button class="text-button ribbon-fit" id="ribbon-fit" type="button" title="Show the whole ribbon (or double-click it). Scroll the wheel over the ribbon to zoom.">Zoom <span id="ribbon-zoom">fit</span></button>
+    <button class="text-button ribbon-fit" id="ribbon-fit" type="button" title="Show the whole ribbon (or double-click it). Scroll the wheel over the ribbon, or pinch it, to zoom.">Zoom <span id="ribbon-zoom">fit</span></button>
   </div>
   <div class="ribbon-grid">
     <div class="ribbon-names" id="ribbon-names"></div>
@@ -1972,6 +1972,34 @@ ribbonCanvas.parentElement.addEventListener("wheel", e => {
   setRibbonZoom(ribbon.zoom * Math.exp(-e.deltaY * 0.0015), e.clientX);
 }, { passive: false });
 ribbonCanvas.addEventListener("dblclick", () => setRibbonZoom(1));
+// Touch: pinch zooms around the fingers, one or two fingers drag to pan (sideways scrolls the
+// ribbon, up/down scrolls its rows); a tap still selects a sample
+{
+  const scroll = ribbonCanvas.parentElement, pts = new Map();
+  let last = null;   // { x, y, dist } of the previous gesture frame
+  const gesture = () => {
+    const p = [...pts.values()], x = p.reduce((a, q) => a + q.x, 0) / p.length, y = p.reduce((a, q) => a + q.y, 0) / p.length;
+    return { x, y, dist: p.length > 1 ? Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) : 0, n: p.length };
+  };
+  scroll.addEventListener("pointerdown", e => {
+    if (e.pointerType !== "touch") return;
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    last = gesture();
+  });
+  scroll.addEventListener("pointermove", e => {
+    if (!pts.has(e.pointerId)) return;
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const g = gesture();
+    if (g.n !== last.n) { last = g; return; }
+    if (g.n > 1 && last.dist > 0) setRibbonZoom(ribbon.zoom * g.dist / last.dist, g.x);
+    scroll.scrollLeft -= g.x - last.x;
+    $e("ribbon").scrollTop -= g.y - last.y;
+    last = g;
+  });
+  const lift = e => { if (pts.delete(e.pointerId)) last = pts.size ? gesture() : null; };
+  scroll.addEventListener("pointerup", lift);
+  scroll.addEventListener("pointercancel", lift);
+}
 $e("ribbon-fit").addEventListener("click", () => setRibbonZoom(1));
 addEventListener("resize", () => { if (ribbon.built && !$e("ribbon").hidden) { layoutRibbon(); drawRibbon(); } });
 
