@@ -175,3 +175,36 @@ ic_loading_heatmap <- ggplot(ic_loadings_long, aes(x = sample, y = IC, fill = IC
 combined_plot <- ic_loading_heatmap / expression_boxplot + plot_layout(heights = c(1, 1))
 
 ggsave("heatmap.png", plot = combined_plot, width = 500, height = 200, units = "cm", limitsize = FALSE, dpi=200)
+
+
+# -----------------------------------------------------------------
+# Gene x IC heatmap: genes ordered by clustering on their IC weights,
+# only the top genes per IC (largest |weight|, either sign) are labelled
+# -----------------------------------------------------------------
+top_genes_per_ic <- 20
+
+top_gene_names <- unique(unlist(lapply(colnames(gene_ic_weights), function(ic) {
+  weights <- gene_ic_weights[, ic]
+  names(weights)[order(abs(weights), decreasing = TRUE)[seq_len(top_genes_per_ic)]]
+})))
+
+gene_ic_weights_long <- melt(gene_ic_weights[gene_probe_order, ], varnames = c("gene_probe", "IC"), value.name = "IC_weight")
+gene_ic_weights_long$gene_probe <- factor(gene_ic_weights_long$gene_probe, levels = gene_probe_order)
+gene_ic_weights_long$IC         <- factor(gene_ic_weights_long$IC, levels = colnames(gene_ic_weights))
+
+max_abs_weight <- max(abs(gene_ic_weights))
+
+gene_ic_heatmap <- ggplot(gene_ic_weights_long, aes(x = IC, y = gene_probe, fill = IC_weight)) +
+  geom_tile() +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0, limits = c(-max_abs_weight, max_abs_weight)) +
+  scale_y_discrete(breaks = top_gene_names) +
+  theme_minimal(base_size = 8) +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+    axis.text.y = element_text(size = 3),
+    axis.ticks.y = element_blank(),
+    panel.grid = element_blank()
+  ) +
+  labs(x = "Independent component", y = sprintf("Gene probe (top %d per IC labelled)", top_genes_per_ic), fill = "IC weight")
+
+ggsave("gene_ic_heatmap.png", plot = gene_ic_heatmap, width = 30, height = max(30, 0.02 * nrow(gene_ic_weights)), units = "cm", limitsize = FALSE, dpi = 300)
