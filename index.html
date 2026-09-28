@@ -270,19 +270,17 @@ function parseCsvLine(line) {
   return out;
 }
 
+// SampleAnnot_all.csv: one header row, one row per sample, donor in the donor_id column
 function parseSamples(text) {
-  const samples = []; let donor = null, header = null;
-  for (const raw of text.split(/\r?\n/)) {
-    const line = raw.trim();
-    if (!line) continue;
-    const m = line.match(/DONOR:\s*(\d+)/);
-    if (m) { donor = m[1]; header = null; continue; }
-    const cols = parseCsvLine(line);
-    if (!header) { header = cols; continue; }
+  const [headerLine, ...lines] = text.split(/\r?\n/).filter(l => l.trim());
+  const header = parseCsvLine(headerLine.trim());
+  const samples = [];
+  for (const line of lines) {
+    const cols = parseCsvLine(line.trim());
     const r = Object.fromEntries(header.map((h, i) => [h, cols[i]]));
     const x = +r.mni_x, y = +r.mni_y, z = +r.mni_z;
     if ([x, y, z].some(Number.isNaN)) continue;
-    samples.push({ donor, slab: r.slab_type, acronym: r.structure_acronym, name: r.structure_name, mni: [x, y, z] });
+    samples.push({ donor: r.donor_id, slab: r.slab_type, acronym: r.structure_acronym, name: r.structure_name, mni: [x, y, z] });
   }
   return samples;
 }
@@ -495,7 +493,7 @@ try {
   const [cortex, atlasBytes, sampleText] = await Promise.all([
     fetchBytes("assets/BrainMesh_ICBM152.lh.mz3").then(parseMz3),
     fetchBytes("assets/AllenAtlas.nii.gz"),
-    fetchRaw("SampleAnnot_all.txt").then(b => new TextDecoder().decode(b)),
+    fetchRaw("SampleAnnot_all.csv").then(b => new TextDecoder().decode(b)),
   ]);
   addCortex(cortex);
   statusEl.textContent = "Building cerebellum and brainstem…";
