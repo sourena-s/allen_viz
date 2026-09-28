@@ -64,14 +64,39 @@
   .hint { font-size: 12px; color: var(--muted); }
   #status { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); color: var(--muted); font: 13px var(--mono); }
 
-  @media (max-width: 600px) {
-    .panel { width: auto; right: 16px; max-height: 45%; }
+  .file-button {
+    display: block; text-align: center; cursor: pointer; font: 500 12px var(--sans);
+    border: 1px dashed var(--line); border-radius: 6px; padding: 8px; color: var(--ink);
   }
+  .file-button:hover { border-color: var(--accent); }
+  #expr-list { display: flex; flex-direction: column; gap: 2px; }
+  .panel-toggle {
+    display: none; position: fixed; left: 12px; z-index: 2;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    font: 600 14px var(--sans); color: var(--ink); background: var(--panel);
+    border: 1px solid var(--line); border-radius: 999px; padding: 10px 18px;
+  }
+
+  /* Phone layout (body.phone is set from a media query in the script): the controls become a
+     bottom sheet opened with a button, the sample readout moves to the top, targets grow. */
+  body.phone .panel-toggle { display: block; }
+  body.phone .panel {
+    top: auto; left: 0; right: 0; bottom: 0; width: auto; max-width: none; max-height: 62%;
+    border-radius: 14px 14px 0 0; padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+  }
+  body.phone:not(.panel-open) .panel { display: none; }
+  body.phone.panel-open .panel-toggle { bottom: calc(12px + env(safe-area-inset-bottom, 0px)); left: auto; right: 12px; }
+  body.phone #readout {
+    top: calc(12px + env(safe-area-inset-top, 0px)); bottom: auto; left: 12px; right: 12px; max-width: none;
+  }
+  body.phone input[type=checkbox] { width: 20px; height: 20px; }
+  body.phone .row { min-height: 34px; }
+  body.phone .views button { padding: 10px 0; }
 </style>
 
 <div id="stage"></div>
 
-<aside class="panel">
+<aside class="panel" id="panel">
   <div>
     <h1>Allen Human Brain Atlas samples</h1>
     <p class="sub" id="summary">Loading…</p>
@@ -109,15 +134,25 @@
   </div>
 
   <div class="group">
+    <span class="label">Gene expression (coming soon)</span>
+    <span class="hint">Load Allen Human Brain Atlas files for a donor (MicroarrayExpression.csv, Probes.csv, SampleAnnot.csv) to colour samples by a gene. Files are read on this device only.</span>
+    <label class="file-button" for="expr-files">Choose files…</label>
+    <input type="file" id="expr-files" multiple accept=".csv,.txt,.gz" hidden>
+    <div id="expr-list" class="hint"></div>
+  </div>
+
+  <div class="group">
     <span class="label">View</span>
     <div class="views">
       <button data-view="L" title="Left">L</button><button data-view="R" title="Right">R</button>
       <button data-view="A" title="Anterior">A</button><button data-view="P" title="Posterior">P</button>
       <button data-view="S" title="Superior">S</button><button data-view="I" title="Inferior">I</button>
     </div>
-    <span class="hint">Drag to rotate · right-drag or shift-drag to pan · scroll to zoom</span>
+    <span class="hint" id="controls-hint">Drag to rotate · middle- or right-drag to pan · scroll to zoom</span>
   </div>
 </aside>
+
+<button class="panel-toggle" id="panel-toggle" aria-expanded="false" aria-controls="panel">Controls</button>
 
 <div id="readout"><div class="name">Hover or click a sample</div><div class="meta">MNI x, y, z (mm)</div></div>
 <div id="status">Loading meshes…</div>
@@ -303,6 +338,12 @@ const camera = new THREE.PerspectiveCamera(35, 1, 1, 5000);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.screenSpacePanning = true;
+// Mouse: left rotates, middle or right pans, wheel zooms. Touch: one finger rotates,
+// two fingers pinch to zoom and drag to pan.
+controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN };
+controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+// Stop the browser's middle-click autoscroll so middle-drag can pan
+renderer.domElement.addEventListener("mousedown", e => { if (e.button === 1) e.preventDefault(); });
 controls.target.set(0, 5, 15);
 
 scene.add(new THREE.HemisphereLight(0xf2f4f7, 0x2a3038, 1.4));
@@ -436,7 +477,9 @@ const donors = () => donorClouds.map(c => c.userData.donor);
 
 // ---------------------------------------------------------------- views & UI
 const VIEWS = { L: [-1, 0, 0], R: [1, 0, 0], A: [0, 0, -1], P: [0, 0, 1], S: [0, 1, 0], I: [0, -1, 0] };
-function setView(dir, dist = 420) {
+// Default distance fits the brain's width; on a tall, narrow (phone) screen move further back
+const fitDistance = () => 420 * (camera.aspect > 0 ? Math.max(1, 0.9 / camera.aspect) : 1);
+function setView(dir, dist = fitDistance()) {
   const [x, y, z] = dir, t = controls.target;
   camera.up.set(0, 1, 0);
   if (Math.abs(y) === 1) camera.up.set(0, 0, -1);   // superior/inferior: anterior at top
@@ -486,7 +529,7 @@ function pick(e) {
 function showReadout() {
   const s = selected ?? hovered;
   if (!s) {
-    readout.innerHTML = `<div class="name">Hover or click a sample</div><div class="meta">MNI x, y, z (mm)</div>`;
+    readout.innerHTML = `<div class="name">${document.body.classList.contains("phone") ? "Tap a sample" : "Hover or click a sample"}</div><div class="meta">MNI x, y, z (mm)</div>`;
     return;
   }
   readout.innerHTML = `<div class="name"></div><div class="meta"></div>`;
@@ -631,8 +674,48 @@ cutSlider.addEventListener("input", () => { CUTS[activeCut()].value = +cutSlider
 bandToggle.addEventListener("change", updateCut);
 tolSlider.addEventListener("input", updateCut);
 
+// ---------------------------------------------------------------- phone layout
+// Phone = narrow screen, or a touch screen that is not tablet-wide. The controls become a
+// bottom sheet (closed at start) and the gesture hint describes touch instead of mouse.
+const phoneQuery = matchMedia("(max-width: 640px), (pointer: coarse) and (max-width: 1024px)");
+const panelToggle = document.getElementById("panel-toggle");
+function setPanelOpen(open) {
+  document.body.classList.toggle("panel-open", open);
+  panelToggle.setAttribute("aria-expanded", open);
+  panelToggle.textContent = open ? "Close" : "Controls";
+}
+function applyLayout() {
+  const phone = phoneQuery.matches;
+  document.body.classList.toggle("phone", phone);
+  document.getElementById("controls-hint").textContent = phone
+    ? "One finger to rotate · two fingers to zoom and pan · tap a sample to select it"
+    : "Drag to rotate · middle- or right-drag to pan · scroll to zoom";
+  setPanelOpen(false);
+  showReadout();
+}
+phoneQuery.addEventListener("change", applyLayout);
+panelToggle.addEventListener("click", () => setPanelOpen(!document.body.classList.contains("panel-open")));
+applyLayout();
+
+// ---------------------------------------------------------------- gene expression (placeholder)
+// Lists the chosen Allen files. Parsing them and colouring samples by a gene is not built yet;
+// loadExpressionFiles is where that will go.
+const ALLEN_FILES = { "microarrayexpression": "expression matrix", "probes": "probe list", "sampleannot": "sample annotation" };
+function describeFile(file) {
+  const kind = Object.entries(ALLEN_FILES).find(([key]) => file.name.toLowerCase().startsWith(key))?.[1] ?? "unrecognised file";
+  const mb = file.size / 1e6;
+  return `${file.name} · ${mb >= 1 ? mb.toFixed(1) + " MB" : Math.ceil(file.size / 1e3) + " kB"} · ${kind}`;
+}
+function loadExpressionFiles(files) {
+  const list = document.getElementById("expr-list");
+  list.replaceChildren(...[...files].map(f => Object.assign(document.createElement("span"), { textContent: describeFile(f) })));
+  if (files.length) list.append(Object.assign(document.createElement("span"), { textContent: "Selected, not loaded yet: expression colouring is still to be built." }));
+}
+document.getElementById("expr-files").addEventListener("change", e => loadExpressionFiles(e.target.files));
+
 function resize() {
   const w = stage.clientWidth, h = stage.clientHeight;
+  if (!w || !h) return;   // not laid out yet (e.g. hidden tab); the next resize event fixes it
   renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
 }
 addEventListener("resize", resize); resize();
