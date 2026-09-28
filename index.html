@@ -18,6 +18,7 @@
     --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
     --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
   }
+  [hidden] { display: none !important; }
   html, body { height: 100%; }
   body { margin: 0; background: var(--ground); color: var(--ink); font: 14px/1.45 var(--sans); overflow: hidden; }
   #stage { position: fixed; inset: 0; }
@@ -125,10 +126,6 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 // MNI (x = right, y = anterior, z = superior) -> three.js (y up)
 const toScene = (x, y, z) => [x, z, -y];
 
-// Allen atlas (ICBM2009sym) label indices, see assets/AllenAtlas.json
-const CEREBELLUM_LABELS = [62, 63, 64, 120, 121];
-const BRAINSTEM_LABELS = [111, 112, 113, 114, 115, 116, 117, 118, 119, 122, 123, 124, 125, 126, 127, 128, 129];
-
 const BRAIN_COLOR = 0x8fc4ff;
 
 const statusEl = document.getElementById("status");
@@ -152,16 +149,6 @@ async function fetchBytes(url) {
   return buf;
 }
 
-function parseMz3(bytes) {
-  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  if (dv.getUint16(0, true) !== 0x5a4d) throw new Error("Not an MZ3 mesh");
-  const nFace = dv.getUint32(4, true), nVert = dv.getUint32(8, true), nSkip = dv.getUint32(12, true);
-  let off = 16 + nSkip;
-  const faces = new Uint32Array(bytes.slice(off, off + nFace * 12).buffer); off += nFace * 12;
-  const verts = new Float32Array(bytes.slice(off, off + nVert * 12).buffer);
-  return { faces, verts };
-}
-
 function parseNifti(bytes) {
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const le = dv.getInt32(0, true) === 348;
@@ -180,28 +167,28 @@ function parseNifti(bytes) {
 }
 
 // ---------------------------------------------------------------- volume -> surface
-// Binary mask of the chosen labels, cropped, box-blurred, then meshed with surface nets.
-function labelSurface(vol, labels) {
-  const [nx, ny, nz] = vol.dims, want = new Set(labels);
-  let lo = [nx, ny, nz], hi = [-1, -1, -1];
-  for (let z = 0; z < nz; z++) for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) {
-    if (!want.has(vol.data[x + nx * (y + ny * z)])) continue;
-    lo = [Math.min(lo[0], x), Math.min(lo[1], y), Math.min(lo[2], z)];
-    hi = [Math.max(hi[0], x), Math.max(hi[1], y), Math.max(hi[2], z)];
-  }
-  const pad = 4, o = lo.map(v => v - pad), d = hi.map((v, i) => v - lo[i] + 1 + 2 * pad);
+// Brain surface straight from the MNI152 T1 (the same volume as the axial slice), so the
+// 3D brain and the slice line up exactly. The volume is averaged over `step`^3 blocks to
+// keep the mesh light, box-blurred once, then meshed with surface nets at intensity `iso`.
+function volumeSurface(vol, iso, step = 2) {
+  const [nx, ny, nz] = vol.dims, pad = 1;
+  const d = [nx, ny, nz].map(n => Math.floor(n / step) + 2 * pad);
   const [dx, dy, dz] = d, field = new Float32Array(dx * dy * dz);
-  for (let z = 0; z < dz; z++) for (let y = 0; y < dy; y++) for (let x = 0; x < dx; x++) {
-    const X = x + o[0], Y = y + o[1], Z = z + o[2];
-    if (X < 0 || Y < 0 || Z < 0 || X >= nx || Y >= ny || Z >= nz) continue;
-    if (want.has(vol.data[X + nx * (Y + ny * Z)])) field[x + dx * (y + dy * z)] = 1;
+  for (let z = 0; z < dz - 2 * pad; z++) for (let y = 0; y < dy - 2 * pad; y++) for (let x = 0; x < dx - 2 * pad; x++) {
+    let sum = 0;
+    for (let c = 0; c < step ** 3; c++) {
+      const X = x * step + (c % step), Y = y * step + (Math.floor(c / step) % step), Z = z * step + Math.floor(c / step / step);
+      sum += vol.data[X + nx * (Y + ny * Z)];
+    }
+    field[(x + pad) + dx * ((y + pad) + dy * (z + pad))] = sum / step ** 3;
   }
-  for (let pass = 0; pass < 2; pass++) for (let axis = 0; axis < 3; axis++) boxBlur(field, d, axis);
+  for (let axis = 0; axis < 3; axis++) boxBlur(field, d, axis);
 
-  const { positions, indices } = surfaceNets(field, d, 0.5);
-  const s = vol.srow;
+  const { positions, indices } = surfaceNets(field, d, iso);
+  const s = vol.srow, half = (step - 1) / 2;
   for (let i = 0; i < positions.length; i += 3) {
-    const x = positions[i] + o[0], y = positions[i + 1] + o[1], z = positions[i + 2] + o[2];
+    // field cell -> original voxel index (block centre) -> MNI mm
+    const [x, y, z] = [0, 1, 2].map(a => (positions[i + a] - pad) * step + half);
     const mni = s.map(r => r[0] * x + r[1] * y + r[2] * z + r[3]);
     [positions[i], positions[i + 1], positions[i + 2]] = toScene(...mni);
   }
@@ -366,19 +353,6 @@ function addSurface(key, positions, indices, color) {
   (surfaces[key] ??= []).push({ group, shade });
 }
 
-function addCortex(mz3) {
-  const { faces, verts } = mz3;
-  const lh = new Float32Array(verts.length), rh = new Float32Array(verts.length);
-  for (let i = 0; i < verts.length; i += 3) {
-    const [x, y, z] = toScene(verts[i], verts[i + 1], verts[i + 2]);
-    lh.set([x, y, z], i); rh.set([-x, y, z], i);   // right hemisphere = mirrored left
-  }
-  const rhFaces = new Uint32Array(faces.length);
-  for (let i = 0; i < faces.length; i += 3) rhFaces.set([faces[i], faces[i + 2], faces[i + 1]], i);
-  addSurface("brain", lh, faces, BRAIN_COLOR);
-  addSurface("brain", rh, rhFaces, BRAIN_COLOR);
-}
-
 // Round point sprite
 const dot = (() => {
   const c = document.createElement("canvas"); c.width = c.height = 64;
@@ -515,18 +489,25 @@ renderer.domElement.addEventListener("pointerup", e => {
 
 // ---------------------------------------------------------------- axial cut + T1 slice
 // The MNI152 T1 is resampled at the cut height into a flat textured quad lying at the cut.
-let t1 = null, sliceMesh = null, sliceTexture = null, t1Max = 1;
+let t1 = null, sliceMesh = null, sliceTexture = null;
+// Intensity window for the slice (set from brain-voxel percentiles in setupSlice):
+// below t1Lo is black, above t1Hi is white; t1Bg separates the head from the background.
+let t1Lo = 0, t1Hi = 1, t1Bg = 0;
+const percentile = (sorted, q) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))];
 const cutToggle = document.getElementById("axial-cut"), cutSlider = document.getElementById("cut-z");
 const cutZ = () => (cutToggle.checked ? +cutSlider.value : NO_CUT);
 
 function setupSlice(vol) {
   t1 = vol;
   const [nx, ny] = vol.dims, s = vol.srow;
-  // Brightness scale: 99th percentile of non-zero voxels (sampled)
+  // Contrast window from non-zero voxels (sampled): the 30th percentile sits around grey
+  // matter/CSF, so stretching 30th..99.5th spreads grey vs white matter over the full range
   const vals = [];
   for (let i = 0; i < vol.data.length; i += 53) if (vol.data[i] > 0) vals.push(vol.data[i]);
   vals.sort((a, b) => a - b);
-  t1Max = vals[Math.floor(vals.length * 0.99)] || 1;
+  t1Lo = percentile(vals, 0.30);
+  t1Hi = percentile(vals, 0.995);
+  t1Bg = percentile(vals, 0.02);
 
   sliceTexture = new THREE.DataTexture(new Uint8Array(nx * ny * 4), nx, ny, THREE.RGBAFormat);
   sliceTexture.magFilter = sliceTexture.minFilter = THREE.LinearFilter;
@@ -559,9 +540,9 @@ function updateCut() {
   const px = sliceTexture.image.data, plane = nx * ny;
   for (let p = 0; p < plane; p++) {
     const v = t1.data[k0 * plane + p] * (1 - f) + t1.data[k1 * plane + p] * f;
-    const g = Math.min(255, (v / t1Max) * 255);
+    const g = 255 * Math.min(1, Math.max(0, (v - t1Lo) / (t1Hi - t1Lo)));
     px[p * 4] = px[p * 4 + 1] = px[p * 4 + 2] = g;
-    px[p * 4 + 3] = g > 12 ? 255 : 0;   // background outside the head is transparent
+    px[p * 4 + 3] = v > t1Bg ? 255 : 0;   // background outside the brain is transparent
   }
   sliceTexture.needsUpdate = true;
   sliceMesh.position.y = z + 0.05;   // a hair above the cut so the clipped surface does not cover it
@@ -582,21 +563,16 @@ window.viewer = { THREE, scene, camera, controls, setView, toScene, get samples(
 
 // ---------------------------------------------------------------- go
 try {
-  const [cortex, atlasBytes, t1Bytes, sampleText] = await Promise.all([
-    fetchBytes("assets/BrainMesh_ICBM152.lh.mz3").then(parseMz3),
-    fetchBytes("assets/AllenAtlas.nii.gz"),
+  const [t1Bytes, sampleText] = await Promise.all([
     fetchBytes("assets/mni152.nii.gz"),
     fetchRaw("SampleAnnot_all.csv").then(b => new TextDecoder().decode(b)),
   ]);
-  addCortex(cortex);
-  statusEl.textContent = "Building cerebellum and brainstem…";
+  statusEl.textContent = "Building brain surface…";
   await new Promise(r => setTimeout(r, 30));
-  const atlas = parseNifti(atlasBytes);
-  const cb = labelSurface(atlas, CEREBELLUM_LABELS);
-  addSurface("brain", cb.positions, cb.indices, BRAIN_COLOR);
-  const bs = labelSurface(atlas, BRAINSTEM_LABELS);
-  addSurface("brain", bs.positions, bs.indices, BRAIN_COLOR);
-  setupSlice(parseNifti(t1Bytes));
+  const t1Volume = parseNifti(t1Bytes);
+  setupSlice(t1Volume);
+  const brain = volumeSurface(t1Volume, t1Lo);
+  addSurface("brain", brain.positions, brain.indices, BRAIN_COLOR);
   const list = parseSamples(sampleText);
   addSamples(list);
   updateCut();
