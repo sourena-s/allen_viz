@@ -1,4 +1,5 @@
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Allen Sample Brain</title>
 <meta name="description" content="Allen Human Brain Atlas microarray sample locations on an MNI cortex, cerebellum and brainstem">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -169,33 +170,83 @@
   body.phone.panel-open #ribbon { display: none; }
 
   .panel-toggle {
-    display: none; position: fixed; left: 12px; z-index: 2;
-    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-    font: 500 14px var(--sans); color: var(--ink); border-radius: 999px; padding: 10px 20px;
+    display: none; position: fixed; z-index: 2; left: 50%; transform: translateX(-50%);
+    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    font: 500 15px var(--sans); color: var(--ink); border-radius: 999px; padding: 12px 22px;
+    align-items: center; gap: 9px; cursor: pointer; -webkit-tap-highlight-color: transparent;
   }
+  .panel-toggle svg { width: 18px; height: 18px; flex: none; }
+  .sheet-handle { display: none; }
+  #scrim { display: none; }
 
-  /* Phone layout (body.phone is set from a media query in the script): the controls become a
-     bottom sheet opened with a button, the sample readout moves to the top, targets grow. */
-  body.phone .panel-toggle { display: block; }
+  /* Phone layout (body.phone is set from a media query in the script). The controls are a
+     bottom sheet: open it with the Controls button, close it by tapping anywhere outside it,
+     dragging its handle down, or pressing Escape. Text and targets are sized for touch. */
+  body.phone { font-size: 15px; }
+  body.phone .panel-toggle { display: inline-flex; }
+  body.phone.panel-open .panel-toggle { display: none; }
+  body.phone #scrim {
+    display: block; position: fixed; inset: 0; z-index: 3; background: rgba(0, 0, 0, 0.35);
+    opacity: 0; pointer-events: none; transition: opacity .2s; -webkit-tap-highlight-color: transparent;
+  }
+  body.phone.panel-open #scrim { opacity: 1; pointer-events: auto; }
   body.phone .panel {
-    top: auto; left: 0; right: 0; bottom: 0; width: auto; max-width: none; max-height: 62%;
-    border-radius: 20px 20px 0 0; padding-bottom: calc(68px + env(safe-area-inset-bottom, 0px));
+    z-index: 4; top: auto; left: 0; right: 0; bottom: 0; width: auto; max-width: none;
+    max-height: min(78dvh, 78vh); border-radius: 22px 22px 0 0; border-bottom: 0;
+    padding: 0 18px calc(22px + env(safe-area-inset-bottom, 0px)); gap: 22px;
+    overscroll-behavior: contain; background: rgba(28, 32, 38, 0.82);
+    transform: translateY(105%); visibility: hidden;
+    transition: transform .28s cubic-bezier(.2, .8, .2, 1), visibility 0s linear .28s;
   }
-  body.phone:not(.panel-open) .panel { display: none; }
-  body.phone.panel-open .panel-toggle { bottom: calc(12px + env(safe-area-inset-bottom, 0px)); left: auto; right: 12px; }
+  body.phone.panel-open .panel { transform: translateY(var(--sheet-drag, 0px)); visibility: visible; transition: transform .28s cubic-bezier(.2, .8, .2, 1); }
+  body.phone.sheet-dragging .panel { transition: none; }
+  body.phone .sheet-handle {
+    display: block; position: sticky; top: 0; z-index: 1; margin: 0 -18px; padding: 10px 0 8px;
+    background: inherit; touch-action: none; cursor: grab;
+  }
+  body.phone .sheet-handle::before {
+    content: ""; display: block; margin: 0 auto; width: 40px; height: 5px; border-radius: 999px; background: rgba(255, 255, 255, 0.3);
+  }
+  body.phone h1 { font-size: 18px; }
+  body.phone .sub { font-size: 13.5px; }
+  body.phone .label { font-size: 11.5px; }
+  body.phone .hint, body.phone .count { font-size: 13px; }
+  body.phone .group { gap: 10px; }
+  body.phone .row { min-height: 44px; gap: 12px; }
+  body.phone input[type=checkbox] { width: 40px; height: 24px; }
+  body.phone input[type=checkbox]::after { top: 3px; left: 3px; width: 18px; height: 18px; }
+  body.phone input[type=checkbox]:checked::after { transform: translateX(16px); }
+  body.phone input[type=range] { height: 36px; }
+  body.phone input[type=range]::-webkit-slider-thumb { width: 24px; height: 24px; margin-top: -11px; }
+  body.phone input[type=range]::-moz-range-thumb { width: 24px; height: 24px; }
+  /* 16px form text stops iOS zooming the page on focus */
+  body.phone select, body.phone input[type=text] { font-size: 16px; padding: 11px 12px; border-radius: 12px; }
+  body.phone .range-row input { width: 64px; }
+  body.phone .views { gap: 6px; }
+  body.phone .views button { padding: 12px 0; font-size: 14px; }
+  body.phone .text-button, body.phone .file-button { padding: 12px; font-size: 14px; }
+  body.phone .suggestions li { padding: 11px 10px; }
+  body.phone .probe-list .row { padding: 4px 8px; }
+  body.phone .probe-list .name { font-size: 14px; }
+
   body.phone #readout {
-    top: calc(12px + env(safe-area-inset-top, 0px)); bottom: auto; left: 12px; right: 12px; max-width: none;
+    top: calc(10px + env(safe-area-inset-top, 0px)); bottom: auto; left: 10px; right: 10px; max-width: none;
+    padding: 9px 13px; border-radius: 14px;
   }
-  body.phone input[type=checkbox] { width: 34px; height: 20px; }
-  body.phone input[type=checkbox]::after { width: 16px; height: 16px; }
-  body.phone input[type=checkbox]:checked::after { transform: translateX(14px); }
-  body.phone .row { min-height: 36px; }
-  body.phone .views button { padding: 10px 0; }
+  body.phone #readout .meta { font-size: 12px; }
+  body.phone.panel-open #readout, body.phone.panel-open #ribbon { display: none; }
+
+  body.phone #ribbon { left: 8px; right: 8px; bottom: calc(72px + env(safe-area-inset-bottom, 0px)); padding: 8px; max-height: 42dvh; overflow-y: auto; }
+  body.phone .ribbon-names { width: 92px; }
+  body.phone .ribbon-fit { padding: 6px 12px; }
+  body.phone #ribbon-tip { max-width: calc(100vw - 24px); }
 </style>
 
 <div id="stage"></div>
 
+<div id="scrim" aria-hidden="true"></div>
 <aside class="panel glass" id="panel">
+  <div class="sheet-handle" id="sheet-handle" aria-hidden="true"></div>
   <div>
     <h1>Allen Human Brain Atlas samples</h1>
     <p class="sub" id="summary">Loading…</p>
@@ -289,7 +340,7 @@
   </div>
 </aside>
 
-<button class="panel-toggle glass" id="panel-toggle" aria-expanded="false" aria-controls="panel">Controls</button>
+<button class="panel-toggle glass" id="panel-toggle" aria-expanded="false" aria-controls="panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg><span>Controls</span></button>
 
 <section id="ribbon" class="glass" hidden aria-label="Expression z-score of every sample, one row per probe">
   <div class="ribbon-head">
@@ -956,7 +1007,6 @@ const panelToggle = document.getElementById("panel-toggle");
 function setPanelOpen(open) {
   document.body.classList.toggle("panel-open", open);
   panelToggle.setAttribute("aria-expanded", open);
-  panelToggle.textContent = open ? "Close" : "Controls";
 }
 function applyLayout() {
   const phone = phoneQuery.matches;
@@ -968,7 +1018,28 @@ function applyLayout() {
   showReadout();
 }
 phoneQuery.addEventListener("change", applyLayout);
-panelToggle.addEventListener("click", () => setPanelOpen(!document.body.classList.contains("panel-open")));
+panelToggle.addEventListener("click", () => setPanelOpen(true));
+// Close the sheet by tapping outside it (the scrim), with Escape, or by dragging the handle down
+document.getElementById("scrim").addEventListener("click", () => setPanelOpen(false));
+addEventListener("keydown", e => { if (e.key === "Escape" && document.body.classList.contains("panel-open")) setPanelOpen(false); });
+const sheetHandle = document.getElementById("sheet-handle");
+let dragFrom = null;
+sheetHandle.addEventListener("pointerdown", e => {
+  dragFrom = e.clientY; sheetHandle.setPointerCapture(e.pointerId); document.body.classList.add("sheet-dragging");
+});
+sheetHandle.addEventListener("pointermove", e => {
+  if (dragFrom !== null) document.body.style.setProperty("--sheet-drag", `${Math.max(0, e.clientY - dragFrom)}px`);
+});
+const endDrag = e => {
+  if (dragFrom === null) return;
+  const moved = e.clientY - dragFrom;
+  dragFrom = null;
+  document.body.classList.remove("sheet-dragging");
+  document.body.style.removeProperty("--sheet-drag");
+  if (moved > 60 || Math.abs(moved) < 4) setPanelOpen(false);   // a drag down or a tap on the handle
+};
+sheetHandle.addEventListener("pointerup", endDrag);
+sheetHandle.addEventListener("pointercancel", endDrag);
 applyLayout();
 
 // ---------------------------------------------------------------- gene expression
