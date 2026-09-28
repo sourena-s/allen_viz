@@ -1,0 +1,467 @@
+<meta charset="utf-8">
+<title>Allen Sample Brain</title>
+<meta name="description" content="Allen Human Brain Atlas microarray sample locations on an MNI cortex, cerebellum and brainstem">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root {
+    color-scheme: dark;
+    --ground: #0c1015;
+    --panel: #141a21;
+    --line: #26303b;
+    --ink: #e6eaef;
+    --muted: #8b96a3;
+    --accent: #7fb7d9;
+    --cx: #ff7a59;
+    --cb: #58d0f0;
+    --bs: #f3cf55;
+    --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--ground); color: var(--ink); font: 14px/1.45 var(--sans); overflow: hidden; }
+  #stage { position: fixed; inset: 0; }
+  #stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+
+  .panel {
+    position: fixed; top: calc(16px + env(safe-area-inset-top, 0px)); left: 16px;
+    width: 264px; max-width: calc(100vw - 32px); max-height: calc(100% - 32px); overflow-y: auto;
+    background: color-mix(in srgb, var(--panel) 90%, transparent); backdrop-filter: blur(6px);
+    border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: .01em; text-wrap: balance; }
+  .sub { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
+  .group { display: flex; flex-direction: column; gap: 6px; }
+  .label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  .row { display: flex; align-items: center; gap: 8px; }
+  .row label { flex: 1; cursor: pointer; }
+  .count { font: 12px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+  .swatch { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .mesh-swatch { border-radius: 2px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  input[type=checkbox] { accent-color: var(--accent); margin: 0; }
+  .seg { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .seg button, .views button {
+    font: 500 12px var(--sans); color: var(--muted); background: transparent; border: 0; padding: 6px 0; cursor: pointer;
+  }
+  .seg button[aria-pressed=true] { background: var(--line); color: var(--ink); }
+  .views { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+  .views button { border: 1px solid var(--line); border-radius: 5px; font-family: var(--mono); }
+  button:hover { color: var(--ink); }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #legend { display: flex; flex-direction: column; gap: 4px; }
+
+  #readout {
+    position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    max-width: min(360px, calc(100vw - 32px));
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+    pointer-events: none;
+  }
+  #readout .name { font-weight: 500; }
+  #readout .meta { font: 12px var(--mono); color: var(--muted); margin-top: 2px; }
+  .hint { font-size: 12px; color: var(--muted); }
+  #status { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); color: var(--muted); font: 13px var(--mono); }
+
+  @media (max-width: 600px) {
+    .panel { width: auto; right: 16px; max-height: 45%; }
+  }
+</style>
+
+<div id="stage"></div>
+
+<aside class="panel">
+  <div>
+    <h1>Allen Human Brain Atlas samples</h1>
+    <p class="sub" id="summary">Loading…</p>
+  </div>
+
+  <div class="group">
+    <span class="label">Surfaces</span>
+    <div class="row"><span class="swatch mesh-swatch" style="background:#d8cfc0"></span><input type="checkbox" id="show-cortex" checked><label for="show-cortex">Cortex (ICBM152 pial)</label></div>
+    <div class="row"><span class="swatch mesh-swatch" style="background:#8fb3d1"></span><input type="checkbox" id="show-cerebellum" checked><label for="show-cerebellum">Cerebellum</label></div>
+    <div class="row"><span class="swatch mesh-swatch" style="background:#c9a883"></span><input type="checkbox" id="show-brainstem" checked><label for="show-brainstem">Brainstem</label></div>
+    <label class="label" for="opacity">Surface opacity</label>
+    <input type="range" id="opacity" min="0.03" max="1" step="0.01" value="0.25">
+  </div>
+
+  <div class="group">
+    <span class="label">Samples</span>
+    <div class="seg" role="group" aria-label="Colour samples by">
+      <button id="by-slab" aria-pressed="true">By slab type</button>
+      <button id="by-donor" aria-pressed="false">By donor</button>
+    </div>
+    <div id="legend"></div>
+    <label class="label" for="point-size">Point size (mm)</label>
+    <input type="range" id="point-size" min="0.5" max="6" step="0.1" value="2.2">
+  </div>
+
+  <div class="group">
+    <span class="label">View</span>
+    <div class="views">
+      <button data-view="L" title="Left">L</button><button data-view="R" title="Right">R</button>
+      <button data-view="A" title="Anterior">A</button><button data-view="P" title="Posterior">P</button>
+      <button data-view="S" title="Superior">S</button><button data-view="I" title="Inferior">I</button>
+    </div>
+    <span class="hint">Drag to rotate · right-drag or shift-drag to pan · scroll to zoom</span>
+  </div>
+</aside>
+
+<div id="readout"><div class="name">Hover a sample</div><div class="meta">MNI x, y, z (mm)</div></div>
+<div id="status">Loading meshes…</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+// MNI (x = right, y = anterior, z = superior) -> three.js (y up)
+const toScene = (x, y, z) => [x, z, -y];
+
+// Allen atlas (ICBM2009sym) label indices, see assets/AllenAtlas.json
+const CEREBELLUM_LABELS = [62, 63, 64, 120, 121];
+const BRAINSTEM_LABELS = [111, 112, 113, 114, 115, 116, 117, 118, 119, 122, 123, 124, 125, 126, 127, 128, 129];
+
+const SLAB_COLORS = { CX: "#ff7a59", CB: "#58d0f0", BS: "#f3cf55" };
+const SLAB_NAMES = { CX: "Cerebrum (CX)", CB: "Cerebellum (CB)", BS: "Brainstem (BS)" };
+const DONOR_COLORS = ["#ff7a59", "#58d0f0", "#f3cf55", "#a98bf5", "#6ee29b", "#f58bc6"];
+
+const statusEl = document.getElementById("status");
+
+// ---------------------------------------------------------------- loading
+async function fetchBytes(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Could not load ${url} (${res.status})`);
+  let buf = new Uint8Array(await res.arrayBuffer());
+  if (buf[0] === 0x1f && buf[1] === 0x8b) {
+    const stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"));
+    buf = new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+  return buf;
+}
+
+function parseMz3(bytes) {
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (dv.getUint16(0, true) !== 0x5a4d) throw new Error("Not an MZ3 mesh");
+  const nFace = dv.getUint32(4, true), nVert = dv.getUint32(8, true), nSkip = dv.getUint32(12, true);
+  let off = 16 + nSkip;
+  const faces = new Uint32Array(bytes.slice(off, off + nFace * 12).buffer); off += nFace * 12;
+  const verts = new Float32Array(bytes.slice(off, off + nVert * 12).buffer);
+  return { faces, verts };
+}
+
+function parseNifti(bytes) {
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const le = dv.getInt32(0, true) === 348;
+  const i16 = o => dv.getInt16(o, le), f32 = o => dv.getFloat32(o, le);
+  const dims = [i16(42), i16(44), i16(46)];
+  const datatype = i16(70), voxOffset = Math.round(f32(108));
+  const srow = [280, 296, 312].map(o => [0, 1, 2, 3].map(k => f32(o + 4 * k)));
+  const n = dims[0] * dims[1] * dims[2];
+  const data = new Int32Array(n);
+  const readers = { 2: [1, o => dv.getUint8(o)], 4: [2, o => dv.getInt16(o, le)], 8: [4, o => dv.getInt32(o, le)],
+                    16: [4, o => dv.getFloat32(o, le)], 512: [2, o => dv.getUint16(o, le)] };
+  if (!readers[datatype]) throw new Error(`Unsupported NIfTI datatype ${datatype}`);
+  const [size, read] = readers[datatype];
+  for (let i = 0; i < n; i++) data[i] = Math.round(read(voxOffset + i * size));
+  return { dims, srow, data };
+}
+
+// ---------------------------------------------------------------- volume -> surface
+// Binary mask of the chosen labels, cropped, box-blurred, then meshed with surface nets.
+function labelSurface(vol, labels) {
+  const [nx, ny, nz] = vol.dims, want = new Set(labels);
+  let lo = [nx, ny, nz], hi = [-1, -1, -1];
+  for (let z = 0; z < nz; z++) for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) {
+    if (!want.has(vol.data[x + nx * (y + ny * z)])) continue;
+    lo = [Math.min(lo[0], x), Math.min(lo[1], y), Math.min(lo[2], z)];
+    hi = [Math.max(hi[0], x), Math.max(hi[1], y), Math.max(hi[2], z)];
+  }
+  const pad = 4, o = lo.map(v => v - pad), d = hi.map((v, i) => v - lo[i] + 1 + 2 * pad);
+  const [dx, dy, dz] = d, field = new Float32Array(dx * dy * dz);
+  for (let z = 0; z < dz; z++) for (let y = 0; y < dy; y++) for (let x = 0; x < dx; x++) {
+    const X = x + o[0], Y = y + o[1], Z = z + o[2];
+    if (X < 0 || Y < 0 || Z < 0 || X >= nx || Y >= ny || Z >= nz) continue;
+    if (want.has(vol.data[X + nx * (Y + ny * Z)])) field[x + dx * (y + dy * z)] = 1;
+  }
+  for (let pass = 0; pass < 2; pass++) for (let axis = 0; axis < 3; axis++) boxBlur(field, d, axis);
+
+  const { positions, indices } = surfaceNets(field, d, 0.5);
+  const s = vol.srow;
+  for (let i = 0; i < positions.length; i += 3) {
+    const x = positions[i] + o[0], y = positions[i + 1] + o[1], z = positions[i + 2] + o[2];
+    const mni = s.map(r => r[0] * x + r[1] * y + r[2] * z + r[3]);
+    [positions[i], positions[i + 1], positions[i + 2]] = toScene(...mni);
+  }
+  return { positions, indices };
+}
+
+function boxBlur(field, [dx, dy, dz], axis) {
+  const stride = [1, dx, dx * dy][axis], len = [dx, dy, dz][axis];
+  const copy = field.slice();
+  for (let i = 0; i < field.length; i++) {
+    const c = [i % dx, Math.floor(i / dx) % dy, Math.floor(i / (dx * dy))][axis];
+    let sum = copy[i], k = 1;
+    if (c > 0) { sum += copy[i - stride]; k++; }
+    if (c < len - 1) { sum += copy[i + stride]; k++; }
+    field[i] = sum / k;
+  }
+}
+
+function surfaceNets(field, [dx, dy, dz], iso) {
+  const at = (x, y, z) => field[x + dx * (y + dy * z)];
+  const cellVert = new Int32Array(dx * dy * dz).fill(-1);
+  const positions = [], indices = [];
+  const corners = [...Array(8)].map((_, c) => [c & 1, (c >> 1) & 1, (c >> 2) & 1]);
+  const edges = [];
+  for (let a = 0; a < 8; a++) for (let b = a + 1; b < 8; b++) {
+    const diff = corners[a].reduce((s, v, i) => s + Math.abs(v - corners[b][i]), 0);
+    if (diff === 1) edges.push([a, b]);
+  }
+  const v = new Float32Array(8);
+  for (let z = 0; z < dz - 1; z++) for (let y = 0; y < dy - 1; y++) for (let x = 0; x < dx - 1; x++) {
+    let inside = 0;
+    for (let c = 0; c < 8; c++) { v[c] = at(x + corners[c][0], y + corners[c][1], z + corners[c][2]); if (v[c] > iso) inside++; }
+    if (inside === 0 || inside === 8) continue;
+    let px = 0, py = 0, pz = 0, n = 0;
+    for (const [a, b] of edges) {
+      if ((v[a] > iso) === (v[b] > iso)) continue;
+      const t = (iso - v[a]) / (v[b] - v[a]);
+      px += corners[a][0] + t * (corners[b][0] - corners[a][0]);
+      py += corners[a][1] + t * (corners[b][1] - corners[a][1]);
+      pz += corners[a][2] + t * (corners[b][2] - corners[a][2]);
+      n++;
+    }
+    cellVert[x + dx * (y + dy * z)] = positions.length / 3;
+    positions.push(x + px / n, y + py / n, z + pz / n);
+  }
+  const cell = (x, y, z) => cellVert[x + dx * (y + dy * z)];
+  for (let z = 1; z < dz - 1; z++) for (let y = 1; y < dy - 1; y++) for (let x = 1; x < dx - 1; x++) {
+    const here = at(x, y, z) > iso;
+    // edge along x: shared by cells with min corner (x, y-1..y, z-1..z)
+    if (here !== (at(x + 1, y, z) > iso)) quad(cell(x, y - 1, z - 1), cell(x, y, z - 1), cell(x, y, z), cell(x, y - 1, z), here);
+    if (here !== (at(x, y + 1, z) > iso)) quad(cell(x - 1, y, z - 1), cell(x - 1, y, z), cell(x, y, z), cell(x, y, z - 1), here);
+    if (here !== (at(x, y, z + 1) > iso)) quad(cell(x - 1, y - 1, z), cell(x, y - 1, z), cell(x, y, z), cell(x - 1, y, z), here);
+  }
+  function quad(a, b, c, d, flip) {
+    if (a < 0 || b < 0 || c < 0 || d < 0) return;
+    if (flip) indices.push(a, d, c, a, c, b); else indices.push(a, b, c, a, c, d);
+  }
+  return { positions: new Float32Array(positions), indices };
+}
+
+// ---------------------------------------------------------------- sample file
+function parseCsvLine(line) {
+  const out = []; let cur = "", q = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (q) { if (ch === '"') { if (line[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; }
+    else if (ch === '"') q = true;
+    else if (ch === ",") { out.push(cur); cur = ""; }
+    else cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+
+function parseSamples(text) {
+  const samples = []; let donor = null, header = null;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const m = line.match(/DONOR:\s*(\d+)/);
+    if (m) { donor = m[1]; header = null; continue; }
+    const cols = parseCsvLine(line);
+    if (!header) { header = cols; continue; }
+    const r = Object.fromEntries(header.map((h, i) => [h, cols[i]]));
+    const x = +r.mni_x, y = +r.mni_y, z = +r.mni_z;
+    if ([x, y, z].some(Number.isNaN)) continue;
+    samples.push({ donor, slab: r.slab_type, acronym: r.structure_acronym, name: r.structure_name, mni: [x, y, z] });
+  }
+  return samples;
+}
+
+// ---------------------------------------------------------------- scene
+const stage = document.getElementById("stage");
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setClearColor(0x0c1015);
+stage.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(35, 1, 1, 5000);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.screenSpacePanning = true;
+controls.target.set(0, 5, 15);
+
+scene.add(new THREE.HemisphereLight(0xf2f4f7, 0x2a3038, 1.4));
+const keyLight = new THREE.DirectionalLight(0xffffff, 1.6);
+camera.add(keyLight); keyLight.position.set(0.4, 0.6, 1);
+scene.add(camera);
+
+// Each surface is drawn twice: a depth-only pass so only its outer shell shows,
+// then a translucent colour pass. Samples draw last with no depth test, on top.
+const surfaces = {};
+function addSurface(key, positions, indices, color) {
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geom.setIndex(new THREE.BufferAttribute(indices instanceof Uint32Array ? indices : new Uint32Array(indices), 1));
+  geom.computeVertexNormals();
+  const depth = new THREE.Mesh(geom, new THREE.MeshBasicMaterial({ colorWrite: false }));
+  depth.renderOrder = 0;
+  const shade = new THREE.Mesh(geom, new THREE.MeshPhongMaterial({
+    color, shininess: 18, transparent: true, opacity: 0.25, depthWrite: false, depthFunc: THREE.LessEqualDepth,
+  }));
+  shade.renderOrder = 1;
+  const group = new THREE.Group(); group.add(depth, shade);
+  scene.add(group);
+  (surfaces[key] ??= []).push({ group, shade });
+}
+
+function addCortex(mz3) {
+  const { faces, verts } = mz3;
+  const lh = new Float32Array(verts.length), rh = new Float32Array(verts.length);
+  for (let i = 0; i < verts.length; i += 3) {
+    const [x, y, z] = toScene(verts[i], verts[i + 1], verts[i + 2]);
+    lh.set([x, y, z], i); rh.set([-x, y, z], i);   // right hemisphere = mirrored left
+  }
+  const rhFaces = new Uint32Array(faces.length);
+  for (let i = 0; i < faces.length; i += 3) rhFaces.set([faces[i], faces[i + 2], faces[i + 1]], i);
+  addSurface("cortex", lh, faces, 0xd8cfc0);
+  addSurface("cortex", rh, rhFaces, 0xd8cfc0);
+}
+
+// Round point sprite
+const dot = (() => {
+  const c = document.createElement("canvas"); c.width = c.height = 64;
+  const g = c.getContext("2d");
+  g.fillStyle = "#fff"; g.beginPath(); g.arc(32, 32, 28, 0, Math.PI * 2); g.fill();
+  g.lineWidth = 5; g.strokeStyle = "rgba(0,0,0,0.55)"; g.stroke();
+  return new THREE.CanvasTexture(c);
+})();
+
+let samples = [], points = null, colorMode = "slab";
+
+function addSamples(list) {
+  samples = list;
+  const pos = new Float32Array(list.length * 3);
+  list.forEach((s, i) => pos.set(toScene(...s.mni), i * 3));
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  geom.setAttribute("color", new THREE.BufferAttribute(new Float32Array(list.length * 3), 3));
+  points = new THREE.Points(geom, new THREE.PointsMaterial({
+    size: 2.2, map: dot, vertexColors: true, alphaTest: 0.5, transparent: true, depthTest: false, depthWrite: false,
+  }));
+  points.renderOrder = 2;
+  scene.add(points);
+  recolor();
+}
+
+const donors = () => [...new Set(samples.map(s => s.donor))];
+
+function recolor() {
+  const attr = points.geometry.getAttribute("color"), c = new THREE.Color();
+  const donorList = donors();
+  samples.forEach((s, i) => {
+    c.set(colorMode === "slab" ? (SLAB_COLORS[s.slab] ?? "#cccccc") : DONOR_COLORS[donorList.indexOf(s.donor) % DONOR_COLORS.length]);
+    attr.setXYZ(i, c.r, c.g, c.b);
+  });
+  attr.needsUpdate = true;
+  renderLegend();
+}
+
+function renderLegend() {
+  const counts = new Map();
+  for (const s of samples) { const k = colorMode === "slab" ? s.slab : s.donor; counts.set(k, (counts.get(k) ?? 0) + 1); }
+  const donorList = donors();
+  const keys = colorMode === "slab" ? ["CX", "CB", "BS"].filter(k => counts.has(k)).concat([...counts.keys()].filter(k => !SLAB_COLORS[k])) : donorList;
+  document.getElementById("legend").innerHTML = keys.map(k => {
+    const color = colorMode === "slab" ? (SLAB_COLORS[k] ?? "#cccccc") : DONOR_COLORS[donorList.indexOf(k) % DONOR_COLORS.length];
+    const name = colorMode === "slab" ? (SLAB_NAMES[k] ?? k) : `Donor ${k}`;
+    return `<div class="row"><span class="swatch" style="background:${color}"></span><span style="flex:1">${name}</span><span class="count">${counts.get(k)}</span></div>`;
+  }).join("");
+}
+
+// ---------------------------------------------------------------- views & UI
+const VIEWS = { L: [-1, 0, 0], R: [1, 0, 0], A: [0, 0, -1], P: [0, 0, 1], S: [0, 1, 0], I: [0, -1, 0] };
+function setView(dir, dist = 420) {
+  const [x, y, z] = dir, t = controls.target;
+  camera.up.set(0, 1, 0);
+  if (Math.abs(y) === 1) camera.up.set(0, 0, -y);   // superior/inferior: anterior at top
+  camera.position.set(t.x + x * dist, t.y + y * dist, t.z + z * dist);
+  camera.lookAt(t); controls.update();
+}
+document.querySelectorAll("[data-view]").forEach(b => b.addEventListener("click", () => setView(VIEWS[b.dataset.view])));
+
+for (const key of ["cortex", "cerebellum", "brainstem"]) {
+  document.getElementById(`show-${key}`).addEventListener("change", e => (surfaces[key] ?? []).forEach(s => (s.group.visible = e.target.checked)));
+}
+document.getElementById("opacity").addEventListener("input", e => {
+  Object.values(surfaces).flat().forEach(s => (s.shade.material.opacity = +e.target.value));
+});
+document.getElementById("point-size").addEventListener("input", e => { if (points) points.material.size = +e.target.value; });
+for (const [id, mode] of [["by-slab", "slab"], ["by-donor", "donor"]]) {
+  document.getElementById(id).addEventListener("click", () => {
+    colorMode = mode;
+    document.getElementById("by-slab").setAttribute("aria-pressed", mode === "slab");
+    document.getElementById("by-donor").setAttribute("aria-pressed", mode === "donor");
+    if (points) recolor();
+  });
+}
+
+// Hover readout
+const raycaster = new THREE.Raycaster(), mouse = new THREE.Vector2();
+const readout = document.getElementById("readout");
+renderer.domElement.addEventListener("pointermove", e => {
+  if (!points) return;
+  const r = renderer.domElement.getBoundingClientRect();
+  mouse.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  raycaster.params.Points.threshold = points.material.size * 0.6;
+  raycaster.setFromCamera(mouse, camera);
+  const hit = raycaster.intersectObject(points)[0];
+  if (!hit) return;
+  const s = samples[hit.index];
+  readout.innerHTML = `<div class="name"></div><div class="meta"></div>`;
+  readout.querySelector(".name").textContent = `${s.name} (${s.acronym})`;
+  readout.querySelector(".meta").textContent = `Donor ${s.donor} · ${s.slab} · MNI ${s.mni.map(v => v.toFixed(0)).join(", ")}`;
+});
+
+function resize() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+addEventListener("resize", resize); resize();
+setView([-0.62, 0.35, -0.7].map(v => v / Math.hypot(-0.62, 0.35, -0.7)));
+renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+
+// ---------------------------------------------------------------- go
+try {
+  const [cortex, atlasBytes, sampleText] = await Promise.all([
+    fetchBytes("assets/BrainMesh_ICBM152.lh.mz3").then(parseMz3),
+    fetchBytes("assets/AllenAtlas.nii.gz"),
+    fetch("SampleAnnot_all.txt").then(r => { if (!r.ok) throw new Error("Could not load SampleAnnot_all.txt"); return r.text(); }),
+  ]);
+  addCortex(cortex);
+  statusEl.textContent = "Building cerebellum and brainstem…";
+  await new Promise(r => setTimeout(r, 30));
+  const atlas = parseNifti(atlasBytes);
+  const cb = labelSurface(atlas, CEREBELLUM_LABELS);
+  addSurface("cerebellum", cb.positions, cb.indices, 0x8fb3d1);
+  const bs = labelSurface(atlas, BRAINSTEM_LABELS);
+  addSurface("brainstem", bs.positions, bs.indices, 0xc9a883);
+  const list = parseSamples(sampleText);
+  addSamples(list);
+  document.getElementById("summary").textContent = `${list.length.toLocaleString()} samples from ${donors().length} donors, in MNI space`;
+  statusEl.hidden = true;
+} catch (err) {
+  statusEl.textContent = err.message;
+  console.error(err);
+}
+</script>
