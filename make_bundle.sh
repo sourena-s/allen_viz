@@ -9,6 +9,7 @@ b64() { base64 -w0 "$1"; }
   echo "window.BRAIN_BUNDLE = {"
   echo "  \"assets/BrainMesh_ICBM152.lh.mz3\": \"$(b64 assets/BrainMesh_ICBM152.lh.mz3)\","
   echo "  \"assets/AllenAtlas.nii.gz\": \"$(b64 assets/AllenAtlas.nii.gz)\","
+  echo "  \"assets/mni152.nii.gz\": \"$(b64 assets/mni152.nii.gz)\","
   echo "  \"SampleAnnot_all.csv\": \"$(b64 SampleAnnot_all.csv)\""
   echo "};"
 } > assets/bundle.js

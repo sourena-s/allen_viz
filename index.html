@@ -82,6 +82,11 @@
     <div class="row"><span class="swatch mesh-swatch" style="background:transparent"></span><input type="checkbox" id="mirror"><label for="mirror">Mirror right hemisphere onto the left</label></div>
     <label class="label" for="opacity">Surface opacity</label>
     <input type="range" id="opacity" min="0" max="0.6" step="0.01" value="0.06">
+    <div class="row"><span class="swatch mesh-swatch" style="background:transparent"></span><input type="checkbox" id="axial-cut"><label for="axial-cut">Axial cut</label></div>
+    <div class="group" id="cut-controls" hidden>
+      <label class="label" for="cut-z">Cut height <span class="count" id="cut-z-value"></span></label>
+      <input type="range" id="cut-z" min="-70" max="85" step="1" value="20">
+    </div>
   </div>
 
   <div class="group">
@@ -165,12 +170,12 @@ function parseNifti(bytes) {
   const datatype = i16(70), voxOffset = Math.round(f32(108));
   const srow = [280, 296, 312].map(o => [0, 1, 2, 3].map(k => f32(o + 4 * k)));
   const n = dims[0] * dims[1] * dims[2];
-  const data = new Int32Array(n);
+  const data = new Float32Array(n);
   const readers = { 2: [1, o => dv.getUint8(o)], 4: [2, o => dv.getInt16(o, le)], 8: [4, o => dv.getInt32(o, le)],
                     16: [4, o => dv.getFloat32(o, le)], 512: [2, o => dv.getUint16(o, le)] };
   if (!readers[datatype]) throw new Error(`Unsupported NIfTI datatype ${datatype}`);
   const [size, read] = readers[datatype];
-  for (let i = 0; i < n; i++) data[i] = Math.round(read(voxOffset + i * size));
+  for (let i = 0; i < n; i++) data[i] = read(voxOffset + i * size);
   return { dims, srow, data };
 }
 
@@ -309,23 +314,33 @@ scene.add(camera);
 // then a translucent colour pass. Samples draw last with no depth test, on top.
 const surfaces = {};
 
+// Axial cut: everything above the plane (scene y = MNI z) is clipped away.
+// The normal points down, so what is kept is y <= constant; a huge constant means "no cut".
+const NO_CUT = 1e5;
+const cutPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), NO_CUT);
+renderer.localClippingEnabled = true;
+
 // Glass look: nearly clear where the surface faces the viewer, brighter blue at
 // grazing angles (Fresnel rim), plus a soft specular highlight from the camera.
 function glassMaterial(color) {
   return new THREE.ShaderMaterial({
     uniforms: { tint: { value: new THREE.Color(color) }, opacity: { value: +document.getElementById("opacity").value } },
     vertexShader: `
+      #include <clipping_planes_pars_vertex>
       varying vec3 vNormal; varying vec3 vView;
       void main() {
-        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
         vNormal = normalize(normalMatrix * normal);
-        vView = normalize(-mv.xyz);
-        gl_Position = projectionMatrix * mv;
+        vView = normalize(-mvPosition.xyz);
+        gl_Position = projectionMatrix * mvPosition;
+        #include <clipping_planes_vertex>
       }`,
     fragmentShader: `
+      #include <clipping_planes_pars_fragment>
       uniform vec3 tint; uniform float opacity;
       varying vec3 vNormal; varying vec3 vView;
       void main() {
+        #include <clipping_planes_fragment>
         vec3 n = normalize(vNormal);
         float facing = abs(dot(n, vView));
         float rim = pow(1.0 - facing, 2.5);
@@ -334,6 +349,7 @@ function glassMaterial(color) {
         gl_FragColor = vec4(col, clamp(opacity + rim * 0.55 + spec * 0.4, 0.0, 1.0));
       }`,
     transparent: true, depthWrite: false, depthFunc: THREE.LessEqualDepth, side: THREE.FrontSide,
+    clipping: true, clippingPlanes: [cutPlane],
   });
 }
 function addSurface(key, positions, indices, color) {
@@ -341,7 +357,7 @@ function addSurface(key, positions, indices, color) {
   geom.setAttribute("position", new THREE.BufferAttribute(positions, 3));
   geom.setIndex(new THREE.BufferAttribute(indices instanceof Uint32Array ? indices : new Uint32Array(indices), 1));
   geom.computeVertexNormals();
-  const depth = new THREE.Mesh(geom, new THREE.MeshBasicMaterial({ colorWrite: false }));
+  const depth = new THREE.Mesh(geom, new THREE.MeshBasicMaterial({ colorWrite: false, clippingPlanes: [cutPlane] }));
   depth.renderOrder = 0;
   const shade = new THREE.Mesh(geom, glassMaterial(color));
   shade.renderOrder = 1;
@@ -387,6 +403,7 @@ function pointsFrom(list, color, size) {
   geom.setAttribute("position", new THREE.BufferAttribute(pos, 3));
   const cloud = new THREE.Points(geom, new THREE.PointsMaterial({
     size, color, map: dot, alphaTest: 0.5, transparent: true, depthTest: false, depthWrite: false,
+    clippingPlanes: [cutPlane],
   }));
   cloud.renderOrder = 2;
   return cloud;
@@ -470,7 +487,8 @@ function pick(e) {
   mouse.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
   raycaster.params.Points.threshold = pointSize * 0.6;
   raycaster.setFromCamera(mouse, camera);
-  const hit = raycaster.intersectObjects(donorClouds.filter(c => c.visible))[0];
+  const hit = raycaster.intersectObjects(donorClouds.filter(c => c.visible))
+    .find(h => shownMni(h.object.userData.items[h.index])[2] <= cutZ());   // ignore samples cut away
   return hit ? hit.object.userData.items[hit.index] : null;
 }
 
@@ -495,6 +513,62 @@ renderer.domElement.addEventListener("pointerup", e => {
   setSelected(pick(e));
 });
 
+// ---------------------------------------------------------------- axial cut + T1 slice
+// The MNI152 T1 is resampled at the cut height into a flat textured quad lying at the cut.
+let t1 = null, sliceMesh = null, sliceTexture = null, t1Max = 1;
+const cutToggle = document.getElementById("axial-cut"), cutSlider = document.getElementById("cut-z");
+const cutZ = () => (cutToggle.checked ? +cutSlider.value : NO_CUT);
+
+function setupSlice(vol) {
+  t1 = vol;
+  const [nx, ny] = vol.dims, s = vol.srow;
+  // Brightness scale: 99th percentile of non-zero voxels (sampled)
+  const vals = [];
+  for (let i = 0; i < vol.data.length; i += 53) if (vol.data[i] > 0) vals.push(vol.data[i]);
+  vals.sort((a, b) => a - b);
+  t1Max = vals[Math.floor(vals.length * 0.99)] || 1;
+
+  sliceTexture = new THREE.DataTexture(new Uint8Array(nx * ny * 4), nx, ny, THREE.RGBAFormat);
+  sliceTexture.magFilter = sliceTexture.minFilter = THREE.LinearFilter;
+  // Quad corners at the voxel-grid edges (i, j = -0.5 .. n - 0.5); z is set per cut via position.y
+  const corner = (i, j) => { const x = s[0][0] * i + s[0][1] * j + s[0][3], y = s[1][0] * i + s[1][1] * j + s[1][3]; return toScene(x, y, 0); };
+  const c = [corner(-0.5, -0.5), corner(nx - 0.5, -0.5), corner(nx - 0.5, ny - 0.5), corner(-0.5, ny - 0.5)];
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute("position", new THREE.BufferAttribute(new Float32Array(c.flat()), 3));
+  geom.setAttribute("uv", new THREE.BufferAttribute(new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]), 2));
+  geom.setIndex([0, 1, 2, 0, 2, 3]);
+  sliceMesh = new THREE.Mesh(geom, new THREE.MeshBasicMaterial({ map: sliceTexture, side: THREE.DoubleSide, transparent: true, alphaTest: 0.05 }));
+  sliceMesh.visible = false;
+  scene.add(sliceMesh);
+}
+
+function updateCut() {
+  const on = cutToggle.checked, z = +cutSlider.value;
+  document.getElementById("cut-controls").hidden = !on;
+  document.getElementById("cut-z-value").textContent = `z = ${z} mm`;
+  cutPlane.constant = on ? z : NO_CUT;
+  if (hovered && shownMni(hovered)[2] > cutZ()) setHovered(null);
+  if (selected && shownMni(selected)[2] > cutZ()) setSelected(null);
+  if (!t1 || !sliceMesh) return;
+  sliceMesh.visible = on;
+  if (!on) return;
+  // Linear interpolation between the two voxel slices around this z (axis-aligned affine)
+  const [nx, ny, nz] = t1.dims, s = t1.srow;
+  const k = Math.min(nz - 1, Math.max(0, (z - s[2][3]) / s[2][2]));
+  const k0 = Math.floor(k), k1 = Math.min(nz - 1, k0 + 1), f = k - k0;
+  const px = sliceTexture.image.data, plane = nx * ny;
+  for (let p = 0; p < plane; p++) {
+    const v = t1.data[k0 * plane + p] * (1 - f) + t1.data[k1 * plane + p] * f;
+    const g = Math.min(255, (v / t1Max) * 255);
+    px[p * 4] = px[p * 4 + 1] = px[p * 4 + 2] = g;
+    px[p * 4 + 3] = g > 12 ? 255 : 0;   // background outside the head is transparent
+  }
+  sliceTexture.needsUpdate = true;
+  sliceMesh.position.y = z + 0.05;   // a hair above the cut so the clipped surface does not cover it
+}
+cutToggle.addEventListener("change", updateCut);
+cutSlider.addEventListener("input", updateCut);
+
 function resize() {
   const w = stage.clientWidth, h = stage.clientHeight;
   renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
@@ -508,9 +582,10 @@ window.viewer = { THREE, scene, camera, controls, setView, toScene, get samples(
 
 // ---------------------------------------------------------------- go
 try {
-  const [cortex, atlasBytes, sampleText] = await Promise.all([
+  const [cortex, atlasBytes, t1Bytes, sampleText] = await Promise.all([
     fetchBytes("assets/BrainMesh_ICBM152.lh.mz3").then(parseMz3),
     fetchBytes("assets/AllenAtlas.nii.gz"),
+    fetchBytes("assets/mni152.nii.gz"),
     fetchRaw("SampleAnnot_all.csv").then(b => new TextDecoder().decode(b)),
   ]);
   addCortex(cortex);
@@ -521,8 +596,10 @@ try {
   addSurface("brain", cb.positions, cb.indices, BRAIN_COLOR);
   const bs = labelSurface(atlas, BRAINSTEM_LABELS);
   addSurface("brain", bs.positions, bs.indices, BRAIN_COLOR);
+  setupSlice(parseNifti(t1Bytes));
   const list = parseSamples(sampleText);
   addSamples(list);
+  updateCut();
   document.getElementById("summary").textContent = `${list.length.toLocaleString()} samples from ${donors().length} donors, in MNI space`;
   statusEl.hidden = true;
 } catch (err) {
