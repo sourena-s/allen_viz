@@ -89,6 +89,19 @@
   .scale-bar { height: 8px; border-radius: 999px; background: linear-gradient(90deg, #2166ac, #f7f7f7, #b2182b); }
   .scale-labels { display: flex; justify-content: space-between; font: 11px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
   #expr-list { display: flex; flex-direction: column; gap: 2px; }
+  /* Gene / probe search results, shown in the panel's flow right under the search box */
+  .suggestions {
+    list-style: none; margin: -4px 0 0; padding: 4px; max-height: 240px; overflow-y: auto;
+    border: 1px solid var(--edge); border-radius: 10px; background: rgba(20, 24, 29, 0.55);
+    scrollbar-width: thin; scrollbar-color: var(--track) transparent;
+  }
+  .suggestions li { display: flex; align-items: baseline; gap: 8px; padding: 5px 8px; border-radius: 7px; cursor: pointer; }
+  .suggestions li .text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .suggestions li mark { background: none; color: #fff; font-weight: 600; }
+  .suggestions li .kind { font: 11px var(--mono); color: var(--muted); white-space: nowrap; }
+  .suggestions li[aria-selected=true], .suggestions li:hover { background: var(--glass-hover); }
+  .suggestions li.note { cursor: default; color: var(--muted); font-size: 11.5px; }
+  .suggestions li.note:hover { background: none; }
   .hint { font-size: 11.5px; color: var(--muted); }
 
   #readout {
@@ -175,8 +188,9 @@
     <div id="expr-list" class="hint"></div>
     <div class="group" id="expr-gene-controls" hidden>
       <label class="label" for="gene-input">Gene or probe</label>
-      <input type="text" id="gene-input" list="gene-options" placeholder="Gene symbol, e.g. CNTNAP2" autocomplete="off">
-      <datalist id="gene-options"></datalist>
+      <input type="text" id="gene-input" role="combobox" aria-autocomplete="list" aria-expanded="false"
+             aria-controls="gene-suggestions" placeholder="Gene symbol, e.g. CNTNAP2" autocomplete="off" spellcheck="false">
+      <ul class="suggestions" id="gene-suggestions" role="listbox" hidden></ul>
       <select id="probe-select" hidden></select>
       <div class="group" id="expr-scale" hidden>
         <div class="scale-bar"></div>
@@ -863,7 +877,6 @@ async function loadExpressionFiles(files) {
     if (probesFile) {
       setExprStatus([`Reading ${probesFile.name}…`]);
       Object.assign(expr, await readProbesFile(probesFile));
-      $e("gene-options").replaceChildren(...[...expr.bySymbol.keys()].sort().map(s => Object.assign(document.createElement("option"), { value: s })));
     }
     if (exprFile) {
       bar.hidden = false;
@@ -884,7 +897,8 @@ async function loadExpressionFiles(files) {
       `Donor ${expr.donor}: ${expr.rows.size.toLocaleString()} probes × ${cloud.userData.items.length} samples`,
       expr.bySymbol.size ? `${expr.bySymbol.size.toLocaleString()} gene symbols` : "No Probes.csv: type a probe_id",
     ]);
-    $e("gene-input").placeholder = expr.bySymbol.size ? "Gene symbol, e.g. CNTNAP2" : "probe_id, e.g. 1058685";
+    $e("gene-input").placeholder = expr.bySymbol.size ? "Gene, probe name or probe_id" : "probe_id, e.g. 1058685";
+    buildSearchIndex();
     $e("expr-gene-controls").hidden = false;
   } catch (err) {
     bar.hidden = true;
@@ -893,12 +907,127 @@ async function loadExpressionFiles(files) {
   }
 }
 
-// Probe ids for the typed gene symbol (or a raw probe_id); only probes present in the file
+// Probe ids for a gene symbol, probe name or probe_id; only probes present in the file
 function probesFor(query) {
   const q = query.trim();
-  const ids = expr.bySymbol.get(q) ?? expr.bySymbol.get(q.toUpperCase()) ?? [q];
+  const ids = expr.bySymbol.get(q) ?? expr.bySymbol.get(q.toUpperCase()) ?? [expr.nameToId?.get(q) ?? q];
   return ids.filter(id => expr.rows?.has(id));
 }
+
+// ---------------------------------------------------------------- gene / probe search box
+// Typing lists the best matches (exact, then starts-with, then contains; genes before probes).
+// Arrow keys move through them, Enter or a click picks one. Enter with nothing highlighted
+// picks an exact match if there is one, otherwise lists every partial match.
+const SUGGEST_LIMIT = 12, PARTIAL_LIMIT = 300;
+let searchIndex = [], suggestions = [], activeSuggestion = -1;
+const searchBox = $e("gene-input"), suggestList = $e("gene-suggestions");
+
+function buildSearchIndex() {
+  const symbolOf = new Map();
+  expr.nameToId = new Map();
+  for (const [sym, ids] of expr.bySymbol) for (const id of ids) symbolOf.set(id, sym);
+  searchIndex = [];
+  for (const [sym, ids] of expr.bySymbol) {
+    const n = ids.filter(id => expr.rows.has(id)).length;
+    if (n) searchIndex.push({ kind: "gene", value: sym, keys: [sym.toLowerCase()], text: sym, info: `gene · ${n} probe${n > 1 ? "s" : ""}` });
+  }
+  for (const id of expr.rows.keys()) {
+    const name = expr.probeName.get(id), sym = symbolOf.get(id);
+    if (name) expr.nameToId.set(name, id);
+    searchIndex.push({
+      kind: "probe", value: id, keys: [id.toLowerCase(), (name ?? "").toLowerCase()],
+      text: name && name !== id ? name : id, info: `probe ${id}${sym ? " · " + sym : ""}`,
+    });
+  }
+}
+
+function findMatches(query, limit) {
+  const q = query.trim().toLowerCase();
+  if (!q) return { list: [], total: 0 };
+  const scored = [];
+  for (const entry of searchIndex) {
+    let best = 3;
+    for (const key of entry.keys) {
+      if (!key) continue;
+      if (key === q) { best = 0; break; }
+      if (key.startsWith(q)) best = Math.min(best, 1);
+      else if (key.includes(q)) best = Math.min(best, 2);
+    }
+    if (best < 3) scored.push([best + (entry.kind === "probe" ? 0.5 : 0), entry]);
+  }
+  scored.sort((a, b) => a[0] - b[0] || a[1].text.localeCompare(b[1].text));
+  return { list: scored.slice(0, limit).map(s => s[1]), total: scored.length };
+}
+
+// Bold the matched part of a label (built with text nodes, never innerHTML)
+function highlighted(text, query) {
+  const span = document.createElement("span");
+  span.className = "text";
+  const i = text.toLowerCase().indexOf(query.trim().toLowerCase());
+  if (i < 0 || !query.trim()) { span.textContent = text; return span; }
+  const mark = document.createElement("mark");
+  mark.textContent = text.slice(i, i + query.trim().length);
+  span.append(text.slice(0, i), mark, text.slice(i + query.trim().length));
+  return span;
+}
+
+function showSuggestions(limit) {
+  const query = searchBox.value, { list, total } = findMatches(query, limit);
+  suggestions = list; activeSuggestion = -1;
+  const items = list.map((entry, i) => {
+    const li = document.createElement("li");
+    li.setAttribute("role", "option"); li.id = `suggestion-${i}`;
+    const kind = Object.assign(document.createElement("span"), { className: "kind", textContent: entry.info });
+    li.append(highlighted(entry.text, query), kind);
+    li.addEventListener("mousedown", e => { e.preventDefault(); pickSuggestion(entry); });   // before the box loses focus
+    return li;
+  });
+  const note = text => Object.assign(document.createElement("li"), { className: "note", textContent: text });
+  if (query.trim() && !total) items.push(note(`No gene or probe matches "${query.trim()}".`));
+  else if (total > list.length) items.push(note(`${list.length} of ${total.toLocaleString()} matches · press Enter to list more`));
+  else if (limit === PARTIAL_LIMIT && total) items.unshift(note(`${total.toLocaleString()} partial match${total > 1 ? "es" : ""}`));
+  suggestList.replaceChildren(...items);
+  suggestList.hidden = !items.length;
+  searchBox.setAttribute("aria-expanded", !suggestList.hidden);
+}
+
+function hideSuggestions() {
+  suggestList.hidden = true; activeSuggestion = -1;
+  searchBox.setAttribute("aria-expanded", "false");
+  searchBox.removeAttribute("aria-activedescendant");
+}
+
+function moveActive(step) {
+  if (!suggestions.length) return;
+  activeSuggestion = (activeSuggestion + step + suggestions.length) % suggestions.length;
+  suggestList.querySelectorAll("[role=option]").forEach((li, i) => li.setAttribute("aria-selected", i === activeSuggestion));
+  const li = $e(`suggestion-${activeSuggestion}`);
+  li.scrollIntoView({ block: "nearest" });
+  searchBox.setAttribute("aria-activedescendant", li.id);
+}
+
+function pickSuggestion(entry) {
+  searchBox.value = entry.value;
+  hideSuggestions();
+  onGeneChosen();
+}
+
+searchBox.addEventListener("input", () => showSuggestions(SUGGEST_LIMIT));
+searchBox.addEventListener("focus", () => { if (searchBox.value.trim()) showSuggestions(SUGGEST_LIMIT); });
+searchBox.addEventListener("blur", hideSuggestions);
+searchBox.addEventListener("keydown", e => {
+  if (e.key === "ArrowDown") { e.preventDefault(); if (suggestList.hidden) showSuggestions(SUGGEST_LIMIT); moveActive(1); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); moveActive(-1); }
+  else if (e.key === "Escape") hideSuggestions();
+  else if (e.key === "Enter") {
+    e.preventDefault();
+    if (activeSuggestion >= 0) { pickSuggestion(suggestions[activeSuggestion]); return; }
+    const q = searchBox.value.trim().toLowerCase();
+    const exact = searchIndex.find(entry => entry.keys.includes(q));
+    if (exact) pickSuggestion(exact);
+    else showSuggestions(PARTIAL_LIMIT);
+  }
+});
 
 function onGeneChosen() {
   const query = $e("gene-input").value, ids = probesFor(query), select = $e("probe-select");
@@ -952,7 +1081,6 @@ function initExpressionPanel() {
   });
 }
 $e("expr-files").addEventListener("change", e => { loadExpressionFiles(e.target.files); e.target.value = ""; });
-$e("gene-input").addEventListener("change", onGeneChosen);
 $e("probe-select").addEventListener("change", applyColouring);
 $e("expr-clear").addEventListener("click", () => { $e("gene-input").value = ""; $e("probe-select").hidden = true; clearColouring(); });
 
