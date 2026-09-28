@@ -160,6 +160,8 @@
   <div class="group">
     <span class="label">Brain surface</span>
     <div class="row"><span class="swatch mesh-swatch" style="background:#8fc4ff"></span><input type="checkbox" id="show-brain" checked><label for="show-brain">Cortex, cerebellum and brainstem</label></div>
+    <div class="row"><input type="checkbox" id="show-hippocampus"><label for="show-hippocampus">Hippocampus</label></div>
+    <div class="row"><input type="checkbox" id="show-amygdala"><label for="show-amygdala">Amygdala</label></div>
     <div class="row"><span class="swatch mesh-swatch" style="background:transparent"></span><input type="checkbox" id="mirror"><label for="mirror">Mirror right hemisphere onto the left</label></div>
     <label class="label" for="opacity">Surface opacity</label>
     <input type="range" id="opacity" min="0" max="0.6" step="0.01" value="0.06">
@@ -208,6 +210,18 @@
         <span class="hint">Click a probe name to show it alone. Switch several on to show their average.</span>
       </div>
       <div class="row"><input type="checkbox" id="size-by-z"><label for="size-by-z">Scale point size by z-score</label></div>
+      <div class="row"><input type="checkbox" id="z-filter"><label for="z-filter">Hide samples by z-score</label></div>
+      <div class="group" id="z-filter-controls" hidden>
+        <label class="label" for="z-filter-mode">Show only samples with</label>
+        <select id="z-filter-mode">
+          <option value="above">z at or above the threshold</option>
+          <option value="below">z at or below minus the threshold</option>
+          <option value="beyond">|z| at or above the threshold</option>
+        </select>
+        <label class="label" for="z-threshold">Threshold <span class="count" id="z-threshold-value"></span></label>
+        <input type="range" id="z-threshold" min="0" max="3" step="0.1" value="1">
+        <span class="hint" id="z-filter-note"></span>
+      </div>
       <div class="group" id="expr-scale" hidden>
         <div class="scale-bar"></div>
         <div class="scale-labels"><span id="scale-lo"></span><span id="scale-mid"></span><span id="scale-hi"></span></div>
@@ -249,6 +263,9 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 const toScene = (x, y, z) => [x, z, -y];
 
 const BRAIN_COLOR = 0x8fc4ff;
+// Allen atlas label indices (assets/AllenAtlas.nii.gz; names in niivue-demo-images Allen/AllenAtlas.json)
+const AMYGDALA_LABELS = [16, 17, 18, 19, 20, 21, 22, 23, 24];   // AMY, AAA, CEN, La, BL, BM, CoA, CoP, Me
+const HIPPOCAMPUS_LABELS = [105, 106, 107];                    // HiH, HiB, HiT (head, body, tail)
 
 const statusEl = document.getElementById("status");
 
@@ -311,6 +328,34 @@ function volumeSurface(vol, iso, step = 2) {
   for (let i = 0; i < positions.length; i += 3) {
     // field cell -> original voxel index (block centre) -> MNI mm
     const [x, y, z] = [0, 1, 2].map(a => (positions[i + a] - pad) * step + half);
+    const mni = s.map(r => r[0] * x + r[1] * y + r[2] * z + r[3]);
+    [positions[i], positions[i + 1], positions[i + 2]] = toScene(...mni);
+  }
+  return { positions, indices };
+}
+
+// Surface of a set of atlas labels: binary mask, cropped to its bounding box, box-blurred
+// twice for a smooth outline, then surface nets at 0.5.
+function labelSurface(vol, labels) {
+  const [nx, ny, nz] = vol.dims, want = new Set(labels);
+  let lo = [nx, ny, nz], hi = [-1, -1, -1];
+  for (let z = 0; z < nz; z++) for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) {
+    if (!want.has(vol.data[x + nx * (y + ny * z)])) continue;
+    lo = [Math.min(lo[0], x), Math.min(lo[1], y), Math.min(lo[2], z)];
+    hi = [Math.max(hi[0], x), Math.max(hi[1], y), Math.max(hi[2], z)];
+  }
+  const pad = 3, o = lo.map(v => v - pad), d = hi.map((v, i) => v - lo[i] + 1 + 2 * pad);
+  const [dx, dy, dz] = d, field = new Float32Array(dx * dy * dz);
+  for (let z = 0; z < dz; z++) for (let y = 0; y < dy; y++) for (let x = 0; x < dx; x++) {
+    const X = x + o[0], Y = y + o[1], Z = z + o[2];
+    if (X < 0 || Y < 0 || Z < 0 || X >= nx || Y >= ny || Z >= nz) continue;
+    if (want.has(vol.data[X + nx * (Y + ny * Z)])) field[x + dx * (y + dy * z)] = 1;
+  }
+  for (let pass = 0; pass < 2; pass++) for (let axis = 0; axis < 3; axis++) boxBlur(field, d, axis);
+  const { positions, indices } = surfaceNets(field, d, 0.5);
+  const s = vol.srow;
+  for (let i = 0; i < positions.length; i += 3) {
+    const x = positions[i] + o[0], y = positions[i + 1] + o[1], z = positions[i + 2] + o[2];
     const mni = s.map(r => r[0] * x + r[1] * y + r[2] * z + r[3]);
     [positions[i], positions[i + 1], positions[i + 2]] = toScene(...mni);
   }
@@ -492,15 +537,18 @@ function glassMaterial(color) {
     clipping: true, clippingPlanes: [cutPlane],
   });
 }
-function addSurface(key, positions, indices, color) {
+// Draw order (all in the transparent pass, so renderOrder decides): slice -1, deep structures
+// (hippocampus, amygdala) 0-1, brain 2-3, samples 5+. Structures are drawn before the brain's
+// depth pass writes the outer shell, so they show through the glass brain.
+function addSurface(key, positions, indices, color, order = 2) {
   const geom = new THREE.BufferGeometry();
   geom.setAttribute("position", new THREE.BufferAttribute(positions, 3));
   geom.setIndex(new THREE.BufferAttribute(indices instanceof Uint32Array ? indices : new Uint32Array(indices), 1));
   geom.computeVertexNormals();
-  const depth = new THREE.Mesh(geom, new THREE.MeshBasicMaterial({ colorWrite: false, clippingPlanes: [cutPlane] }));
-  depth.renderOrder = 0;
+  const depth = new THREE.Mesh(geom, new THREE.MeshBasicMaterial({ colorWrite: false, transparent: true, clippingPlanes: [cutPlane] }));
+  depth.renderOrder = order;
   const shade = new THREE.Mesh(geom, glassMaterial(color));
-  shade.renderOrder = 1;
+  shade.renderOrder = order + 1;
   const group = new THREE.Group(); group.add(depth, shade);
   scene.add(group);
   (surfaces[key] ??= []).push({ group, shade });
@@ -550,19 +598,19 @@ function pointsFrom(list, color, size, map = dot) {
       .replace("gl_PointSize = size;", "gl_PointSize = size * pointScale;");
   };
   const cloud = new THREE.Points(geom, material);
-  cloud.renderOrder = 2;
+  cloud.renderOrder = 5;
   return cloud;
 }
 
 // Single-point markers drawn over the cloud. Hover: a larger white dot. Selection: the
 // sample's own colour at SELECT_SCALE × its size, inside a yellow ring.
-function makeMarker(color, map = dot, order = 3) {
+function makeMarker(color, map = dot, order = 6) {
   const m = pointsFrom([{ mni: [0, 0, 0] }], color, pointSize, map);
   m.renderOrder = order; m.visible = false; m.frustumCulled = false; scene.add(m);
   m.material.clippingPlanes = null;   // a selected sample stays marked even when cut away
   return m;
 }
-const hoverMarker = makeMarker(HOVER_COLOR), selectMarker = makeMarker(0xffffff), selectRing = makeMarker(0xffffff, ring, 4);
+const hoverMarker = makeMarker(HOVER_COLOR), selectMarker = makeMarker(0xffffff), selectRing = makeMarker(0xffffff, ring, 7);
 function placeMarker(marker, s) {
   marker.visible = !!s;
   if (s) { marker.geometry.getAttribute("position").set(toScene(...shownMni(s))); marker.geometry.getAttribute("position").needsUpdate = true; }
@@ -634,6 +682,9 @@ function setView(dir, dist = fitDistance()) {
 document.querySelectorAll("[data-view]").forEach(b => b.addEventListener("click", () => setView(VIEWS[b.dataset.view])));
 
 document.getElementById("show-brain").addEventListener("change", e => (surfaces.brain ?? []).forEach(s => (s.group.visible = e.target.checked)));
+for (const key of ["hippocampus", "amygdala"]) {
+  document.getElementById(`show-${key}`).addEventListener("change", e => (surfaces[key] ?? []).forEach(s => (s.group.visible = e.target.checked)));
+}
 
 document.getElementById("mirror").addEventListener("change", e => {
   mirrored = e.target.checked;
@@ -668,7 +719,7 @@ function pick(e) {
   raycaster.params.Points.threshold = pointSize * 0.6;
   raycaster.setFromCamera(mouse, camera);
   const hit = raycaster.intersectObjects(donorClouds.filter(c => c.visible))
-    .find(h => sampleShown(shownMni(h.object.userData.items[h.index])));   // ignore samples cut away
+    .find(h => { const s = h.object.userData.items[h.index]; return sampleShown(shownMni(s)) && passesZ(s); });   // ignore hidden samples
   return hit ? hit.object.userData.items[hit.index] : null;
 }
 
@@ -752,6 +803,7 @@ function setupSlice(vol) {
   sliceMesh = new THREE.Mesh(geom, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, transparent: true, alphaTest: 0.05 }));
   sliceMesh.visible = false;
   sliceMesh.frustumCulled = false;
+  sliceMesh.renderOrder = -1;
   scene.add(sliceMesh);
 }
 
@@ -1124,11 +1176,36 @@ function onGeneChosen() {
 
 function setScaleNote(text) { $e("expr-scale").hidden = false; $e("scale-note").textContent = text; }
 
-// Per-point size factors: z-score sizing on the coloured donor when switched on, else 1
+// z-score filter: when on, samples of the coloured donor outside the chosen range are hidden
+// (drawn at size 0 and not hoverable). Other donors, which have no z-score, are unaffected.
+function passesZ(s) {
+  if (!$e("z-filter").checked || !s.expr) return true;
+  const t = +$e("z-threshold").value, z = s.expr.z;
+  switch ($e("z-filter-mode").value) {
+    case "above": return z >= t;
+    case "below": return z <= -t;
+    default: return Math.abs(z) >= t;
+  }
+}
+
+function updateZFilter() {
+  const on = $e("z-filter").checked, t = +$e("z-threshold").value;
+  $e("z-filter-controls").hidden = !on;
+  $e("z-threshold-value").textContent = t.toFixed(1);
+  const coloured = samples.filter(s => s.expr);
+  $e("z-filter-note").textContent = on && coloured.length
+    ? `${coloured.filter(passesZ).length} of ${coloured.length} samples of donor ${expr.donor} shown.`
+    : on ? "Choose a gene first: the filter uses its z-scores." : "";
+  if (hovered && !passesZ(hovered)) setHovered(null);   // the selection is kept even if hidden
+  applyScales();
+}
+
+// Per-point size factors: z-score sizing on the coloured donor when switched on, else 1;
+// 0 hides a sample that the z-score filter leaves out
 function applyScales() {
   for (const cloud of donorClouds) {
     const attr = cloud.geometry.getAttribute("pointScale");
-    cloud.userData.items.forEach((s, i) => attr.setX(i, sampleScale(s)));
+    cloud.userData.items.forEach((s, i) => attr.setX(i, passesZ(s) ? sampleScale(s) : 0));
     attr.needsUpdate = true;
   }
   updateSelectMarker(); updateHoverMarker();
@@ -1151,7 +1228,7 @@ function applyColouring() {
   $e("scale-mid").textContent = mean.toFixed(1);
   $e("scale-hi").textContent = (mean + Z_CLIP * sd).toFixed(1);
   setScaleNote(`${label}, donor ${expr.donor}: log2 expression, mean ± ${Z_CLIP} SD across its ${items.length} samples. Other donors are grey.`);
-  applyScales();
+  updateZFilter();   // also re-applies point sizes
   showReadout();
 }
 
@@ -1159,7 +1236,7 @@ function clearColouring() {
   for (const s of samples) delete s.expr;
   for (const c of donorClouds) paintCloud(c, () => SAMPLE_COLOR);
   $e("expr-scale").hidden = true;
-  applyScales();
+  updateZFilter();
   showReadout();
 }
 
@@ -1177,6 +1254,8 @@ function initExpressionPanel() {
 }
 $e("expr-files").addEventListener("change", e => { loadExpressionFiles(e.target.files); e.target.value = ""; });
 $e("size-by-z").addEventListener("change", applyScales);
+for (const id of ["z-filter", "z-filter-mode"]) $e(id).addEventListener("change", updateZFilter);
+$e("z-threshold").addEventListener("input", updateZFilter);
 $e("expr-clear").addEventListener("click", () => { $e("gene-input").value = ""; $e("probe-box").hidden = true; hideSuggestions(); clearColouring(); });
 
 function resize() {
@@ -1193,8 +1272,9 @@ window.viewer = { THREE, scene, camera, controls, setView, toScene, get samples(
 
 // ---------------------------------------------------------------- go
 try {
-  const [t1Bytes, sampleText] = await Promise.all([
+  const [t1Bytes, atlasBytes, sampleText] = await Promise.all([
     fetchBytes("assets/mni152.nii.gz"),
+    fetchBytes("assets/AllenAtlas.nii.gz"),
     fetchRaw("SampleAnnot_all.csv").then(b => new TextDecoder().decode(b)),
   ]);
   statusEl.textContent = "Building brain surface…";
@@ -1208,6 +1288,13 @@ try {
   brainGeometry.computeBoundingBox();
   brainGeometry.boundingBox.getCenter(brainCenter);
   focusOn(brainCenter, true);
+  // Hippocampus and amygdala from the Allen atlas (ICBM2009sym, MNI), off until switched on
+  const atlas = parseNifti(atlasBytes);
+  for (const [key, labels, color] of [["hippocampus", HIPPOCAMPUS_LABELS, 0xffc46b], ["amygdala", AMYGDALA_LABELS, 0xff86b8]]) {
+    const mesh = labelSurface(atlas, labels);
+    addSurface(key, mesh.positions, mesh.indices, color, 0);
+    surfaces[key].forEach(s => (s.group.visible = document.getElementById(`show-${key}`).checked));
+  }
   const list = parseSamples(sampleText);
   addSamples(list);
   initExpressionPanel();
