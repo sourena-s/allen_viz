@@ -1025,17 +1025,41 @@ function drawSlice(axis, pos) {
 
 // Expression interpolated onto the slice: Gaussian kernel regression (Nadaraya-Watson) of the
 // samples' z-scores, weight exp(-d²/2σ²) on 3D distance, so samples off the plane count less.
+// The bandwidth is adaptive: each sample's σ is the distance to its k-th nearest sample with
+// data (clamped), so densely sampled regions keep detail and sparse ones are smoothed more.
 // Each sample is splatted into the pixels within 3σ, so the cost scales with the samples near
 // the cut, not with pixels × samples. Opacity follows the summed weight, so the colour fades
 // out where no sample is close; only brain voxels (above the background level) are coloured.
-const INTERP_SIGMA = 6, INTERP_OPACITY = 0.8;   // mm; strongest overlay opacity
+const INTERP_K = 6, INTERP_SIGMA_MIN = 3, INTERP_SIGMA_MAX = 15, INTERP_OPACITY = 0.8;   // neighbours; mm; strongest overlay opacity
+let interpSigmas = null;   // { key, map: sample -> σ }, rebuilt when the coloured samples or mirroring change
+function sampleSigmas() {
+  const pts = samples.filter(s => s.expr && Number.isFinite(s.expr.z));
+  const key = `${pts.length}|${pts[0]?.expr.label}|${mirrored}`;
+  if (interpSigmas?.key === key && pts.every(s => interpSigmas.map.has(s))) return interpSigmas.map;
+  const xyz = pts.map(shownMni), map = new Map(), k = Math.max(1, Math.min(INTERP_K, pts.length - 1));
+  const best = new Float64Array(k);   // the k smallest squared distances, ascending
+  xyz.forEach((a, i) => {
+    best.fill(Infinity);
+    xyz.forEach((b, j) => {
+      if (i === j) return;
+      const d = (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2;
+      if (d >= best[k - 1]) return;
+      let q = k - 1;
+      while (q > 0 && best[q - 1] > d) { best[q] = best[q - 1]; q--; }
+      best[q] = d;
+    });
+    map.set(pts[i], Math.min(INTERP_SIGMA_MAX, Math.max(INTERP_SIGMA_MIN, Math.sqrt(best[k - 1]))));
+  });
+  interpSigmas = { key, map };
+  return map;
+}
 const interpOn = () => document.getElementById("cut-interp").checked && colouringActive();
 function overlayExpression(px, axis, pos, k, u, v, nu, nv) {
-  const srow = t1.srow, du = Math.abs(srow[u][u]), dv = Math.abs(srow[v][v]);
-  const R = 3 * INTERP_SIGMA, inv = 1 / (2 * INTERP_SIGMA * INTERP_SIGMA);
+  const srow = t1.srow, du = Math.abs(srow[u][u]), dv = Math.abs(srow[v][v]), sigmas = sampleSigmas();
   const W = new Float32Array(nu * nv), WZ = new Float32Array(nu * nv);
   for (const s of samples) {
     if (!s.expr || !Number.isFinite(s.expr.z)) continue;
+    const sg = sigmas.get(s), R = 3 * sg, inv = 1 / (2 * sg * sg);
     const m = shownMni(s), off = m[axis] - pos;
     if (Math.abs(off) > R) continue;
     const cu = (m[u] - srow[u][3]) / srow[u][u], cv = (m[v] - srow[v][3]) / srow[v][v];
