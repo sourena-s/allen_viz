@@ -169,6 +169,30 @@
   body.phone .ribbon-names { width: 96px; }
   body.phone.panel-open #ribbon { display: none; }
 
+  /* Donor data download dialog */
+  #dl-dialog {
+    width: min(420px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); box-sizing: border-box; padding: 0;
+    border-radius: 16px; color: var(--ink); background: rgba(28, 32, 38, 0.92); overflow-y: auto;
+  }
+  #dl-dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
+  #dl-dialog form { display: flex; flex-direction: column; gap: 14px; margin: 0; padding: 18px; }
+  #dl-dialog h2 { margin: 0; font-size: 15px; font-weight: 600; }
+  #dl-dialog .row .count { margin-left: auto; }
+  .dl-folder { display: flex; align-items: center; gap: 8px; }
+  .dl-folder code { flex: 1; min-width: 0; font: 12px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dl-folder .text-button { flex: none; padding: 6px 12px; }
+  .dl-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .dl-actions .text-button { padding: 7px 16px; }
+  .dl-actions .primary { background: rgba(217, 224, 231, 0.85); color: #0b0d10; border-color: transparent; }
+  .dl-actions .primary:hover { background: #fff; }
+  .dl-actions .primary:disabled { opacity: .4; cursor: default; }
+  #dl-log { display: flex; flex-direction: column; gap: 2px; }
+  .expr-buttons { display: flex; flex-direction: column; gap: 6px; }
+  body.phone #dl-dialog { width: 100vw; max-width: none; max-height: 88dvh; margin: auto 0 0; border-radius: 22px 22px 0 0; }
+  body.phone #dl-dialog form { padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px)); }
+  body.phone #dl-dialog h2 { font-size: 18px; }
+  body.phone .dl-folder .text-button, body.phone .dl-actions .text-button { padding: 12px 16px; }
+
   .panel-toggle {
     display: none; position: fixed; z-index: 2; left: 50%; transform: translateX(-50%);
     bottom: calc(14px + env(safe-area-inset-bottom, 0px));
@@ -289,9 +313,13 @@
     <span class="label">Gene expression</span>
     <label class="label" for="expr-donor">Donor</label>
     <select id="expr-donor"></select>
-    <span class="hint">Choose that donor's MicroarrayExpression.csv, and Probes.csv to search by gene symbol. Files are read on this device only.</span>
-    <label class="file-button" for="expr-files">Choose files…</label>
-    <input type="file" id="expr-files" multiple accept=".csv,.txt,.gz" hidden>
+    <span class="hint">Download donors from the Allen Institute, or choose that donor's MicroarrayExpression.csv and Probes.csv (or its .zip). Files are read on this device only.</span>
+    <div class="expr-buttons">
+      <button class="text-button" id="dl-open" type="button">Download donor data…</button>
+      <button class="text-button" id="dl-load" type="button" hidden>Load saved donors</button>
+      <label class="file-button" for="expr-files">Choose files…</label>
+    </div>
+    <input type="file" id="expr-files" multiple accept=".csv,.txt,.gz,.zip" hidden>
     <div class="progress" id="expr-progress" hidden><div></div></div>
     <div id="expr-list" class="hint"></div>
     <div class="group" id="expr-gene-controls" hidden>
@@ -356,6 +384,31 @@
   </div>
 </section>
 <div id="ribbon-tip" hidden></div>
+
+<dialog id="dl-dialog" class="glass" aria-labelledby="dl-title">
+  <form method="dialog">
+    <div>
+      <h2 id="dl-title">Download donor data</h2>
+      <p class="sub">Normalized microarray data from <a href="https://human.brain-map.org/static/download" target="_blank" rel="noopener" style="color:inherit">human.brain-map.org</a>, about 0.5–1 GB per donor.</p>
+    </div>
+    <div class="group">
+      <span class="label">Donors</span>
+      <div id="dl-donors"></div>
+    </div>
+    <div class="group" id="dl-folder-group">
+      <span class="label">Save and unzip into</span>
+      <div class="dl-folder"><code id="dl-folder">No folder chosen</code><button class="text-button" id="dl-pick" type="button">Choose folder…</button></div>
+      <span class="hint">Each donor goes into its own subfolder. The folder is remembered in this browser for later visits.</span>
+    </div>
+    <span class="hint" id="dl-nofs" hidden>This browser can't save into a folder (that needs Chrome or Edge on a computer). The zips download normally instead: then use <b>Choose files…</b> and pick a donor's .zip.</span>
+    <div class="progress" id="dl-progress" hidden><div></div></div>
+    <div id="dl-log" class="hint"></div>
+    <div class="dl-actions">
+      <button class="text-button" value="cancel" id="dl-close">Close</button>
+      <button class="text-button primary" type="button" id="dl-start" disabled>Download</button>
+    </div>
+  </form>
+</dialog>
 
 <div id="readout" class="glass"><div class="name">Hover or click a sample</div><div class="meta">MNI x, y, z (mm)</div></div>
 <div id="status">Loading meshes…</div>
@@ -1120,7 +1173,7 @@ function setExprStatus(lines) {
 // Stream the expression file line by line so the whole text never sits in memory;
 // each probe's values are kept as a Float32Array keyed by probe_id.
 async function readExpressionFile(file, onProgress) {
-  let stream = file.stream();
+  let stream = await file.stream();   // zip entries return a promise
   const gz = file.name.toLowerCase().endsWith(".gz");
   if (gz) stream = stream.pipeThrough(new DecompressionStream("gzip"));
   const reader = stream.pipeThrough(new TextDecoderStream()).getReader();
@@ -1164,8 +1217,13 @@ async function readProbesFile(file) {
   return { probeName, bySymbol };
 }
 
-async function loadExpressionFiles(files) {
-  const donor = $e("expr-donor").value;
+async function loadExpressionFiles(files, donor = $e("expr-donor").value) {
+  files = [...files];
+  const zip = files.find(f => /\.zip$/i.test(f.name));
+  if (zip) {
+    try { files = await zipEntries(zip); }
+    catch (err) { setExprStatus([`${zip.name}: ${err.message}`]); return; }
+  }
   const cloud = donorClouds.find(c => c.userData.donor === donor);
   const exprFile = [...files].find(f => /microarrayexpression/i.test(f.name));
   const probesFile = [...files].find(f => /^probes/i.test(f.name));
@@ -1440,6 +1498,231 @@ function initExpressionPanel() {
   });
 }
 $e("expr-files").addEventListener("change", e => { loadExpressionFiles(e.target.files); e.target.value = ""; });
+
+// ---------------------------------------------------------------- zip reading
+// Reads a .zip (a File or Blob) through its central directory, so entries are sliced out and
+// inflated as streams without loading the archive. Supports ZIP64 and stored/deflated entries.
+// Returns file-like objects ({ name, size, stream(), text() }) that the readers above accept.
+async function zipEntries(blob) {
+  const u8 = async (a, b) => new Uint8Array(await blob.slice(a, b).arrayBuffer());
+  const tailStart = Math.max(0, blob.size - 65557);
+  const tail = await u8(tailStart, blob.size);
+  const tv = new DataView(tail.buffer);
+  let eocd = -1;
+  for (let i = tail.length - 22; i >= 0; i--) if (tv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  if (eocd < 0) throw new Error("not a zip file");
+  let count = tv.getUint16(eocd + 10, true), cdSize = tv.getUint32(eocd + 12, true), cdOff = tv.getUint32(eocd + 16, true);
+  if (eocd >= 20 && tv.getUint32(eocd - 20, true) === 0x07064b50) {   // ZIP64 end record
+    const z = new DataView((await u8(Number(tv.getBigUint64(eocd - 12, true)), blob.size)).buffer);
+    count = Number(z.getBigUint64(32, true)); cdSize = Number(z.getBigUint64(40, true)); cdOff = Number(z.getBigUint64(48, true));
+  }
+  const cd = await u8(cdOff, cdOff + cdSize), v = new DataView(cd.buffer), dec = new TextDecoder();
+  const out = [];
+  for (let i = 0, p = 0; i < count; i++) {
+    if (v.getUint32(p, true) !== 0x02014b50) throw new Error("damaged zip directory");
+    const method = v.getUint16(p + 10, true);
+    let comp = v.getUint32(p + 20, true), size = v.getUint32(p + 24, true);
+    const nLen = v.getUint16(p + 28, true), xLen = v.getUint16(p + 30, true), cLen = v.getUint16(p + 32, true);
+    let local = v.getUint32(p + 42, true);
+    const path = dec.decode(cd.subarray(p + 46, p + 46 + nLen));
+    for (let x = p + 46 + nLen; x < p + 46 + nLen + xLen;) {   // ZIP64 sizes/offset
+      const id = v.getUint16(x, true), len = v.getUint16(x + 2, true);
+      if (id === 1) {
+        let q = x + 4;
+        if (size === 0xffffffff) { size = Number(v.getBigUint64(q, true)); q += 8; }
+        if (comp === 0xffffffff) { comp = Number(v.getBigUint64(q, true)); q += 8; }
+        if (local === 0xffffffff) local = Number(v.getBigUint64(q, true));
+      }
+      x += 4 + len;
+    }
+    p += 46 + nLen + xLen + cLen;
+    if (path.endsWith("/")) continue;
+    const stream = async () => {
+      const h = new DataView((await u8(local, local + 30)).buffer);
+      const start = local + 30 + h.getUint16(26, true) + h.getUint16(28, true);
+      const raw = blob.slice(start, start + comp).stream();
+      if (method === 0) return raw;
+      if (method === 8) return raw.pipeThrough(new DecompressionStream("deflate-raw"));
+      throw new Error(`${path}: unsupported compression`);
+    };
+    out.push({ name: path.split("/").pop(), path, size, stream, text: async () => new Response(await stream()).text() });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- donor data download
+// The donor ids in SampleAnnot_all.csv are the Allen "well known file" ids of each donor's
+// normalized microarray zip. Where the browser has the File System Access API (Chrome, Edge),
+// the zips are streamed into a folder the user picks, unzipped into one subfolder per donor
+// and the zip removed; the folder handle is kept in IndexedDB (and its name in a cookie) so
+// later visits can load the saved donors without downloading again. Elsewhere the zips
+// download as normal files, to be loaded with "Choose files…".
+const DONOR_NAMES = {
+  178238387: "H0351.2001", 178238373: "H0351.2002", 178238359: "H0351.1009",
+  178238316: "H0351.1012", 178238266: "H0351.1015", 178236545: "H0351.1016",
+};
+const donorLabel = d => DONOR_NAMES[d] ? `${DONOR_NAMES[d]} (${d})` : d;
+const donorUrl = d => `https://human.brain-map.org/api/v2/well_known_file_download/${d}`;
+const hasFsAccess = "showDirectoryPicker" in window;
+const DIR_COOKIE = "allen-data-dir";
+let dataDir = null;   // FileSystemDirectoryHandle
+
+function idb(mode, fn) {
+  return new Promise((resolve, reject) => {
+    const open = indexedDB.open("allen-viz", 1);
+    open.onupgradeneeded = () => open.result.createObjectStore("kv");
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const tx = open.result.transaction("kv", mode), req = fn(tx.objectStore("kv"));
+      tx.oncomplete = () => resolve(req.result);
+      tx.onerror = () => reject(tx.error);
+    };
+  });
+}
+const readCookie = name => decodeURIComponent(document.cookie.split("; ").find(c => c.startsWith(name + "="))?.split("=")[1] ?? "");
+function rememberDir(handle) {
+  dataDir = handle;
+  document.cookie = `${DIR_COOKIE}=${encodeURIComponent(handle.name)}; max-age=31536000; path=/; SameSite=Lax`;
+  idb("readwrite", st => st.put(handle, "dataDir")).catch(console.error);
+  showDataDir();
+}
+function showDataDir() {
+  const name = dataDir?.name ?? readCookie(DIR_COOKIE);
+  $e("dl-folder").textContent = name ? `${name}/` : "No folder chosen";
+  $e("dl-pick").textContent = name ? "Change…" : "Choose folder…";
+  $e("dl-load").hidden = !dataDir;
+  if (dataDir) $e("dl-load").textContent = `Load saved donors from ${dataDir.name}/`;
+  updateDownloadButton();
+}
+async function dirPermission(handle, ask) {
+  const opts = { mode: "readwrite" };
+  if ((await handle.queryPermission(opts)) === "granted") return true;
+  return ask && (await handle.requestPermission(opts)) === "granted";
+}
+// Donors whose subfolder already holds the unzipped expression and probes files
+async function savedDonors() {
+  const found = new Map();
+  if (!dataDir || !(await dirPermission(dataDir, false))) return found;
+  for (const d of donors()) {
+    try {
+      const sub = await dataDir.getDirectoryHandle(d);
+      const files = [];
+      for await (const h of sub.values()) if (h.kind === "file" && /^(microarrayexpression|probes).*\.csv$/i.test(h.name)) files.push(await h.getFile());
+      if (files.some(f => /^microarrayexpression/i.test(f.name))) found.set(d, files);
+    } catch { /* no subfolder yet */ }
+  }
+  return found;
+}
+const dlLog = lines => $e("dl-log").replaceChildren(...lines.map(t => Object.assign(document.createElement("span"), { textContent: t })));
+const chosenDownloads = () => [...$e("dl-donors").querySelectorAll("input:checked")].map(b => b.value);
+function updateDownloadButton() {
+  const n = chosenDownloads().length;
+  $e("dl-start").disabled = !n || (hasFsAccess && !dataDir);
+  $e("dl-start").textContent = n ? `Download ${n} donor${n > 1 ? "s" : ""}` : "Download";
+}
+
+async function openDownloadDialog() {
+  const saved = await savedDonors().catch(() => new Map());
+  $e("dl-donors").replaceChildren(...donors().map(d => {
+    const row = document.createElement("div");
+    row.className = "row";
+    const box = Object.assign(document.createElement("input"), { type: "checkbox", id: `dl-${d}`, value: d, checked: !saved.has(d) && !expr.byDonor.has(d) });
+    const label = Object.assign(document.createElement("label"), { htmlFor: box.id, textContent: `Donor ${donorLabel(d)}` });
+    const note = Object.assign(document.createElement("span"), { className: "count", textContent: saved.has(d) ? "saved" : expr.byDonor.has(d) ? "loaded" : "" });
+    box.addEventListener("change", updateDownloadButton);
+    row.append(box, label, note);
+    return row;
+  }));
+  $e("dl-folder-group").hidden = !hasFsAccess;
+  $e("dl-nofs").hidden = hasFsAccess;
+  dlLog([]);
+  showDataDir();
+  $e("dl-dialog").showModal();
+}
+
+async function pickDataDir() {
+  try {
+    const handle = await showDirectoryPicker({ id: "allen-data", mode: "readwrite", startIn: dataDir ?? "downloads" });
+    rememberDir(handle);
+  } catch (err) { if (err.name !== "AbortError") dlLog([err.message]); }
+}
+
+// Stream one donor's zip into <folder>/<donor>/, unzip it there and delete the zip
+async function downloadDonor(d, onProgress) {
+  const sub = await dataDir.getDirectoryHandle(d, { create: true });
+  const zipName = `${d}.zip`;
+  const res = await fetch(donorUrl(d));
+  if (!res.ok) throw new Error(`server answered ${res.status}`);
+  const total = +res.headers.get("content-length") || 0;
+  let got = 0;
+  const counter = new TransformStream({ transform(chunk, ctl) { got += chunk.length; onProgress("Downloading", got, total); ctl.enqueue(chunk); } });
+  const zipHandle = await sub.getFileHandle(zipName, { create: true });
+  await res.body.pipeThrough(counter).pipeTo(await zipHandle.createWritable());
+  const entries = await zipEntries(await zipHandle.getFile());
+  for (const [i, e] of entries.entries()) {
+    onProgress(`Unzipping ${e.name} (${i + 1}/${entries.length})`, 0, 0);
+    const out = await sub.getFileHandle(e.name, { create: true });
+    await (await e.stream()).pipeTo(await out.createWritable());
+  }
+  await sub.removeEntry(zipName);
+}
+
+async function startDownloads() {
+  const list = chosenDownloads();
+  if (!list.length) return;
+  if (!hasFsAccess) {   // plain browser downloads
+    for (const d of list) Object.assign(document.createElement("a"), { href: donorUrl(d), download: "", target: "_blank", rel: "noopener" }).click();
+    dlLog([`Started ${list.length} download${list.length > 1 ? "s" : ""}. When done, use Choose files… with a donor's .zip (select that donor first).`]);
+    return;
+  }
+  if (!(await dirPermission(dataDir, true))) { dlLog([`No permission to write to ${dataDir.name}/.`]); return; }
+  if (!confirm(`Download and unzip ${list.length} donor${list.length > 1 ? "s" : ""} (about 0.5–1 GB each) into “${dataDir.name}/”?\n\nEach donor gets its own subfolder, e.g. ${dataDir.name}/${list[0]}/`)) return;
+  const bar = $e("dl-progress"), fill = bar.firstElementChild, done = [];
+  $e("dl-start").disabled = true;
+  bar.hidden = false;
+  for (const [i, d] of list.entries()) {
+    const head = `Donor ${donorLabel(d)} (${i + 1} of ${list.length})`;
+    try {
+      await downloadDonor(d, (what, got, total) => {
+        fill.style.width = total ? `${(got / total * 100).toFixed(1)}%` : "100%";
+        dlLog([...done, `${head}: ${what}${got ? ` ${(got / 1e6).toFixed(0)}${total ? ` of ${(total / 1e6).toFixed(0)}` : ""} MB` : "…"}`]);
+      });
+      done.push(`Donor ${donorLabel(d)}: saved to ${dataDir.name}/${d}/`);
+    } catch (err) {
+      console.error(err);
+      // A TypeError from fetch means the server refused a cross-site download (CORS) or the
+      // network failed: fall back to a normal download the user unzips themselves
+      if (err instanceof TypeError) {
+        Object.assign(document.createElement("a"), { href: donorUrl(d), target: "_blank", rel: "noopener" }).click();
+        done.push(`Donor ${donorLabel(d)}: the Allen server blocked a direct download, so it opened as a normal download. Unzip it into ${dataDir.name}/${d}/, or load the .zip with Choose files…`);
+      } else done.push(`Donor ${donorLabel(d)}: failed (${err.message})`);
+    }
+    dlLog(done);
+  }
+  bar.hidden = true;
+  updateDownloadButton();
+  await loadSavedDonors(false);
+}
+
+// Load every donor already unzipped in the saved folder
+async function loadSavedDonors(ask = true) {
+  if (!dataDir) return;
+  if (!(await dirPermission(dataDir, ask))) { setExprStatus([`Allow access to ${dataDir.name}/ to load the saved donors.`]); return; }
+  const saved = await savedDonors();
+  if (!saved.size) { setExprStatus([`No unzipped donors found in ${dataDir.name}/ yet.`]); return; }
+  for (const [d, files] of saved) {
+    if (expr.byDonor.has(d)) continue;
+    $e("expr-donor").value = d;
+    await loadExpressionFiles(files, d);
+  }
+}
+
+$e("dl-open").addEventListener("click", openDownloadDialog);
+$e("dl-pick").addEventListener("click", pickDataDir);
+$e("dl-start").addEventListener("click", startDownloads);
+$e("dl-load").addEventListener("click", () => loadSavedDonors(true));
+$e("dl-dialog").addEventListener("click", e => { if (e.target === $e("dl-dialog")) $e("dl-dialog").close(); });   // tap outside
+if (hasFsAccess) idb("readonly", st => st.get("dataDir")).then(h => { if (h) { dataDir = h; showDataDir(); } }).catch(() => {});
 $e("size-by-z").addEventListener("change", applyScales);
 for (const id of ["z-filter", "z-filter-mode"]) $e(id).addEventListener("change", updateZFilter);
 $e("z-threshold").addEventListener("input", updateZFilter);
