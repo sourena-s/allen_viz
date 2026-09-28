@@ -143,7 +143,11 @@
     max-width: min(320px, calc(100vw - 32px)); border-radius: 14px; padding: 11px 14px;
     pointer-events: none;
   }
-  #readout .name { font-weight: 500; }
+  #readout .name { font-weight: 500; font-size: 12px; }
+  #readout { pointer-events: auto !important; cursor: pointer; padding: 7px 12px !important; }
+  #readout.empty { cursor: default; }
+  #readout .more { display: none; }
+  #readout.open .more { display: block; }
   #readout .meta { font: 11.5px var(--mono); color: var(--muted); margin-top: 3px; }
   #status { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); color: var(--muted); font: 12px var(--mono); }
 
@@ -374,9 +378,9 @@
       <div class="row"><input type="checkbox" id="cut-band"><label for="cut-band">Only samples near the cut</label></div>
       <div class="row"><input type="checkbox" id="cut-interp"><label for="cut-interp">Interpolated expression on the slice</label></div>
       <span class="hint" id="cut-interp-note" hidden></span>
-      <div class="group" id="band-controls" hidden>
-        <label class="label" for="cut-tol">Distance from cut <span class="count" id="cut-tol-value"></span></label>
-        <input type="range" id="cut-tol" min="1" max="10" step="1" value="5">
+      <div class="group" id="band-controls">
+        <label class="label" for="cut-tol">Slab around the cut <span class="count" id="cut-tol-value"></span></label>
+        <input type="range" id="cut-tol" min="1" max="10" step="1" value="3">
       </div>
     </div>
   </div>
@@ -832,7 +836,7 @@ const dot = (() => {
 const ring = (() => {
   const c = document.createElement("canvas"); c.width = c.height = 64;
   const g = c.getContext("2d");
-  g.lineWidth = 10; g.strokeStyle = "#ffd21f"; g.beginPath(); g.arc(32, 32, 26, 0, Math.PI * 2); g.stroke();
+  g.lineWidth = 12; g.strokeStyle = "#ffd21f"; g.beginPath(); g.arc(32, 32, 25, 0, Math.PI * 2); g.stroke();
   return new THREE.CanvasTexture(c);
 })();
 
@@ -878,9 +882,7 @@ function makeMarker(color, map = dot, order = 6) {
 const hoverMarker = makeMarker(HOVER_COLOR), selectMarker = makeMarker(0xffffff), selectRing = makeMarker(0xffd21f, ring, 7);
 // The yellow ring is drawn over everything, so a selected sample behind the brain still shows
 selectRing.material.depthTest = false;
-// Fixed on-screen size (px), so the ring stays visible however far the view is zoomed out
-selectRing.material.sizeAttenuation = false;
-selectRing.material.size = 22;
+
 function placeMarker(marker, s) {
   marker.visible = !!s;
   if (s) { marker.geometry.getAttribute("position").set(toScene(...shownMni(s))); marker.geometry.getAttribute("position").needsUpdate = true; }
@@ -898,6 +900,7 @@ function updateSelectMarker() {
   const size = pointSize * sampleScale(selected) * SELECT_SCALE;
   selectMarker.material.color.set(sampleColor(selected));
   selectMarker.material.size = size;
+  selectRing.material.size = size * 1.6;   // just around the dot
 }
 function updateHoverMarker() {
   const s = hovered && hovered !== selected ? hovered : null;
@@ -992,18 +995,25 @@ function pick(e) {
   return hit ? hit.object.userData.items[hit.index] : null;
 }
 
+// The box shows only the selected sample's name; clicking it shows the details, which close
+// again when another sample is selected
+let readoutFor = null;
+readout.addEventListener("click", () => { if (selected) readout.classList.toggle("open"); });
 function showReadout() {
   const s = selected;   // details only for a clicked (tapped) sample, not on hover
+  if (s !== readoutFor) { readout.classList.remove("open"); readoutFor = s; }
+  readout.classList.toggle("empty", !s);
   if (!s) {
-    readout.innerHTML = `<div class="name">${document.body.classList.contains("phone") ? "Tap a sample" : "Click a sample"}</div><div class="meta">MNI x, y, z (mm)</div>`;
+    readout.innerHTML = `<div class="name">${document.body.classList.contains("phone") ? "Tap a sample" : "Click a sample"}</div>`;
     return;
   }
-  readout.innerHTML = `<div class="name"></div><div class="meta"></div>`;
+  readout.innerHTML = `<div class="name"></div><div class="meta more"></div>`;
+  readout.title = "Click for details";
   readout.querySelector(".name").textContent = `${s.name} (${s.acronym})`;
   readout.querySelector(".meta").textContent = `Donor ${donorShort(s.donor)} · ${s.slab} · MNI ${s.mni.map(v => v.toFixed(0)).join(", ")}${mirrored && s.mni[0] > 0 ? " (drawn mirrored)" : ""}`;
   if (s.expr) {
     const line = document.createElement("div");
-    line.className = "meta";
+    line.className = "meta more";
     line.textContent = `${s.expr.label}: ${s.expr.value.toFixed(2)} (z = ${s.expr.z >= 0 ? "+" : ""}${s.expr.z.toFixed(2)})`;
     readout.append(line);
   }
@@ -1049,7 +1059,9 @@ function sampleShown(mni) {
   const cut = activeCut();
   if (!cut) return true;
   const v = mni[CUTS[cut].axis], pos = +cutSlider.value;
-  return bandOn() ? Math.abs(v - pos) <= +tolSlider.value : v <= pos;
+  // Beyond the cut only the slab (within the tolerance) is kept; with "only samples near the
+  // cut", the kept side is limited to the slab as well
+  return bandOn() ? Math.abs(v - pos) <= +tolSlider.value : v <= pos + +tolSlider.value;
 }
 
 function setupSlice(vol) {
@@ -1179,7 +1191,6 @@ function updateCut() {
   const cut = activeCut(), pos = +cutSlider.value, tol = +tolSlider.value;
   document.getElementById("cut-controls").hidden = !cut;
   placeRails();
-  document.getElementById("band-controls").hidden = !bandToggle.checked;
   const note = document.getElementById("cut-interp-note");
   note.hidden = !document.getElementById("cut-interp").checked || colouringActive();
   note.textContent = "Choose a gene under Gene expression to see its interpolated values.";
@@ -1190,7 +1201,7 @@ function updateCut() {
     const { axis, letter } = CUTS[cut], dir = AXIS_DIR[axis];
     // Keep coordinate <= pos: plane normal points against the axis direction
     cutPlane.normal.copy(dir).negate(); cutPlane.constant = pos;
-    pointTop.normal.copy(dir).negate(); pointTop.constant = bandOn() ? pos + tol : pos;
+    pointTop.normal.copy(dir).negate(); pointTop.constant = pos + tol;
     pointBottom.normal.copy(dir);       pointBottom.constant = bandOn() ? -(pos - tol) : NO_CUT;
   }
   // Hover follows what is drawn; a selected sample stays selected even if it is cut away
@@ -2378,7 +2389,7 @@ ribbonCanvas.addEventListener("click", e => {
   if (ci >= 0) {
     const s = ribbon.cols[ci].s, cut = activeCut();
     setSelected(s);
-    flashUntil = performance.now() + 2000;
+    flashUntil = performance.now() + 1000;
     if (cut) setCutPos(shownMni(s)[CUTS[cut].axis]);   // move the slice to this sample's level
   }
   const row = ribbon.rows[Math.floor(p.y / (ROW_H + ROW_GAP))];
@@ -2414,7 +2425,7 @@ layoutStage();
 setView([-0.62, 0.35, -0.7].map(v => v / Math.hypot(-0.62, 0.35, -0.7)));
 renderer.setAnimationLoop(() => {
   stepFocus(0.15); controls.update();
-  // A sample picked in the ribbon flashes its yellow ring for 2 s; otherwise the ring is steady
+  // A sample picked in the ribbon flashes its yellow ring for 1 s; otherwise the ring is steady
   const flashing = performance.now() < flashUntil;
   selectRing.visible = !!selected && !(flashing && Math.floor(performance.now() / 110) % 2);
   renderer.render(scene, camera);
