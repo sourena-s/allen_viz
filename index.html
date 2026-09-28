@@ -307,9 +307,9 @@
 
   body.phone #ribbon { left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); padding: 8px; max-height: 42dvh; overflow-y: auto; }
   body.phone #expr-clear { display: none; }
-  body.phone .rname input, body.phone .ribbon-donors input[type=checkbox] { width: 20px; height: 12px; }
-  body.phone .rname input, body.phone .ribbon-donors input[type=checkbox]::after { top: 2px; left: 2px; width: 8px; height: 8px; }
-  body.phone .rname input, body.phone .ribbon-donors input[type=checkbox]:checked::after { transform: translateX(8px); }
+  body.phone .rname input[type=checkbox], body.phone .ribbon-donors input[type=checkbox] { width: 20px; height: 12px; }
+  body.phone .rname input[type=checkbox]::after, body.phone .ribbon-donors input[type=checkbox]::after { top: 2px; left: 2px; width: 8px; height: 8px; }
+  body.phone .rname input[type=checkbox]:checked::after, body.phone .ribbon-donors input[type=checkbox]:checked::after { transform: translateX(8px); }
   body.phone .ribbon-fit { padding: 6px 12px; }
   body.phone #ribbon-tip { max-width: calc(100vw - 24px); }
 </style>
