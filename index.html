@@ -135,7 +135,8 @@
   body.has-ribbon #readout { bottom: calc(var(--ribbon-h, 150px) + 28px + env(safe-area-inset-bottom, 0px)); }
   .ribbon-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; min-width: 0; }
   .ribbon-head .title { font-weight: 600; }
-  .ribbon-head .meta { font: 11px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ribbon-head .meta { flex: 1; min-width: 0; font: 11px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ribbon-fit { flex: none; padding: 3px 12px; font-size: 11px; }
   .ribbon-grid { display: flex; gap: 8px; }
   .ribbon-names { flex: none; width: 92px; padding-top: 34px; display: flex; flex-direction: column; gap: 2px; }
   .rname { height: 16px; line-height: 16px; font: 11px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -286,7 +287,10 @@
 <button class="panel-toggle glass" id="panel-toggle" aria-expanded="false" aria-controls="panel">Controls</button>
 
 <section id="ribbon" class="glass" hidden aria-label="Expression z-score of every sample, one row per probe">
-  <div class="ribbon-head"><span class="title" id="ribbon-title"></span><span class="meta" id="ribbon-meta"></span></div>
+  <div class="ribbon-head">
+    <span class="title" id="ribbon-title"></span><span class="meta" id="ribbon-meta"></span>
+    <button class="text-button ribbon-fit" id="ribbon-fit" type="button" title="Show the whole ribbon (or double-click it). Scroll the wheel over the ribbon to zoom.">Zoom <span id="ribbon-zoom">fit</span></button>
+  </div>
   <div class="ribbon-grid">
     <div class="ribbon-names" id="ribbon-names"></div>
     <div class="ribbon-scroll">
@@ -516,8 +520,11 @@ controls.screenSpacePanning = true;
 // two fingers pinch to zoom and drag to pan.
 controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN };
 controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
-// Stop the browser's middle-click autoscroll so middle-drag can pan
-renderer.domElement.addEventListener("mousedown", e => { if (e.button === 1) e.preventDefault(); });
+// Stop the browser's middle-click autoscroll / paste so middle-drag reaches the pan control.
+// Autoscroll can start on pointerdown or mousedown depending on the browser, so block both.
+for (const type of ["pointerdown", "mousedown", "auxclick"]) {
+  renderer.domElement.addEventListener(type, e => { if (e.button === 1) e.preventDefault(); });
+}
 controls.target.set(0, 5, 15);   // replaced by the brain's centre once the surface is built
 
 // Rotation centre: the brain's centre, or the selected sample. Changing it glides the camera
@@ -626,7 +633,7 @@ const ring = (() => {
 
 // One point cloud per donor so each can be switched off; every sample is the same green.
 const SAMPLE_COLOR = 0x4ade80, HOVER_COLOR = 0xffffff;
-const SELECT_SCALE = 3, HOVER_SCALE = 2;   // marker size relative to the sample's own dot
+const SELECT_SCALE = 1, HOVER_SCALE = 2;   // marker size relative to the sample's own dot (selection: same size)
 let samples = [], donorClouds = [], pointSize = 5.5;
 
 // Mirror mode: right-hemisphere samples (mni_x > 0) are drawn at -x, on the left
@@ -681,7 +688,7 @@ function updateSelectMarker() {
   const size = pointSize * sampleScale(selected) * SELECT_SCALE;
   selectMarker.material.color.set(sampleColor(selected));
   selectMarker.material.size = size;
-  selectRing.material.size = size * 1.3;
+  selectRing.material.size = size * 1.9;   // yellow rim just outside the unchanged dot
 }
 function updateHoverMarker() {
   const s = hovered && hovered !== selected ? hovered : null;
@@ -789,7 +796,7 @@ function showReadout() {
   if (s.expr) {
     const line = document.createElement("div");
     line.className = "meta";
-    line.textContent = `${s.expr.label}: z = ${s.expr.z >= 0 ? "+" : ""}${s.expr.z.toFixed(2)}`;
+    line.textContent = `${s.expr.label}: ${s.expr.value.toFixed(2)} (z = ${s.expr.z >= 0 ? "+" : ""}${s.expr.z.toFixed(2)})`;
     readout.append(line);
   }
 }
@@ -970,9 +977,14 @@ const OTHER_DONOR_COLOR = 0x39414c;
 let zRange = [-2, 2];   // editable in the "Colour range, z" boxes
 const SCALE = [new THREE.Color(0x2166ac), new THREE.Color(0xf7f7f7), new THREE.Color(0xb2182b)];
 // One expression matrix per loaded donor (probe_id -> values in that donor's sample order).
-// Values are used exactly as loaded: they are treated as z-scores, with no transform.
+// For display, values are z-scored within each donor (per probe in the ribbon rows).
 const expr = { byDonor: new Map(), probeName: new Map(), bySymbol: new Map() };
 const loadedDonors = () => [...expr.byDonor.keys()];
+function meanSd(values) {
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const sd = Math.sqrt(values.reduce((a, v) => a + (v - mean) ** 2, 0) / values.length) || 1;
+  return { mean, sd };
+}
 const hasProbe = id => [...expr.byDonor.values()].some(rows => rows.has(id));
 const $e = id => document.getElementById(id);
 
@@ -1074,6 +1086,7 @@ async function loadExpressionFiles(files) {
         throw new Error(`${exprFile.name} has ${nCols} sample columns, but donor ${donor} has ${cloud.userData.items.length} samples. Check that the file belongs to this donor.`);
       }
       expr.byDonor.set(donor, rows);   // adds to (or replaces) this donor; other donors stay loaded
+      ribbon.probeStats.clear();
     }
     bar.hidden = true;
     if (!expr.byDonor.size) { setExprStatus([`Probes loaded (${expr.bySymbol.size.toLocaleString()} genes). Now choose MicroarrayExpression.csv.`]); return; }
@@ -1303,23 +1316,24 @@ function applyColouring() {
   if (!use.length) return;
   const gene = $e("probe-box-title").textContent.split(":")[0];
   const label = use.length > 1 ? `${gene} (mean of ${use.length} probes)` : `${gene === expr.probeName.get(use[0]) ? gene : `${gene} ${expr.probeName.get(use[0]) ?? use[0]}`}`;
-  // Each loaded donor: the value (z-score as loaded, averaged over the chosen probes it has)
+  // Each loaded donor: expression averaged over the chosen probes it has, then z-scored
+  // across that donor's samples (value - donor mean) / donor SD
   for (const s of samples) delete s.expr;
   for (const [donor, rows] of expr.byDonor) {
     const have = use.filter(id => rows.has(id));
     if (!have.length) continue;
-    donorClouds.find(c => c.userData.donor === donor).userData.items.forEach((s, j) => {
-      const z = have.reduce((sum, id) => sum + rows.get(id)[j], 0) / have.length;
-      s.expr = { label, z };
-    });
+    const items = donorClouds.find(c => c.userData.donor === donor).userData.items;
+    const values = items.map((_, j) => have.reduce((sum, id) => sum + rows.get(id)[j], 0) / have.length);
+    const { mean, sd } = meanSd(values);
+    items.forEach((s, j) => { s.expr = { label, value: values[j], z: (values[j] - mean) / sd }; });
   }
   for (const c of donorClouds) paintCloud(c, s => sampleColor(s));
   const [zLo, zHi] = zRange;
-  $e("scale-lo").textContent = `${zLo}`;
+  $e("scale-lo").textContent = `z ${zLo}`;
   $e("scale-mid").textContent = `${(zLo + zHi) / 2}`;
-  $e("scale-hi").textContent = `${zHi}`;
+  $e("scale-hi").textContent = `z ${zHi}`;
   const withData = loadedDonors().filter(d => samples.some(s => s.donor === d && s.expr));
-  setScaleNote(`${label}: z-scores as loaded, coloured from ${zLo} (blue) to ${zHi} (red). Donors with data: ${withData.join(", ") || "none"}. Others are grey.`);
+  setScaleNote(`${label}: z-scored within each donor, coloured from ${zLo} (blue) to ${zHi} (red). Donors with data: ${withData.join(", ") || "none"}. Others are grey.`);
   updateZFilter();   // also re-applies point sizes
   renderRibbon();
   showReadout();
@@ -1406,10 +1420,16 @@ function regionName(s) {
 // all others thin; small gaps separate structures, larger ones subgroups and divisions.
 // There is one row per probe of the chosen gene. Columns of donors that are not loaded, or
 // that lack the probe, are grey.
-const THICK = 4, THIN = 1;                                  // column widths in CSS px
-const GAP_REGION = 1, GAP_GROUP = 5, GAP_DIVISION = 12;     // px between structures / subgroups / divisions
-const ROW_H = 16, ROW_GAP = 2, NO_DATA = "rgba(255,255,255,0.10)";
-const ribbon = { names: new Map(), groupOf: new Map(), cols: [], rows: [], built: false, hoverCol: -1 };
+// By default the whole ribbon fits the available width (thin columns can be narrower than a
+// pixel, so neighbouring samples blend); the mouse wheel zooms in around the cursor, and
+// "Fit" or a double-click returns to the full view.
+const THICK = 4;                                            // hippocampus/amygdala width, in thin-column units
+const GAP_REGION = 0.6, GAP_GROUP = 3, GAP_DIVISION = 8;    // px between structures / subgroups / divisions
+const ROW_H = 16, ROW_GAP = 2, NO_DATA = "rgba(255,255,255,0.10)", MAX_ZOOM = 12;   // canvases wider than ~32k device px fail
+const ribbon = {
+  names: new Map(), groupOf: new Map(), probeStats: new Map(),
+  items: [], spans: [], cols: [], rows: [], built: false, hoverCol: -1, zoom: 1,
+};
 const ribbonCanvas = $e("ribbon-canvas"), ribbonCtx = ribbonCanvas.getContext("2d");
 
 function buildRibbon() {
@@ -1427,39 +1447,78 @@ function buildRibbon() {
   // Column index of each sample within its donor's matrix (the donor's SampleAnnot order)
   for (const c of donorClouds) c.userData.items.forEach((s, j) => (s.column = j));
 
-  const axis = $e("ribbon-axis");
-  axis.replaceChildren();
-  const label = (cls, text, title, x0, x1) => {
-    const el = Object.assign(document.createElement("div"), { className: cls, textContent: text, title });
-    el.style.left = `${x0}px`; el.style.width = `${Math.max(0, x1 - x0)}px`;
-    axis.append(el);
-  };
-  let x = 0;
-  ribbon.cols = [];
+  // Ordered sequence of columns (with their width in thin units) and gaps, plus label spans
+  ribbon.items = []; ribbon.spans = [];
+  let divisionsAdded = 0;
   for (const div of REGION_LAYOUT) {
-    const divStart = x;
-    let divHasCols = false;
+    const divStart = ribbon.items.length;
+    let groupsAdded = 0;
     for (const g of div.groups) {
       const keys = g.keys.filter(k => byRegion.has(k));
       if (!keys.length) continue;
-      if (divHasCols) x += GAP_GROUP;
-      const groupStart = x;
+      if (groupsAdded) ribbon.items.push({ gap: GAP_GROUP });
+      else if (divisionsAdded) ribbon.items.push({ gap: GAP_DIVISION });
+      const groupStart = ribbon.items.length;
       keys.forEach((key, ki) => {
-        if (ki) x += GAP_REGION;
+        if (ki) ribbon.items.push({ gap: GAP_REGION });
         ribbon.groupOf.set(key, `${div.division} · ${g.name}`);
         const list = byRegion.get(key).sort((a, b) =>
           donorOrder.indexOf(a.donor) - donorOrder.indexOf(b.donor) || a.mni[0] - b.mni[0] || b.mni[1] - a.mni[1]);
-        const w = div.wide ? THICK : THIN;
-        for (const s of list) { ribbon.cols.push({ s, x, w }); x += w; }
+        for (const s of list) ribbon.items.push({ s, units: div.wide ? THICK : 1 });
       });
-      label("slabel", g.short ?? g.name, g.name, groupStart, x);
-      divHasCols = true;
+      ribbon.spans.push({ cls: "slabel", text: g.short ?? g.name, title: g.name, from: groupStart, to: ribbon.items.length });
+      groupsAdded++;
     }
-    if (divHasCols) { label("dlabel", div.division, div.division, divStart, x); x += GAP_DIVISION; }
+    if (groupsAdded) {
+      // the division label starts after the gap that precedes it
+      const from = ribbon.items[divStart]?.gap ? divStart + 1 : divStart;
+      ribbon.spans.push({ cls: "dlabel", text: div.division, title: div.division, from, to: ribbon.items.length });
+      divisionsAdded++;
+    }
   }
-  ribbon.width = x - GAP_DIVISION;
-  axis.style.width = `${ribbon.width}px`;
   ribbon.built = true;
+  layoutRibbon();
+}
+
+// Pixel positions for the current width and zoom
+function layoutRibbon() {
+  const scroll = ribbonCanvas.parentElement;
+  const available = Math.max(200, scroll.clientWidth);
+  const gapPx = ribbon.items.reduce((a, it) => a + (it.gap ?? 0), 0);
+  const units = ribbon.items.reduce((a, it) => a + (it.units ?? 0), 0);
+  const unitPx = Math.max(0.02, (available * ribbon.zoom - gapPx) / units);
+  let x = 0;
+  const xs = [];
+  ribbon.cols = [];
+  for (const it of ribbon.items) {
+    xs.push(x);
+    if (it.gap) { x += it.gap; continue; }
+    const w = it.units * unitPx;
+    ribbon.cols.push({ s: it.s, x, w });
+    x += w;
+  }
+  xs.push(x);
+  ribbon.width = x;
+  const axis = $e("ribbon-axis");
+  axis.style.width = `${ribbon.width}px`;
+  axis.replaceChildren(...ribbon.spans.map(sp => {
+    const el = Object.assign(document.createElement("div"), { className: sp.cls, textContent: sp.text, title: sp.title });
+    el.style.left = `${xs[sp.from]}px`; el.style.width = `${Math.max(0, xs[sp.to] - xs[sp.from])}px`;
+    return el;
+  }));
+  // Labels that do not fit are hidden rather than cut to fragments; zooming in reveals them
+  for (const el of axis.children) el.style.visibility = el.scrollWidth > el.clientWidth + 1 ? "hidden" : "";
+  $e("ribbon-zoom").textContent = ribbon.zoom > 1.01 ? `${ribbon.zoom.toFixed(1)}×` : "fit";
+}
+
+function setRibbonZoom(zoom, anchorClientX) {
+  const scroll = ribbonCanvas.parentElement, rect = scroll.getBoundingClientRect();
+  const anchor = anchorClientX ?? rect.left + rect.width / 2;
+  const frac = (scroll.scrollLeft + anchor - rect.left) / Math.max(1, ribbon.width);   // keep this spot under the cursor
+  ribbon.zoom = Math.min(MAX_ZOOM, Math.max(1, zoom));
+  layoutRibbon();
+  drawRibbon();
+  scroll.scrollLeft = frac * ribbon.width - (anchor - rect.left);
 }
 
 // Rows: every probe of the chosen gene; a cell is that sample's value for the probe
@@ -1467,9 +1526,14 @@ function ribbonRows() {
   const ids = probesFor($e("gene-input").value), chosen = new Set(chosenProbes());
   return ids.map(id => ({ id, name: expr.probeName.get(id) ?? id, chosen: chosen.has(id) }));
 }
+// A cell is the probe's z-score for that sample, standardised across the donor's samples
 function cellValue(s, probeId) {
   const rows = expr.byDonor.get(s.donor);
-  return rows?.has(probeId) ? rows.get(probeId)[s.column] : null;
+  if (!rows?.has(probeId)) return null;
+  const key = `${s.donor}|${probeId}`, values = rows.get(probeId);
+  let st = ribbon.probeStats.get(key);
+  if (!st) ribbon.probeStats.set(key, (st = meanSd(values)));
+  return (values[s.column] - st.mean) / st.sd;
 }
 
 function renderRibbon() {
@@ -1525,10 +1589,16 @@ function markPickedRegion() {
     sc.scrollTo({ left: col.x - sc.clientWidth / 2, behavior: "smooth" });
   }
 }
-// The mouse wheel scrolls the ribbon sideways (it is much wider than the screen)
+// Mouse wheel zooms around the cursor (sideways trackpad swipes still scroll); double-click or
+// "Fit" shows the whole ribbon again
 ribbonCanvas.parentElement.addEventListener("wheel", e => {
-  if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { e.currentTarget.scrollLeft += e.deltaY; e.preventDefault(); }
+  if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+  e.preventDefault();
+  setRibbonZoom(ribbon.zoom * Math.exp(-e.deltaY * 0.0015), e.clientX);
 }, { passive: false });
+ribbonCanvas.addEventListener("dblclick", () => setRibbonZoom(1));
+$e("ribbon-fit").addEventListener("click", () => setRibbonZoom(1));
+addEventListener("resize", () => { if (ribbon.built && !$e("ribbon").hidden) { layoutRibbon(); drawRibbon(); } });
 
 // Column under a canvas x position (columns are sorted by x)
 function columnAt(x) {
