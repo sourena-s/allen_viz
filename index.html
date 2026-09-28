@@ -437,12 +437,7 @@ function setView(dir, dist = 420) {
 }
 document.querySelectorAll("[data-view]").forEach(b => b.addEventListener("click", () => setView(VIEWS[b.dataset.view])));
 
-// surfaces.brain[1] is the right cortex (added second in addCortex); it is hidden while mirrored
-function updateSurfaceVisibility() {
-  const show = document.getElementById("show-brain").checked;
-  (surfaces.brain ?? []).forEach((s, i) => (s.group.visible = show && !(mirrored && i === 1)));
-}
-document.getElementById("show-brain").addEventListener("change", updateSurfaceVisibility);
+document.getElementById("show-brain").addEventListener("change", e => (surfaces.brain ?? []).forEach(s => (s.group.visible = e.target.checked)));
 
 document.getElementById("mirror").addEventListener("change", e => {
   mirrored = e.target.checked;
@@ -452,7 +447,6 @@ document.getElementById("mirror").addEventListener("change", e => {
     attr.needsUpdate = true;
     cloud.geometry.computeBoundingSphere();
   }
-  updateSurfaceVisibility();
   placeMarker(selectMarker, selected);
   placeMarker(hoverMarker, hovered && hovered !== selected ? hovered : null);
   showReadout();
