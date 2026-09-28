@@ -1,0 +1,4 @@
+raw/
+*.png
+.Rhistory
+.RData
