@@ -6,6 +6,7 @@ library(ggplot2)
 library(reshape2)
 library(patchwork)
 library(fastICA)
+library(seriation)
 
 donor_ids <- c(178236545, 178238266, 178238316, 178238359, 178238373, 178238387)
 
@@ -130,23 +131,30 @@ gene_clustering <- hclust(gene_distance, method = "average")
 gene_probe_order <- rownames(long_gene_expression)[gene_clustering$order]
 
 # Order samples along the x axis of the heatmap and boxplots.
-#   "ic_similarity": samples with similar IC loadings sit together (the original ordering)
-#   "spatial":       samples close together in the brain (Euclidean distance between
-#                    MNI coordinates, in mm) sit together, whatever the donor
-order_samples <- function(method = c("ic_similarity", "spatial"),
+# Distance between samples:
+#   "spatial":       Euclidean distance between MNI coordinates (mm), whatever the donor
+#   "expression":    Euclidean distance between the samples' long-gene expression profiles
+#   "ic_similarity": Euclidean distance between the samples' 20 IC loadings
+# The samples are clustered (hclust) and the tree is then reordered with optimal leaf
+# ordering (seriation, "OLO"), which flips branches so that neighbours on the axis are
+# as close as possible overall, reducing jumps where branches meet.
+order_samples <- function(method = c("spatial", "expression", "ic_similarity"),
+                          expression = long_gene_expression,
                           ic_loadings = ic_sample_loadings,
                           mni = all_donors_mni,
                           linkage = "average") {
   method <- match.arg(method)
+  samples <- colnames(expression)
   sample_distance <- switch(method,
-    ic_similarity = dist(t(ic_loadings)),
-    spatial       = dist(mni[colnames(ic_loadings), , drop = FALSE])
+    spatial       = dist(mni[samples, , drop = FALSE]),
+    expression    = dist(t(expression)),
+    ic_similarity = dist(t(ic_loadings[, samples, drop = FALSE]))
   )
-  sample_clustering <- hclust(sample_distance, method = linkage)
-  colnames(ic_loadings)[sample_clustering$order]
+  ordering <- seriation::seriate(sample_distance, method = "OLO", control = list(method = linkage))
+  samples[seriation::get_order(ordering)]
 }
 
-sample_ordering_method <- "spatial"   # or "ic_similarity"
+sample_ordering_method <- "spatial"   # or "expression" / "ic_similarity"
 sample_order <- order_samples(sample_ordering_method)
 #sample_order <- sort(colnames(long_gene_expression))
 
