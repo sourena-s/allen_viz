@@ -54,7 +54,10 @@ load_donor_data <- function(donor_id) {
   # Sample names = slab type, structure acronym, donor id and full structure name
   colnames(donor_expression) <- paste(sample_annotation$slab_type, sample_annotation$structure_acronym, donor_id, "____", sample_annotation$structure_name, sep = "_")
 
-  list(expression = donor_expression, probe_ids = probe_ids)
+  # MNI coordinates (mm), one row per sample, same order as the expression columns
+  sample_mni <- as.matrix(sample_annotation[, c("mni_x", "mni_y", "mni_z")])
+
+  list(expression = donor_expression, probe_ids = probe_ids, mni = sample_mni)
 }
 
 # -----------------------------------------------------------------
@@ -80,6 +83,9 @@ all_donors_expression <- do.call(cbind, lapply(donor_data, function(x) x$express
 
 rownames(all_donors_expression) <- reference_probe_ids
 
+# Samples x (mni_x, mni_y, mni_z), rows in the same order as the expression columns
+all_donors_mni <- do.call(rbind, lapply(donor_data, function(x) x$mni))
+
 dim(all_donors_expression)
 head(colnames(all_donors_expression))
 
@@ -100,6 +106,7 @@ rownames(long_gene_expression) <- paste(gene_symbol[is_long_gene], probe_name[is
 stopifnot(!any(duplicated(rownames(long_gene_expression))))
 
 colnames(long_gene_expression) <- make.unique(colnames(long_gene_expression))
+rownames(all_donors_mni) <- colnames(long_gene_expression)
 
 dim(long_gene_expression)
 
@@ -119,13 +126,28 @@ colnames(gene_ic_weights) <- rownames(ic_sample_loadings)
 #sample_distance <- dist(t(long_gene_expression))
 
 gene_distance <- dist(gene_ic_weights)
-sample_distance <- dist(t(ic_sample_loadings))
-
 gene_clustering <- hclust(gene_distance, method = "average")
-sample_clustering <- hclust(sample_distance, method = "average")
-
 gene_probe_order <- rownames(long_gene_expression)[gene_clustering$order]
-sample_order <- colnames(long_gene_expression)[sample_clustering$order]
+
+# Order samples along the x axis of the heatmap and boxplots.
+#   "ic_similarity": samples with similar IC loadings sit together (the original ordering)
+#   "spatial":       samples close together in the brain (Euclidean distance between
+#                    MNI coordinates, in mm) sit together, whatever the donor
+order_samples <- function(method = c("ic_similarity", "spatial"),
+                          ic_loadings = ic_sample_loadings,
+                          mni = all_donors_mni,
+                          linkage = "average") {
+  method <- match.arg(method)
+  sample_distance <- switch(method,
+    ic_similarity = dist(t(ic_loadings)),
+    spatial       = dist(mni[colnames(ic_loadings), , drop = FALSE])
+  )
+  sample_clustering <- hclust(sample_distance, method = linkage)
+  colnames(ic_loadings)[sample_clustering$order]
+}
+
+sample_ordering_method <- "spatial"   # or "ic_similarity"
+sample_order <- order_samples(sample_ordering_method)
 #sample_order <- sort(colnames(long_gene_expression))
 
 expression_ordered <- long_gene_expression[gene_probe_order, sample_order]
