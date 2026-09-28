@@ -24,7 +24,8 @@
   [hidden] { display: none !important; }
   html, body { height: 100%; }
   body { margin: 0; background: var(--ground); color: var(--ink); font: 13px/1.45 var(--sans); overflow: hidden; -webkit-font-smoothing: antialiased; }
-  #stage { position: fixed; inset: 0; }
+  /* The 3D view is a square (--sx, --sy, --ss set by layoutStage); the ribbon sits under it */
+  #stage { position: fixed; left: var(--sx, 0px); top: var(--sy, 0px); width: var(--ss, 100vw); height: var(--ss, 100vh); }
   #stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 
   .glass {
@@ -122,8 +123,8 @@
   .hint { font-size: 11.5px; color: var(--muted); }
 
   #readout {
-    position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-    max-width: min(360px, calc(100vw - 32px)); border-radius: 14px; padding: 11px 14px;
+    position: fixed; right: 16px; top: 16px; z-index: 1;
+    max-width: min(320px, calc(100vw - 32px)); border-radius: 14px; padding: 11px 14px;
     pointer-events: none;
   }
   #readout .name { font-weight: 500; }
@@ -132,10 +133,10 @@
 
   /* Region ribbon: one column per sample (all donors), one row per probe, grouped by region */
   #ribbon {
-    position: fixed; left: 300px; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    position: fixed; left: 300px; right: 16px; top: var(--rt, auto); bottom: auto;
+    max-height: calc(100dvh - var(--rt, 0px) - 10px); overflow-y: auto;
     border-radius: 14px; padding: 10px 12px 10px; box-sizing: border-box;
   }
-  body.has-ribbon #readout { bottom: calc(var(--ribbon-h, 150px) + 28px + env(safe-area-inset-bottom, 0px)); }
   .ribbon-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; min-width: 0; }
   .ribbon-head .title { font-weight: 600; }
   .ribbon-head .probe { font: 11.5px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
@@ -143,7 +144,7 @@
   .ribbon-fit { flex: none; margin-left: auto; padding: 3px 12px; font-size: 11px; }
   .ribbon-grid { display: flex; gap: 8px; }
   .ribbon-fit2 { margin-left: 0; }
-  .ribbon-donors { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); cursor: pointer; }
+  .ribbon-donors { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ink); cursor: pointer; white-space: nowrap; }
   .ribbon-donors input[type=checkbox] { width: 20px; height: 12px; }
   .ribbon-donors input[type=checkbox]::after { top: 2px; left: 2px; width: 8px; height: 8px; }
   .ribbon-donors input[type=checkbox]:checked::after { transform: translateX(8px); }
@@ -158,8 +159,6 @@
   #ribbon-bar::before { content: ""; display: block; margin: 8px auto 0; height: 5px; border-radius: 999px; background: rgba(62, 68, 77, 0.55); }
   #ribbon-bar:hover::before { background: rgba(62, 68, 77, 0.8); }
   html body.ribbon-min #ribbon { display: none; }
-  body.ribbon-min #readout { bottom: calc(30px + env(safe-area-inset-bottom, 0px)); }
-  body.phone.ribbon-min #readout { bottom: auto; }
   /* Landscape: the ribbon covers the screen; .ribbon-rot also turns it for an upright phone */
   html body.ribbon-full #ribbon {
     background: #2f343b; -webkit-backdrop-filter: none; backdrop-filter: none;
@@ -170,7 +169,7 @@
     width: 100vh; width: 100dvh; height: 100vw; right: auto; bottom: auto; left: 100vw;
     transform-origin: top left; transform: rotate(90deg); padding: 12px 14px;
   }
-  html body.ribbon-full #readout, html body.ribbon-full .panel-toggle, html body.ribbon-full #cut-rail { display: none; }
+  html body.ribbon-full #readout, html body.ribbon-full .panel-toggle, html body.ribbon-full .edge-rail { display: none; }
   .ribbon-names { flex: none; width: 20px; padding-top: 34px; display: flex; flex-direction: column; gap: 2px; }
   .rname { height: var(--row-h, 16px); display: flex; align-items: center; gap: 6px; }
   .rname input[type=checkbox] { width: 20px; height: 12px; }
@@ -190,7 +189,6 @@
     font-size: 12px; max-width: 300px; color: var(--ink); background: rgba(46, 51, 58, 0.95); box-shadow: 0 6px 20px rgba(20, 28, 38, 0.25); border: 1px solid var(--edge);
   }
   #ribbon-tip .meta { font: 11px var(--mono); color: var(--muted); margin-top: 2px; }
-  body.phone #ribbon { left: 8px; right: 8px; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); padding: 8px; }
   body.phone.panel-open #ribbon { display: none; }
 
   /* Donor data download dialog */
@@ -217,27 +215,34 @@
   body.phone #dl-dialog h2 { font-size: 18px; }
   body.phone .dl-folder .text-button, body.phone .dl-actions .text-button { padding: 12px 16px; }
 
-  /* Cut position: a thin vertical rail on the right edge, shown while a cut is active */
-  #cut-rail {
-    position: fixed; right: 10px; top: 50%; transform: translateY(-50%); z-index: 2;
-    height: min(46vh, 380px); width: 36px; display: flex; justify-content: center;
-    cursor: ns-resize; touch-action: none; -webkit-tap-highlight-color: transparent; outline: none;
-  }
-  .rail-track { position: relative; width: 3px; height: 100%; border-radius: 3px; background: rgba(62, 68, 77, 0.2); }
-  .rail-fill { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 3px; background: rgba(62, 68, 77, 0.6); }
+  /* Cut sliders on the square's edges: left = axial (z), right = coronal (y), bottom =
+     sagittal (x). Dragging one turns its cut on (and the others off); a tap toggles it. */
+  .edge-rail { position: fixed; z-index: 2; touch-action: none; cursor: pointer; -webkit-tap-highlight-color: transparent; outline: none; }
+  .edge-rail.v { top: var(--sy); height: var(--ss); width: var(--rail); cursor: ns-resize; }
+  .edge-rail.left { left: calc(var(--sx) - var(--rail)); }
+  .edge-rail.right { left: calc(var(--sx) + var(--ss)); }
+  .edge-rail.h { left: var(--sx); width: var(--ss); height: var(--rail); top: calc(var(--sy) + var(--ss)); cursor: ew-resize; }
+  .rail-track { position: absolute; background: rgba(62, 68, 77, 0.16); border-radius: 2px; transition: background .15s; }
+  .v .rail-track { left: 50%; top: 10px; bottom: 10px; width: 2px; margin-left: -1px; }
+  .h .rail-track { top: 50%; left: 10px; right: 10px; height: 2px; margin-top: -1px; }
+  .edge-rail.on .rail-track { background: rgba(62, 68, 77, 0.45); }
   .rail-thumb {
-    position: absolute; left: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%;
-    background: #3e444d; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); transition: transform .12s;
+    position: absolute; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; box-sizing: border-box;
+    border: 2px solid rgba(62, 68, 77, 0.5); background: #fff; transition: transform .12s, background .15s;
   }
-  #cut-rail:hover .rail-thumb, #cut-rail.dragging .rail-thumb, #cut-rail:focus-visible .rail-thumb { transform: scale(1.2); }
+  .v .rail-thumb { left: 50%; }
+  .h .rail-thumb { top: 50%; }
+  .edge-rail.on .rail-thumb { background: #3e444d; border-color: #3e444d; }
+  .edge-rail:hover .rail-thumb, .edge-rail.dragging .rail-thumb, .edge-rail:focus-visible .rail-thumb { transform: scale(1.3); }
   .rail-thumb span {
-    position: absolute; right: 26px; top: 50%; transform: translateY(-50%); white-space: nowrap;
-    font: 11px var(--mono); color: var(--ink); background: rgba(62, 68, 77, 0.8); padding: 3px 7px; border-radius: 999px;
-    border: 1px solid var(--edge);
+    position: absolute; white-space: nowrap; font: 11px var(--mono); color: #fff; background: rgba(62, 68, 77, 0.85);
+    padding: 2px 7px; border-radius: 999px; pointer-events: none; opacity: 0; transition: opacity .15s;
   }
-  body.has-ribbon #cut-rail { top: calc((100% - var(--ribbon-h, 150px) - 28px) / 2); height: min(34vh, 300px); }
-  body.phone #cut-rail, body.phone.has-ribbon #cut-rail { right: 4px; height: 38vh; top: 42%; }
-  body.phone.panel-open #cut-rail { display: none; }
+  .edge-rail.on .rail-thumb span, .edge-rail:hover .rail-thumb span { opacity: 1; }
+  .left .rail-thumb span { left: 18px; top: 50%; transform: translateY(-50%); }
+  .right .rail-thumb span { right: 18px; top: 50%; transform: translateY(-50%); }
+  .h .rail-thumb span { bottom: 16px; left: 50%; transform: translateX(-50%); }
+  body.phone.panel-open .edge-rail { display: none; }
 
   .panel-toggle {
     display: none; position: fixed; z-index: 2; left: 10px; top: calc(10px + env(safe-area-inset-top, 0px));
@@ -305,7 +310,7 @@
   body.phone #readout .meta { font-size: 12px; }
   body.phone.panel-open #readout, body.phone.panel-open #ribbon { display: none; }
 
-  body.phone #ribbon { left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); padding: 8px; max-height: 42dvh; overflow-y: auto; }
+  body.phone #ribbon { left: 8px; right: 8px; padding: 8px; }
   body.phone #expr-clear { display: none; }
   body.phone .rname input[type=checkbox], body.phone .ribbon-donors input[type=checkbox] { width: 20px; height: 12px; }
   body.phone .rname input[type=checkbox]::after, body.phone .ribbon-donors input[type=checkbox]::after { top: 2px; left: 2px; width: 8px; height: 8px; }
@@ -437,9 +442,9 @@
 </section>
 <div id="ribbon-tip" hidden></div>
 <button id="ribbon-bar" type="button" hidden aria-label="Show the ribbon" title="Show the ribbon"></button>
-<div id="cut-rail" hidden role="slider" tabindex="0" aria-label="Cut position" aria-orientation="vertical">
-  <div class="rail-track"><div class="rail-fill"></div><div class="rail-thumb"><span id="cut-pos-value"></span></div></div>
-</div>
+<div class="edge-rail v left" data-rail="axial" role="slider" tabindex="0" aria-label="Axial cut (z)" aria-orientation="vertical"><div class="rail-track"></div><div class="rail-thumb"><span></span></div></div>
+<div class="edge-rail v right" data-rail="coronal" role="slider" tabindex="0" aria-label="Coronal cut (y)" aria-orientation="vertical"><div class="rail-track"></div><div class="rail-thumb"><span></span></div></div>
+<div class="edge-rail h" data-rail="sagittal" role="slider" tabindex="0" aria-label="Sagittal cut (x)" aria-orientation="horizontal"><div class="rail-track"></div><div class="rail-thumb"><span></span></div></div>
 
 <dialog id="dl-dialog" class="glass" aria-labelledby="dl-title">
   <form method="dialog">
@@ -1146,8 +1151,7 @@ document.getElementById("cut-interp").addEventListener("change", updateCut);
 function updateCut() {
   const cut = activeCut(), pos = +cutSlider.value, tol = +tolSlider.value;
   document.getElementById("cut-controls").hidden = !cut;
-  document.getElementById("cut-rail").hidden = !cut;
-  if (cut) placeRailThumb();
+  placeRails();
   document.getElementById("band-controls").hidden = !bandToggle.checked;
   const note = document.getElementById("cut-interp-note");
   note.hidden = !document.getElementById("cut-interp").checked || colouringActive();
@@ -1157,7 +1161,6 @@ function updateCut() {
     cutPlane.constant = pointTop.constant = pointBottom.constant = NO_CUT;
   } else {
     const { axis, letter } = CUTS[cut], dir = AXIS_DIR[axis];
-    document.getElementById("cut-pos-value").textContent = `${letter} ${pos}`;
     // Keep coordinate <= pos: plane normal points against the axis direction
     cutPlane.normal.copy(dir).negate(); cutPlane.constant = pos;
     pointTop.normal.copy(dir).negate(); pointTop.constant = bandOn() ? pos + tol : pos;
@@ -1170,14 +1173,24 @@ function updateCut() {
   if (cut) drawSlice(CUTS[cut].axis, pos);
 }
 
-// The rail maps the cut slider's range bottom (min) to top (max); drag, click, wheel or arrow keys
-const cutRail = document.getElementById("cut-rail");
-function placeRailThumb() {
-  const f = (cutSlider.value - cutSlider.min) / (cutSlider.max - cutSlider.min);
-  cutRail.querySelector(".rail-thumb").style.top = `${(1 - f) * 100}%`;
-  cutRail.querySelector(".rail-fill").style.height = `${f * 100}%`;
-  cutRail.setAttribute("aria-valuemin", cutSlider.min); cutRail.setAttribute("aria-valuemax", cutSlider.max);
-  cutRail.setAttribute("aria-valuenow", cutSlider.value);
+// Edge sliders: each shows its cut's last position; the active one is filled. Dragging a
+// slider switches its cut on (unticking the others) and moves it; a tap toggles it off, or on
+// at the tapped position. Wheel and arrow keys nudge it.
+const rails = [...document.querySelectorAll(".edge-rail")];
+const RAIL_PAD = 10;   // px of track inset at each end (matches .rail-track)
+function placeRails() {
+  const cut = activeCut();
+  for (const rail of rails) {
+    const c = CUTS[rail.dataset.rail], f = (c.value - c.range[0]) / (c.range[1] - c.range[0]);
+    const thumb = rail.querySelector(".rail-thumb"), vertical = rail.classList.contains("v");
+    const len = `(100% - ${2 * RAIL_PAD}px)`;
+    if (vertical) thumb.style.top = `calc(${RAIL_PAD}px + ${len} * ${1 - f})`;
+    else thumb.style.left = `calc(${RAIL_PAD}px + ${len} * ${f})`;
+    thumb.querySelector("span").textContent = `${c.letter} ${c.value}`;
+    rail.classList.toggle("on", cut === rail.dataset.rail);
+    rail.setAttribute("aria-valuemin", c.range[0]); rail.setAttribute("aria-valuemax", c.range[1]);
+    rail.setAttribute("aria-valuenow", c.value);
+  }
 }
 function setCutPos(v) {
   v = Math.round(Math.min(+cutSlider.max, Math.max(+cutSlider.min, v)));
@@ -1185,21 +1198,53 @@ function setCutPos(v) {
   cutSlider.value = v;
   cutSlider.dispatchEvent(new Event("input"));
 }
-const railValueAt = y => {
-  const r = cutRail.querySelector(".rail-track").getBoundingClientRect();
-  return +cutSlider.min + (1 - (y - r.top) / r.height) * (cutSlider.max - cutSlider.min);
-};
-cutRail.addEventListener("pointerdown", e => {
-  cutRail.setPointerCapture(e.pointerId); cutRail.classList.add("dragging"); setCutPos(railValueAt(e.clientY));
-});
-cutRail.addEventListener("pointermove", e => { if (cutRail.hasPointerCapture(e.pointerId)) setCutPos(railValueAt(e.clientY)); });
-cutRail.addEventListener("pointerup", () => cutRail.classList.remove("dragging"));
-cutRail.addEventListener("pointercancel", () => cutRail.classList.remove("dragging"));
-cutRail.addEventListener("wheel", e => { e.preventDefault(); setCutPos(+cutSlider.value - Math.sign(e.deltaY) * 2); }, { passive: false });
-cutRail.addEventListener("keydown", e => {
-  const step = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: 10, PageDown: -10 }[e.key];
-  if (step) { e.preventDefault(); setCutPos(+cutSlider.value + step); }
-});
+function setActiveCut(name) {   // name, or null for no cut
+  for (const box of cutBoxes) {
+    const want = box.dataset.cut === name;
+    if (box.checked !== want) { box.checked = want; if (want) box.dispatchEvent(new Event("change")); }
+  }
+  updateCut();
+}
+function railValueAt(rail, e) {
+  const r = rail.getBoundingClientRect(), c = CUTS[rail.dataset.rail];
+  const f = rail.classList.contains("v")
+    ? 1 - (e.clientY - r.top - RAIL_PAD) / (r.height - 2 * RAIL_PAD)
+    : (e.clientX - r.left - RAIL_PAD) / (r.width - 2 * RAIL_PAD);
+  return c.range[0] + Math.min(1, Math.max(0, f)) * (c.range[1] - c.range[0]);
+}
+for (const rail of rails) {
+  const name = rail.dataset.rail;
+  let down = null, dragged = false;
+  const moveTo = e => { if (activeCut() !== name) setActiveCut(name); setCutPos(railValueAt(rail, e)); };
+  rail.addEventListener("pointerdown", e => {
+    rail.setPointerCapture(e.pointerId); down = [e.clientX, e.clientY]; dragged = false;
+  });
+  rail.addEventListener("pointermove", e => {
+    if (!down) return;
+    if (!dragged && Math.hypot(e.clientX - down[0], e.clientY - down[1]) < 5) return;
+    dragged = true; rail.classList.add("dragging");
+    moveTo(e);
+  });
+  const end = e => {
+    if (!down) return;
+    if (!dragged && e.type === "pointerup") {   // a tap toggles this cut
+      if (activeCut() === name) setActiveCut(null); else moveTo(e);
+    }
+    down = null; rail.classList.remove("dragging");
+  };
+  rail.addEventListener("pointerup", end);
+  rail.addEventListener("pointercancel", end);
+  rail.addEventListener("wheel", e => {
+    e.preventDefault();
+    if (activeCut() !== name) setActiveCut(name);
+    setCutPos(+cutSlider.value - Math.sign(e.deltaY || -e.deltaX) * 2);
+  }, { passive: false });
+  rail.addEventListener("keydown", e => {
+    const step = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: 10, PageDown: -10 }[e.key];
+    if (step) { e.preventDefault(); if (activeCut() !== name) setActiveCut(name); setCutPos(+cutSlider.value + step); }
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setActiveCut(activeCut() === name ? null : name); }
+  });
+}
 
 // Only one cut at a time: ticking one unticks the others and restores its last position
 cutBoxes.forEach(box => box.addEventListener("change", () => {
@@ -2102,6 +2147,7 @@ function renderRibbon() {
   const active = colouringActive();
   $e("ribbon").hidden = !active;
   document.body.classList.toggle("has-ribbon", active);
+  if (!active) layoutStage();
   $e("ribbon-bar").hidden = !active || !document.body.classList.contains("ribbon-min");
   if (!active) { ribbonTip(null); return; }
   if (!ribbon.built) buildRibbon();
@@ -2124,8 +2170,7 @@ function renderRibbon() {
     return row;
   }));
   drawRibbon();
-  // Keep the sample details box above the ribbon, whatever its height (rows)
-  document.body.style.setProperty("--ribbon-h", `${$e("ribbon").offsetHeight}px`);
+  layoutStage();   // the square view shrinks or grows with the ribbon's height
 }
 
 // The probe name of the last clicked row (toggle or cell) is shown beside the gene name
@@ -2233,6 +2278,7 @@ function applyRibbonOrientation() {
   $e("ribbon-orient").textContent = full ? "Portrait" : "Landscape";
   $e("ribbon-orient").setAttribute("aria-pressed", full);
   if (ribbon.built && !$e("ribbon").hidden) { layoutRibbon(); drawRibbon(); }
+  layoutStage();
 }
 $e("ribbon-orient").addEventListener("click", () => {
   document.body.classList.toggle("ribbon-full");
@@ -2245,6 +2291,7 @@ function setRibbonMin(min) {
   if (min) { document.body.classList.remove("ribbon-full", "ribbon-rot"); applyRibbonOrientation(); ribbonTip(null); }
   $e("ribbon-bar").hidden = !min;
   if (!min) { layoutRibbon(); drawRibbon(); }
+  layoutStage();
 }
 $e("ribbon-min").addEventListener("click", () => setRibbonMin(true));
 $e("ribbon-donors").addEventListener("change", e => {
@@ -2305,12 +2352,31 @@ ribbonCanvas.addEventListener("click", e => {
   ribbonCellTip(e);
 });
 
+// Square 3D view: as large as fits beside the controls (desktop) or under the menu button and
+// details (phone), leaving room for the edge sliders and, underneath, the ribbon.
+function layoutStage() {
+  const W = innerWidth, H = innerHeight, phone = document.body.classList.contains("phone"), b = document.body;
+  const rail = phone ? 26 : 28, gap = 8;
+  const ribbonEl = $e("ribbon");
+  const ribbonShown = !ribbonEl.hidden && !b.classList.contains("ribbon-min") && !b.classList.contains("ribbon-full");
+  const rh = ribbonShown ? Math.min(ribbonEl.scrollHeight, H * 0.45) : b.classList.contains("ribbon-min") && !ribbonEl.hidden ? 22 : 0;
+  const x0 = (phone ? 0 : 300) + rail, x1 = W - (phone ? 0 : 16) - rail;
+  const y0 = phone ? 72 : 16;
+  const S = Math.max(140, Math.floor(Math.min(x1 - x0, H - y0 - rail - (rh ? rh + gap : 0) - (phone ? 8 : 16))));
+  const sx = Math.round(x0 + Math.max(0, (x1 - x0 - S) / 2));
+  const st = b.style;
+  st.setProperty("--sx", `${sx}px`); st.setProperty("--sy", `${y0}px`); st.setProperty("--ss", `${S}px`);
+  st.setProperty("--rail", `${rail}px`); st.setProperty("--rt", `${y0 + S + rail + gap - 4}px`);
+  resize();
+}
+addEventListener("resize", layoutStage);
+
 function resize() {
   const w = stage.clientWidth, h = stage.clientHeight;
   if (!w || !h) return;   // not laid out yet (e.g. hidden tab); the next resize event fixes it
   renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
 }
-addEventListener("resize", resize); resize();
+layoutStage();
 setView([-0.62, 0.35, -0.7].map(v => v / Math.hypot(-0.62, 0.35, -0.7)));
 renderer.setAnimationLoop(() => { stepFocus(0.15); controls.update(); renderer.render(scene, camera); });
 
