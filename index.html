@@ -102,6 +102,9 @@
   .suggestions li[aria-selected=true], .suggestions li:hover { background: var(--glass-hover); }
   .suggestions li.note { cursor: default; color: var(--muted); font-size: 11.5px; }
   .suggestions li.note:hover { background: none; }
+  .range-row label { flex: 1; }
+  .range-row input { width: 52px; flex: none; text-align: center; padding: 5px 4px; }
+  .range-row input[aria-invalid=true] { border-color: #e0605a; }
   .probe-list {
     display: flex; flex-direction: column; gap: 1px; max-height: 190px; overflow-y: auto; padding: 4px;
     border: 1px solid var(--edge); border-radius: 10px; scrollbar-width: thin; scrollbar-color: var(--track) transparent;
@@ -223,6 +226,12 @@
         <span class="hint" id="z-filter-note"></span>
       </div>
       <div class="group" id="expr-scale" hidden>
+        <div class="row range-row">
+          <label class="label" for="z-min">Colour range, z</label>
+          <input type="text" id="z-min" value="-2" inputmode="decimal" aria-label="Lowest z-score (full blue)">
+          <span class="count">to</span>
+          <input type="text" id="z-max" value="2" inputmode="decimal" aria-label="Highest z-score (full red)">
+        </div>
         <div class="scale-bar"></div>
         <div class="scale-labels"><span id="scale-lo"></span><span id="scale-mid"></span><span id="scale-hi"></span></div>
         <span class="hint" id="scale-note"></span>
@@ -910,15 +919,36 @@ applyLayout();
 // per sample in the same order as that donor's SampleAnnot.csv, which is also the order of
 // that donor's rows in SampleAnnot_all.csv. Probes.csv maps probe_id to gene_symbol.
 // Choosing a gene colours the donor's samples by z-score across its samples:
-// blue (low) - white (donor mean) - red (high), clipped at ±Z_CLIP. Other donors turn grey.
-const Z_CLIP = 2.5, OTHER_DONOR_COLOR = 0x39414c;
+// full blue at zRange[0], white at its midpoint (the donor mean for the default -2..2),
+// full red at zRange[1]; values outside are clipped. Other donors turn grey.
+const OTHER_DONOR_COLOR = 0x39414c;
+let zRange = [-2, 2];   // editable in the "Colour range, z" boxes
 const SCALE = [new THREE.Color(0x2166ac), new THREE.Color(0xf7f7f7), new THREE.Color(0xb2182b)];
 const expr = { donor: null, rows: null, probeName: new Map(), bySymbol: new Map() };
 const $e = id => document.getElementById(id);
 
+// Position of z within the colour range, from -1 (low end) to +1 (high end)
+function rangePosition(z) {
+  const [lo, hi] = zRange, mid = (lo + hi) / 2, half = (hi - lo) / 2;
+  return Math.max(-1, Math.min(1, (z - mid) / half));
+}
 function scaleColor(z) {
-  const t = Math.max(-1, Math.min(1, z / Z_CLIP));
+  const t = rangePosition(z);
   return t < 0 ? SCALE[1].clone().lerp(SCALE[0], -t) : SCALE[1].clone().lerp(SCALE[2], t);
+}
+
+// Colour range boxes: apply when both are numbers and low < high, otherwise mark them
+function readZRange() {
+  const lo = parseFloat($e("z-min").value), hi = parseFloat($e("z-max").value);
+  const valid = Number.isFinite(lo) && Number.isFinite(hi) && lo < hi;
+  for (const id of ["z-min", "z-max"]) $e(id).setAttribute("aria-invalid", !valid);
+  if (!valid) return;
+  zRange = [lo, hi];
+  if (colouringActive()) applyColouring();
+}
+for (const id of ["z-min", "z-max"]) {
+  $e(id).addEventListener("change", readZRange);
+  $e(id).addEventListener("keydown", e => { if (e.key === "Enter") readZRange(); });
 }
 
 function setExprStatus(lines) {
@@ -1135,8 +1165,9 @@ searchBox.addEventListener("keydown", e => {
   }
 });
 
-// Point size factor for a z-score: 0.5× at -Z_CLIP, 1× at the mean, 2× at +Z_CLIP
-const zScale = z => 2 ** (Math.max(-Z_CLIP, Math.min(Z_CLIP, z)) / Z_CLIP);
+// Point size factor for a z-score: 0.5× at the low end of the colour range, 1× at its
+// midpoint, 2× at the high end
+const zScale = z => 2 ** rangePosition(z);
 
 // Probe box: every probe of the chosen gene with a switch. All are on at first (their
 // average is shown). Clicking a name shows that probe alone; the switches pick several.
@@ -1224,10 +1255,12 @@ function applyColouring() {
   const label = use.length > 1 ? `${gene} (mean of ${use.length} probes)` : `${gene === expr.probeName.get(use[0]) ? gene : `${gene} ${expr.probeName.get(use[0]) ?? use[0]}`}`;
   items.forEach((s, j) => { s.expr = { label, value: values[j], z: (values[j] - mean) / sd }; });
   for (const c of donorClouds) paintCloud(c, s => (c === cloud ? scaleColor(s.expr.z) : OTHER_DONOR_COLOR));
-  $e("scale-lo").textContent = (mean - Z_CLIP * sd).toFixed(1);
-  $e("scale-mid").textContent = mean.toFixed(1);
-  $e("scale-hi").textContent = (mean + Z_CLIP * sd).toFixed(1);
-  setScaleNote(`${label}, donor ${expr.donor}: log2 expression, mean ± ${Z_CLIP} SD across its ${items.length} samples. Other donors are grey.`);
+  // Bar labels in log2 expression units at the range's low end, midpoint and high end
+  const [zLo, zHi] = zRange;
+  $e("scale-lo").textContent = (mean + zLo * sd).toFixed(1);
+  $e("scale-mid").textContent = (mean + (zLo + zHi) / 2 * sd).toFixed(1);
+  $e("scale-hi").textContent = (mean + zHi * sd).toFixed(1);
+  setScaleNote(`${label}, donor ${expr.donor}: log2 expression, z from ${zLo} to ${zHi} (mean ${mean.toFixed(2)}, SD ${sd.toFixed(2)} across its ${items.length} samples). Other donors are grey.`);
   updateZFilter();   // also re-applies point sizes
   showReadout();
 }
