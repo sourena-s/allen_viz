@@ -83,11 +83,21 @@
     <div class="row"><span class="swatch mesh-swatch" style="background:transparent"></span><input type="checkbox" id="mirror"><label for="mirror">Mirror right hemisphere onto the left</label></div>
     <label class="label" for="opacity">Surface opacity</label>
     <input type="range" id="opacity" min="0" max="0.6" step="0.01" value="0.06">
-    <div class="row"><span class="swatch mesh-swatch" style="background:transparent"></span><input type="checkbox" id="axial-cut"><label for="axial-cut">Axial cut</label></div>
+  </div>
+
+  <div class="group">
+    <span class="label">Cut (one at a time)</span>
+    <div class="row"><input type="checkbox" id="cut-axial" data-cut="axial"><label for="cut-axial">Axial: removes everything above</label></div>
+    <div class="row"><input type="checkbox" id="cut-coronal" data-cut="coronal"><label for="cut-coronal">Coronal: removes everything in front</label></div>
+    <div class="row"><input type="checkbox" id="cut-sagittal" data-cut="sagittal"><label for="cut-sagittal">Sagittal: removes everything to the right</label></div>
     <div class="group" id="cut-controls" hidden>
-      <label class="label" for="cut-z">Cut height <span class="count" id="cut-z-value"></span></label>
-      <input type="range" id="cut-z" min="-70" max="85" step="1" value="20">
-      <div class="row"><input type="checkbox" id="cut-band"><label for="cut-band">Only samples within ±5 mm of the cut</label></div>
+      <label class="label" for="cut-pos">Cut position <span class="count" id="cut-pos-value"></span></label>
+      <input type="range" id="cut-pos" min="-70" max="85" step="1" value="20">
+      <div class="row"><input type="checkbox" id="cut-band"><label for="cut-band">Only samples near the cut</label></div>
+      <div class="group" id="band-controls" hidden>
+        <label class="label" for="cut-tol">Distance from cut <span class="count" id="cut-tol-value"></span></label>
+        <input type="range" id="cut-tol" min="1" max="10" step="1" value="5">
+      </div>
     </div>
   </div>
 
@@ -304,15 +314,14 @@ scene.add(camera);
 // then a translucent colour pass. Samples draw last with no depth test, on top.
 const surfaces = {};
 
-// Axial cut: everything above the plane (scene y = MNI z) is clipped away.
-// The normal points down, so what is kept is y <= constant; a huge constant means "no cut".
+// Cut planes (axial, coronal or sagittal; set in updateCut). The surface keeps the side
+// where the cut's MNI coordinate is <= the cut position; a huge constant means "no cut".
 const NO_CUT = 1e5;
 const cutPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), NO_CUT);
-// Sample clouds have their own pair of planes: normally just the cut (top), but with the
-// ±5 mm band option they keep only cut - 5 <= y <= cut + 5.
-const BAND_MM = 5;
-const pointTop = new THREE.Plane(new THREE.Vector3(0, -1, 0), NO_CUT);     // keeps y <= constant
-const pointBottom = new THREE.Plane(new THREE.Vector3(0, 1, 0), NO_CUT);   // keeps y >= -constant
+// Sample clouds have their own pair of planes: normally just the cut, but with the
+// "near the cut" option they keep only cut - distance <= coordinate <= cut + distance.
+const pointTop = new THREE.Plane(new THREE.Vector3(0, -1, 0), NO_CUT);
+const pointBottom = new THREE.Plane(new THREE.Vector3(0, 1, 0), NO_CUT);
 renderer.localClippingEnabled = true;
 
 // Glass look: nearly clear where the surface faces the viewer, brighter blue at
@@ -470,7 +479,7 @@ function pick(e) {
   raycaster.params.Points.threshold = pointSize * 0.6;
   raycaster.setFromCamera(mouse, camera);
   const hit = raycaster.intersectObjects(donorClouds.filter(c => c.visible))
-    .find(h => sampleShown(shownMni(h.object.userData.items[h.index])[2]));   // ignore samples cut away
+    .find(h => sampleShown(shownMni(h.object.userData.items[h.index])));   // ignore samples cut away
   return hit ? hit.object.userData.items[hit.index] : null;
 }
 
@@ -495,23 +504,39 @@ renderer.domElement.addEventListener("pointerup", e => {
   setSelected(pick(e));
 });
 
-// ---------------------------------------------------------------- axial cut + T1 slice
-// The MNI152 T1 is resampled at the cut height into a flat textured quad lying at the cut.
-let t1 = null, sliceMesh = null, sliceTexture = null;
+// ---------------------------------------------------------------- cuts + T1 slice
+// The MNI152 T1 is resampled at the cut position into a flat textured quad lying in the cut.
+let t1 = null, sliceMesh = null;
+const sliceTextures = {};   // one texture per cut orientation (their sizes differ)
 // Intensity window for the slice (set from brain-voxel percentiles in setupSlice):
 // below t1Lo is black, above t1Hi is white; t1Bg separates the head from the background.
 let t1Lo = 0, t1Hi = 1, t1Bg = 0;
 const percentile = (sorted, q) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))];
-const cutToggle = document.getElementById("axial-cut"), cutSlider = document.getElementById("cut-z");
-const bandToggle = document.getElementById("cut-band");
-const cutZ = () => (cutToggle.checked ? +cutSlider.value : NO_CUT);
-const bandOn = () => cutToggle.checked && bandToggle.checked;
-// Whether a sample at MNI height z is currently drawn (same rule as pointTop/pointBottom)
-const sampleShown = z => (bandOn() ? Math.abs(z - cutZ()) <= BAND_MM : z <= cutZ());
+// Per cut: MNI axis it cuts across (0 = x, 1 = y, 2 = z), slider range (mm) and the last
+// position used, so switching between cuts returns each to where it was.
+const CUTS = {
+  axial:    { axis: 2, letter: "z", range: [-70, 85], value: 20 },
+  coronal:  { axis: 1, letter: "y", range: [-105, 72], value: -20 },
+  sagittal: { axis: 0, letter: "x", range: [-72, 72], value: 0 },
+};
+// Direction of each MNI axis in scene coordinates (see toScene)
+const AXIS_DIR = [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0, -1), new THREE.Vector3(0, 1, 0)];
+
+const cutBoxes = [...document.querySelectorAll("[data-cut]")];
+const cutSlider = document.getElementById("cut-pos");
+const bandToggle = document.getElementById("cut-band"), tolSlider = document.getElementById("cut-tol");
+const activeCut = () => cutBoxes.find(b => b.checked)?.dataset.cut ?? null;
+const bandOn = () => !!activeCut() && bandToggle.checked;
+// Whether a sample at these MNI coordinates is currently drawn (same rule as pointTop/pointBottom)
+function sampleShown(mni) {
+  const cut = activeCut();
+  if (!cut) return true;
+  const v = mni[CUTS[cut].axis], pos = +cutSlider.value;
+  return bandOn() ? Math.abs(v - pos) <= +tolSlider.value : v <= pos;
+}
 
 function setupSlice(vol) {
   t1 = vol;
-  const [nx, ny] = vol.dims, s = vol.srow;
   // Contrast window from non-zero voxels (sampled): the 30th percentile sits around grey
   // matter/CSF, so stretching 30th..99.5th spreads grey vs white matter over the full range
   const vals = [];
@@ -521,49 +546,90 @@ function setupSlice(vol) {
   t1Hi = percentile(vals, 0.995);
   t1Bg = percentile(vals, 0.02);
 
-  sliceTexture = new THREE.DataTexture(new Uint8Array(nx * ny * 4), nx, ny, THREE.RGBAFormat);
-  sliceTexture.magFilter = sliceTexture.minFilter = THREE.LinearFilter;
-  // Quad corners at the voxel-grid edges (i, j = -0.5 .. n - 0.5); z is set per cut via position.y
-  const corner = (i, j) => { const x = s[0][0] * i + s[0][1] * j + s[0][3], y = s[1][0] * i + s[1][1] * j + s[1][3]; return toScene(x, y, 0); };
-  const c = [corner(-0.5, -0.5), corner(nx - 0.5, -0.5), corner(nx - 0.5, ny - 0.5), corner(-0.5, ny - 0.5)];
   const geom = new THREE.BufferGeometry();
-  geom.setAttribute("position", new THREE.BufferAttribute(new Float32Array(c.flat()), 3));
+  geom.setAttribute("position", new THREE.BufferAttribute(new Float32Array(12), 3));
   geom.setAttribute("uv", new THREE.BufferAttribute(new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]), 2));
   geom.setIndex([0, 1, 2, 0, 2, 3]);
-  sliceMesh = new THREE.Mesh(geom, new THREE.MeshBasicMaterial({ map: sliceTexture, side: THREE.DoubleSide, transparent: true, alphaTest: 0.05 }));
+  sliceMesh = new THREE.Mesh(geom, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, transparent: true, alphaTest: 0.05 }));
   sliceMesh.visible = false;
+  sliceMesh.frustumCulled = false;
   scene.add(sliceMesh);
 }
 
-function updateCut() {
-  const on = cutToggle.checked, z = +cutSlider.value;
-  document.getElementById("cut-controls").hidden = !on;
-  document.getElementById("cut-z-value").textContent = `z = ${z} mm`;
-  cutPlane.constant = on ? z : NO_CUT;
-  pointTop.constant = !on ? NO_CUT : bandOn() ? z + BAND_MM : z;
-  pointBottom.constant = bandOn() ? -(z - BAND_MM) : NO_CUT;
-  // Hover follows what is drawn; a selected sample stays selected even if it is cut away
-  if (hovered && !sampleShown(shownMni(hovered)[2])) setHovered(null);
-  if (!t1 || !sliceMesh) return;
-  sliceMesh.visible = on;
-  if (!on) return;
-  // Linear interpolation between the two voxel slices around this z (axis-aligned affine)
-  const [nx, ny, nz] = t1.dims, s = t1.srow;
-  const k = Math.min(nz - 1, Math.max(0, (z - s[2][3]) / s[2][2]));
-  const k0 = Math.floor(k), k1 = Math.min(nz - 1, k0 + 1), f = k - k0;
-  const px = sliceTexture.image.data, plane = nx * ny;
-  for (let p = 0; p < plane; p++) {
-    const v = t1.data[k0 * plane + p] * (1 - f) + t1.data[k1 * plane + p] * f;
-    const g = 255 * Math.min(1, Math.max(0, (v - t1Lo) / (t1Hi - t1Lo)));
-    px[p * 4] = px[p * 4 + 1] = px[p * 4 + 2] = g;
-    px[p * 4 + 3] = v > t1Bg ? 255 : 0;   // background outside the brain is transparent
+// Resample the T1 across `axis` at MNI position `pos` and lay the image in the cut plane.
+// The two in-plane voxel axes (u, v) become the texture's width and height.
+function drawSlice(axis, pos) {
+  const dims = t1.dims, s = t1.srow, [u, v] = [0, 1, 2].filter(a => a !== axis);
+  const [nu, nv] = [dims[u], dims[v]];
+  let tex = sliceTextures[axis];
+  if (!tex) {
+    tex = sliceTextures[axis] = new THREE.DataTexture(new Uint8Array(nu * nv * 4), nu, nv, THREE.RGBAFormat);
+    tex.magFilter = tex.minFilter = THREE.LinearFilter;
   }
-  sliceTexture.needsUpdate = true;
-  sliceMesh.position.y = z + 0.05;   // a hair above the cut so the clipped surface does not cover it
+  // Fractional voxel index along the cut axis (axis-aligned affine); blend the two nearest slices
+  const k = Math.min(dims[axis] - 1, Math.max(0, (pos - s[axis][3]) / s[axis][axis]));
+  const k0 = Math.floor(k), k1 = Math.min(dims[axis] - 1, k0 + 1), f = k - k0;
+  const stride = [1, dims[0], dims[0] * dims[1]];
+  const px = tex.image.data;
+  for (let iv = 0; iv < nv; iv++) for (let iu = 0; iu < nu; iu++) {
+    const base = iu * stride[u] + iv * stride[v];
+    const val = t1.data[base + k0 * stride[axis]] * (1 - f) + t1.data[base + k1 * stride[axis]] * f;
+    const g = 255 * Math.min(1, Math.max(0, (val - t1Lo) / (t1Hi - t1Lo)));
+    const p = (iu + nu * iv) * 4;
+    px[p] = px[p + 1] = px[p + 2] = g;
+    px[p + 3] = val > t1Bg ? 255 : 0;   // background outside the brain is transparent
+  }
+  tex.needsUpdate = true;
+  sliceMesh.material.map = tex;
+  sliceMesh.material.needsUpdate = true;
+
+  // Quad corners at the voxel-grid edges of the plane, nudged 0.05 mm to the removed side
+  // so the clipped surface does not cover the image
+  const corner = (cu, cv) => {
+    const vox = [0, 0, 0]; vox[axis] = k; vox[u] = cu; vox[v] = cv;
+    const mni = s.map(r => r[0] * vox[0] + r[1] * vox[1] + r[2] * vox[2] + r[3]);
+    mni[axis] = pos + 0.05;
+    return toScene(...mni);
+  };
+  const attr = sliceMesh.geometry.getAttribute("position");
+  attr.set([corner(-0.5, -0.5), corner(nu - 0.5, -0.5), corner(nu - 0.5, nv - 0.5), corner(-0.5, nv - 0.5)].flat());
+  attr.needsUpdate = true;
 }
-cutToggle.addEventListener("change", updateCut);
-cutSlider.addEventListener("input", updateCut);
+
+function updateCut() {
+  const cut = activeCut(), pos = +cutSlider.value, tol = +tolSlider.value;
+  document.getElementById("cut-controls").hidden = !cut;
+  document.getElementById("band-controls").hidden = !bandToggle.checked;
+  document.getElementById("cut-tol-value").textContent = `± ${tol} mm`;
+  if (!cut) {
+    cutPlane.constant = pointTop.constant = pointBottom.constant = NO_CUT;
+  } else {
+    const { axis, letter } = CUTS[cut], dir = AXIS_DIR[axis];
+    document.getElementById("cut-pos-value").textContent = `${letter} = ${pos} mm`;
+    // Keep coordinate <= pos: plane normal points against the axis direction
+    cutPlane.normal.copy(dir).negate(); cutPlane.constant = pos;
+    pointTop.normal.copy(dir).negate(); pointTop.constant = bandOn() ? pos + tol : pos;
+    pointBottom.normal.copy(dir);       pointBottom.constant = bandOn() ? -(pos - tol) : NO_CUT;
+  }
+  // Hover follows what is drawn; a selected sample stays selected even if it is cut away
+  if (hovered && !sampleShown(shownMni(hovered))) setHovered(null);
+  if (!t1 || !sliceMesh) return;
+  sliceMesh.visible = !!cut;
+  if (cut) drawSlice(CUTS[cut].axis, pos);
+}
+
+// Only one cut at a time: ticking one unticks the others and restores its last position
+cutBoxes.forEach(box => box.addEventListener("change", () => {
+  if (box.checked) {
+    cutBoxes.forEach(other => { if (other !== box) other.checked = false; });
+    const cfg = CUTS[box.dataset.cut];
+    cutSlider.min = cfg.range[0]; cutSlider.max = cfg.range[1]; cutSlider.value = cfg.value;
+  }
+  updateCut();
+}));
+cutSlider.addEventListener("input", () => { CUTS[activeCut()].value = +cutSlider.value; updateCut(); });
 bandToggle.addEventListener("change", updateCut);
+tolSlider.addEventListener("input", updateCut);
 
 function resize() {
   const w = stage.clientWidth, h = stage.clientHeight;
