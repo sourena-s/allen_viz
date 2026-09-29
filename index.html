@@ -173,6 +173,9 @@
   .ribbon-fit { flex: none; margin-left: auto; padding: 3px 12px; font-size: 11px; }
   .ribbon-grid { display: flex; gap: 8px; }
   .ribbon-fit2 { margin-left: 0; }
+  .zsym { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ink); white-space: nowrap; }
+  .zsym input[type=range] { width: 90px; height: 16px; }
+  .zsym .count { min-width: 2.2em; }
   .ribbon-donors { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ink); cursor: pointer; white-space: nowrap; }
   .ribbon-donors input[type=checkbox] { width: 20px; height: 12px; }
   .ribbon-donors input[type=checkbox]::after { top: 2px; left: 2px; width: 8px; height: 8px; }
@@ -195,10 +198,12 @@
     overflow-y: auto; padding: calc(12px + env(safe-area-inset-top, 0px)) 14px 14px;
   }
   html body.ribbon-full.ribbon-rot #ribbon {
-    width: 100vh; width: 100dvh; height: 100vw; right: auto; bottom: auto; left: 100vw;
+    width: 100vh; width: 100dvh; height: 100vw; height: 100dvw; right: auto; bottom: auto; left: 100vw; left: 100dvw;
     transform-origin: top left; transform: rotate(90deg); padding: 12px 14px;
   }
   html body.ribbon-full #readout, html body.ribbon-full .panel-toggle, html body.ribbon-full .edge-rail { display: none; }
+  .ribbon-names.multi { width: 76px; }
+  .rgene { flex: 1; min-width: 0; font: 9.5px var(--mono); color: var(--muted); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ribbon-names { flex: none; width: 20px; padding-top: 34px; display: flex; flex-direction: column; gap: 2px; }
   .rname { height: var(--row-h, 16px); display: flex; align-items: center; gap: 6px; }
   .rname input[type=checkbox] { width: 20px; height: 12px; }
@@ -453,6 +458,8 @@
   <div class="ribbon-head">
     <input type="text" class="title gene-box" id="gene-input" role="combobox" aria-autocomplete="list" aria-expanded="false"
            aria-controls="gene-suggestions" aria-label="Gene or probe" placeholder="Gene…" autocomplete="off" spellcheck="false"><span class="probe" id="ribbon-probe"></span>
+    <label class="zsym" title="Colour range: z from minus to plus this value (estimated from the rows on each search)">±z
+      <input type="range" id="z-sym" min="0.5" max="5" step="0.1" value="2"><span id="z-sym-val" class="count">2.0</span></label>
     <label class="ribbon-donors" title="Group each region's samples by donor"><input type="checkbox" id="ribbon-donors">Donors</label>
     <button class="text-button ribbon-fit" id="ribbon-min" type="button" aria-label="Minimise the ribbon" title="Minimise">–</button>
     <button class="text-button ribbon-fit ribbon-fit2" id="ribbon-orient" type="button" aria-pressed="false" title="Show the ribbon full screen (landscape) or docked (portrait)">Landscape</button>
@@ -1425,6 +1432,29 @@ $e("palette").addEventListener("change", e => setPalette(e.target.value));
 setPalette($e("palette").value);
 
 // Colour range boxes: apply when both are numbers and low < high, otherwise mark them
+// Symmetric colour range from the ribbon's ±z slider
+function setSymmetricZ(t) {
+  t = Math.min(5, Math.max(0.5, Math.round(t * 10) / 10));
+  $e("z-sym").value = t; $e("z-sym-val").textContent = t.toFixed(1);
+  $e("z-min").value = -t; $e("z-max").value = t;
+  readZRange();
+}
+$e("z-sym").addEventListener("input", e => setSymmetricZ(+e.target.value));
+// Estimate for a new search: the 98th percentile of |z| over every cell of its rows (each
+// probe z-scored within each loaded donor), so outliers do not wash out the colours
+function estimateZ(ids) {
+  const abs = [];
+  for (const [, rows] of expr.byDonor) for (const id of ids) {
+    const v = rows.get(id);
+    if (!v) continue;
+    const { mean, sd } = meanSd(v);
+    if (sd > 0) for (const x of v) if (Number.isFinite(x)) abs.push(Math.abs((x - mean) / sd));
+  }
+  if (!abs.length) return 2;
+  abs.sort((a, b) => a - b);
+  return abs[Math.min(abs.length - 1, Math.floor(abs.length * 0.98))];
+}
+
 function readZRange() {
   const lo = parseFloat($e("z-min").value), hi = parseFloat($e("z-max").value);
   const valid = Number.isFinite(lo) && Number.isFinite(hi) && lo < hi;
@@ -1668,7 +1698,11 @@ function pickSuggestion(entry) {
 }
 
 searchBox.addEventListener("input", () => showSuggestions(SUGGEST_LIMIT));
-searchBox.addEventListener("focus", () => { if (searchBox.value.trim()) showSuggestions(SUGGEST_LIMIT); });
+searchBox.addEventListener("focus", () => {
+  // The keyboard cannot turn with a CSS-rotated ribbon: go back to portrait to type
+  if (document.body.classList.contains("ribbon-rot")) { document.body.classList.remove("ribbon-full"); applyRibbonOrientation(); }
+  if (searchBox.value.trim()) showSuggestions(SUGGEST_LIMIT);
+});
 searchBox.addEventListener("blur", hideSuggestions);
 searchBox.addEventListener("keydown", e => {
   if (e.key === "ArrowDown") { e.preventDefault(); if (suggestList.hidden) showSuggestions(SUGGEST_LIMIT); moveActive(1); }
@@ -1711,12 +1745,14 @@ function onGeneChosen() {
     const all = symbolsStarting(query.slice(0, -1)).reduce((a, sym) => a + expr.bySymbol.get(sym).filter(hasProbe).length, 0);
     setScaleNote(`${query}: ${n} genes, ${ids.length}${all > ids.length ? ` of ${all}` : ""} probes${all > ids.length ? ` (first ${MAX_GROUP_PROBES} shown)` : ""}.`);
     showProbeBox(query, ids);
-    applyColouring();
+    setSymmetricZ(estimateZ(ids));   // repaints when colouring is already on
+    if (!colouringActive()) applyColouring();
     return;
   }
   const symbol = expr.bySymbol.has(query) || expr.bySymbol.has(query.toUpperCase()) ? query : (expr.probeName.get(ids[0]) ?? ids[0]);
   showProbeBox(symbol, ids);
-  applyColouring();
+  setSymmetricZ(estimateZ(ids));   // repaints when colouring is already on
+  if (!colouringActive()) applyColouring();
 }
 
 function setScaleNote(text) { $e("expr-scale").hidden = false; $e("scale-note").textContent = text; }
@@ -2304,6 +2340,8 @@ function renderRibbon() {
   if (!active) { ribbonTip(null); return; }
   if (!ribbon.built) buildRibbon();
   ribbon.rows = colouringActive() ? ribbonRows() : [];
+  ribbon.multiGene = new Set(ribbon.rows.map(r => symbolOf(r.id))).size > 1;
+  $e("ribbon-names").classList.toggle("multi", ribbon.multiGene);
   if (document.activeElement !== searchBox && expr.gene) searchBox.value = expr.gene;
   showRibbonProbe(ribbon.rows.find(r => r.id === ribbon.shownProbe));
   // Row names double as the probe selector for the brain colours
@@ -2318,6 +2356,7 @@ function renderRibbon() {
       else if (expr.chosen.size > 1) expr.chosen.delete(r.id);   // keep at least one probe on
       applyColouring();
     });
+    if (ribbon.multiGene) row.append(Object.assign(document.createElement("span"), { className: "rgene", textContent: symbolOf(r.id) ?? "" }));
     row.append(toggle);
     return row;
   }));
@@ -2454,11 +2493,37 @@ function applyRibbonOrientation() {
   if (ribbon.built && !$e("ribbon").hidden) { layoutRibbon(); drawRibbon(); }
   layoutStage();
 }
-$e("ribbon-orient").addEventListener("click", () => {
-  document.body.classList.toggle("ribbon-full");
+// On a phone, landscape first tries a real rotation (full screen + orientation lock, e.g.
+// Android Chrome) so the keyboard rotates too; where that is refused the ribbon is rotated
+// with CSS instead. The keyboard is closed before switching so it leaves no gap behind.
+$e("ribbon-orient").addEventListener("click", async () => {
+  document.activeElement?.blur();
+  const full = !document.body.classList.contains("ribbon-full");
   ribbonTip(null);
+  if (document.body.classList.contains("phone")) {
+    if (full) {
+      try {
+        await document.documentElement.requestFullscreen({ navigationUI: "hide" });
+        await screen.orientation.lock("landscape");
+      } catch { /* not allowed here: CSS rotation below */ }
+    } else {
+      try { screen.orientation.unlock(); } catch { /* none */ }
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    }
+  }
+  document.body.classList.toggle("ribbon-full", full);
   applyRibbonOrientation();
 });
+// Leaving full screen with the system back gesture also leaves landscape
+document.addEventListener("fullscreenchange", () => {
+  if (!document.fullscreenElement && document.body.classList.contains("ribbon-full") && document.body.classList.contains("phone")) {
+    try { screen.orientation.unlock(); } catch { /* none */ }
+    document.body.classList.remove("ribbon-full");
+    applyRibbonOrientation();
+  }
+});
+// The on-screen keyboard resizes the visual viewport: re-lay out once it opens or closes
+window.visualViewport?.addEventListener("resize", () => applyRibbonOrientation());
 addEventListener("resize", applyRibbonOrientation);
 function setRibbonMin(min) {
   document.body.classList.toggle("ribbon-min", min);
