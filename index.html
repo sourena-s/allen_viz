@@ -721,6 +721,10 @@ renderer.setClearColor(0xffffff);
 stage.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
+// Samples and their markers are drawn in a second pass over the first, with a fresh depth
+// buffer holding only the slice's occluder (see sliceOccluder), so the brain surface never
+// hides them but the cut brain section does
+const sampleScene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(35, 1, 1, 5000);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
@@ -875,7 +879,7 @@ function pointsFrom(list, color, size, map = dot) {
 // sample's own colour at SELECT_SCALE × its size, inside a yellow ring.
 function makeMarker(color, map = dot, order = 6) {
   const m = pointsFrom([{ mni: [0, 0, 0] }], color, pointSize, map);
-  m.renderOrder = order; m.visible = false; m.frustumCulled = false; scene.add(m);
+  m.renderOrder = order; m.visible = false; m.frustumCulled = false; sampleScene.add(m);
   m.material.clippingPlanes = null;   // a selected sample stays marked even when cut away
   return m;
 }
@@ -927,7 +931,8 @@ function addSamples(list) {
     cloud.material.vertexColors = true;
     cloud.material.color.set(0xffffff);
     paintCloud(cloud, () => SAMPLE_COLOR);
-    scene.add(cloud);
+    cloud.material.depthTest = true;   // hidden behind the slice's occluder (cut brain section)
+    sampleScene.add(cloud);
     return cloud;
   });
   document.getElementById("legend").innerHTML = donorClouds.map((c, i) =>
@@ -1033,7 +1038,7 @@ renderer.domElement.addEventListener("pointerup", e => {
 
 // ---------------------------------------------------------------- cuts + T1 slice
 // The MNI152 T1 is resampled at the cut position into a flat textured quad lying in the cut.
-let t1 = null, sliceMesh = null;
+let t1 = null, sliceMesh = null, sliceOccluder = null;
 const sliceTextures = {};   // one texture per cut orientation (their sizes differ)
 // Intensity window for the slice (set from brain-voxel percentiles in setupSlice):
 // below t1Lo is black, above t1Hi is white; t1Bg separates the head from the background.
@@ -1084,6 +1089,14 @@ function setupSlice(vol) {
   sliceMesh.frustumCulled = false;
   sliceMesh.renderOrder = -1;
   scene.add(sliceMesh);
+  // Invisible copy of the slice that only writes depth where the section is brain (texture
+  // alpha), placed one slab-thickness beyond the cut as seen from the camera: samples whose
+  // line of sight crosses the cut brain section deeper than the slab are hidden
+  sliceOccluder = new THREE.Mesh(geom, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, alphaTest: 0.5, colorWrite: false }));
+  sliceOccluder.visible = false;
+  sliceOccluder.frustumCulled = false;
+  sliceOccluder.renderOrder = -10;
+  sampleScene.add(sliceOccluder);
 }
 
 // Resample the T1 across `axis` at MNI position `pos` and lay the image in the cut plane.
@@ -1112,6 +1125,7 @@ function drawSlice(axis, pos) {
   if (interpOn()) overlayExpression(px, axis, pos, k, u, v, nu, nv);
   tex.needsUpdate = true;
   sliceMesh.material.map = tex;
+  sliceOccluder.material.map = tex; sliceOccluder.material.needsUpdate = true;
   sliceMesh.material.needsUpdate = true;
 
   // Quad corners at the voxel-grid edges of the plane, nudged 0.05 mm to the removed side
@@ -1282,6 +1296,19 @@ for (const rail of rails) {
     if (step) { e.preventDefault(); if (activeCut() !== name) setActiveCut(name); setCutPos(+cutSlider.value + step); }
     if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setActiveCut(activeCut() === name ? null : name); }
   });
+}
+
+// Keep the occluder one slab-thickness beyond the cut on the far side from the camera
+const _camDir = new THREE.Vector3();
+function placeOccluder() {
+  if (!sliceOccluder) return;
+  const cut = activeCut();
+  sliceOccluder.visible = !!cut && sliceMesh.visible && !bandOn();
+  if (!sliceOccluder.visible) return;
+  const { axis } = CUTS[cut], dir = AXIS_DIR[axis], pos = +cutSlider.value, tol = +tolSlider.value;
+  const camCoord = camera.position.dot(dir);   // camera's MNI coordinate along the cut axis
+  const target = camCoord > pos ? pos - tol : pos + tol;
+  sliceOccluder.position.copy(dir).multiplyScalar(target - (pos + 0.05));   // the quad sits at pos + 0.05
 }
 
 // Only one cut at a time: ticking one unticks the others and restores its last position
@@ -2531,7 +2558,12 @@ renderer.setAnimationLoop(() => {
   // A sample picked in the ribbon flashes its yellow ring for 1 s; otherwise the ring is steady
   const flashing = performance.now() < flashUntil;
   selectRing.visible = !!selected && !(flashing && Math.floor(performance.now() / 110) % 2);
+  placeOccluder();
   renderer.render(scene, camera);
+  renderer.autoClear = false;
+  renderer.clearDepth();
+  renderer.render(sampleScene, camera);
+  renderer.autoClear = true;
 });
 
 // Handle for inspecting the scene from the browser console
