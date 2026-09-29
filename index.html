@@ -1864,26 +1864,66 @@ async function savedDonors() {
   }
   return found;
 }
+// A donor's zip already in the folder: <donor>.zip or Allen's own name
+// normalized_microarray_donor<number>.zip, in the folder itself or in <folder>/<donor>/
+const ALLEN_DONOR_NUMBER = { 178238387: 9861, 178238373: 10021, 178238359: 12876, 178238316: 14380, 178238266: 15496, 178236545: 15697 };
+async function findZips() {
+  const found = new Map();
+  if (!dataDir || !(await dirPermission(dataDir, false))) return found;
+  for (const d of donors()) {
+    const names = [`${d}.zip`, `normalized_microarray_donor${ALLEN_DONOR_NUMBER[d]}.zip`];
+    const dirs = [dataDir];
+    try { dirs.push(await dataDir.getDirectoryHandle(d)); } catch { /* no subfolder */ }
+    search: for (const dir of dirs) for (const name of names) {
+      try { found.set(d, { dir, name, handle: await dir.getFileHandle(name) }); break search; } catch { /* not here */ }
+    }
+  }
+  return found;
+}
+let foundZips = new Map();
 const dlLog = lines => $e("dl-log").replaceChildren(...lines.map(t => Object.assign(document.createElement("span"), { textContent: t })));
-const chosenDownloads = () => [...$e("dl-donors").querySelectorAll("input:checked")].map(b => b.value);
+const chosenDownloads = () => [...$e("dl-donors").querySelectorAll("input.dl-donor:checked")].map(b => b.value);
+const unzipOnly = d => foundZips.has(d) && !!$e(`dl-unzip-${d}`)?.checked;
 function updateDownloadButton() {
-  const n = chosenDownloads().length;
-  $e("dl-start").disabled = !n || (hasFsAccess && !dataDir);
-  $e("dl-start").textContent = n ? `Download ${n} donor${n > 1 ? "s" : ""}` : "Download";
+  const list = chosenDownloads(), nz = list.filter(unzipOnly).length, nd = list.length - nz;
+  $e("dl-start").disabled = !list.length || (hasFsAccess && !dataDir);
+  const plural = n => `${n} donor${n > 1 ? "s" : ""}`;
+  $e("dl-start").textContent = !list.length ? "Download"
+    : [nd && `Download ${plural(nd)}`, nz && `${nd ? "unzip" : "Unzip"} ${plural(nz)}`].filter(Boolean).join(", ");
 }
 
-async function openDownloadDialog() {
+// Donor rows: a switch to include the donor and, where its zip is already in the folder,
+// an "unzip only" switch (on by default) that skips the download
+async function buildDownloadRows() {
+  if (dataDir) dlLog([`Looking in ${dataDir.name}/ for saved donors and zips…`]);
   const saved = await savedDonors().catch(() => new Map());
+  foundZips = await findZips().catch(() => new Map());
   $e("dl-donors").replaceChildren(...donors().map(d => {
     const row = document.createElement("div");
     row.className = "row";
-    const box = Object.assign(document.createElement("input"), { type: "checkbox", id: `dl-${d}`, value: d, checked: !saved.has(d) && !expr.byDonor.has(d) });
+    const box = Object.assign(document.createElement("input"), { type: "checkbox", className: "dl-donor", id: `dl-${d}`, value: d, checked: !saved.has(d) && !expr.byDonor.has(d) });
     const label = Object.assign(document.createElement("label"), { htmlFor: box.id, textContent: `Donor ${donorLabel(d)}` });
-    const note = Object.assign(document.createElement("span"), { className: "count", textContent: saved.has(d) ? "saved" : expr.byDonor.has(d) ? "loaded" : "" });
     box.addEventListener("change", updateDownloadButton);
-    row.append(box, label, note);
+    row.append(box, label);
+    const zip = foundZips.get(d);
+    if (zip) {
+      const unzip = Object.assign(document.createElement("input"), { type: "checkbox", id: `dl-unzip-${d}`, checked: true });
+      unzip.title = `${zip.dir === dataDir ? "" : `${d}/`}${zip.name} is already in the folder: unzip it instead of downloading`;
+      const ul = Object.assign(document.createElement("label"), { htmlFor: unzip.id, className: "count", textContent: "unzip only", title: unzip.title });
+      ul.style.flex = "none";
+      unzip.addEventListener("change", updateDownloadButton);
+      row.append(unzip, ul);
+    } else {
+      row.append(Object.assign(document.createElement("span"), { className: "count", textContent: saved.has(d) ? "saved" : expr.byDonor.has(d) ? "loaded" : "" }));
+    }
     return row;
   }));
+  dlLog(foundZips.size ? [`Found ${foundZips.size} donor zip${foundZips.size > 1 ? "s" : ""} in the folder: these can be unzipped without downloading.`] : []);
+  updateDownloadButton();
+}
+
+async function openDownloadDialog() {
+  await buildDownloadRows();
   $e("dl-folder-group").hidden = !hasFsAccess;
   $e("dl-nofs").hidden = hasFsAccess;
   dlLog([]);
@@ -1895,27 +1935,34 @@ async function pickDataDir() {
   try {
     const handle = await showDirectoryPicker({ id: "allen-data", mode: "readwrite", startIn: dataDir ?? "downloads" });
     rememberDir(handle);
+    await buildDownloadRows();   // look for saved donors and zips in the new folder
   } catch (err) { if (err.name !== "AbortError") dlLog([err.message]); }
 }
 
 // Stream one donor's zip into <folder>/<donor>/, unzip it there and delete the zip
 async function downloadDonor(d, onProgress) {
-  const sub = await dataDir.getDirectoryHandle(d, { create: true });
   const zipName = `${d}.zip`;
   const res = await fetch(donorUrl(d));
   if (!res.ok) throw new Error(`server answered ${res.status}`);
+  const sub = await dataDir.getDirectoryHandle(d, { create: true });   // only once the download starts
   const total = +res.headers.get("content-length") || 0;
   let got = 0;
   const counter = new TransformStream({ transform(chunk, ctl) { got += chunk.length; onProgress("Downloading", got, total); ctl.enqueue(chunk); } });
   const zipHandle = await sub.getFileHandle(zipName, { create: true });
   await res.body.pipeThrough(counter).pipeTo(await zipHandle.createWritable());
-  const entries = await zipEntries(await zipHandle.getFile());
+  await unzipDonor(d, { dir: sub, name: zipName, handle: zipHandle }, onProgress);
+}
+
+// Unzip a donor's zip into <folder>/<donor>/ (created if needed), then delete the zip
+async function unzipDonor(d, zip, onProgress) {
+  const sub = await dataDir.getDirectoryHandle(d, { create: true });
+  const entries = await zipEntries(await zip.handle.getFile());
   for (const [i, e] of entries.entries()) {
     onProgress(`Unzipping ${e.name} (${i + 1}/${entries.length})`, 0, 0);
     const out = await sub.getFileHandle(e.name, { create: true });
     await (await e.stream()).pipeTo(await out.createWritable());
   }
-  await sub.removeEntry(zipName);
+  await zip.dir.removeEntry(zip.name);
 }
 
 async function startDownloads() {
@@ -1927,17 +1974,21 @@ async function startDownloads() {
     return;
   }
   if (!(await dirPermission(dataDir, true))) { dlLog([`No permission to write to ${dataDir.name}/.`]); return; }
-  if (!confirm(`Download and unzip ${list.length} donor${list.length > 1 ? "s" : ""} (about 0.5–1 GB each) into “${dataDir.name}/”?\n\nEach donor gets its own subfolder, e.g. ${dataDir.name}/${list[0]}/`)) return;
+  const nz = list.filter(unzipOnly).length, nd = list.length - nz;
+  const what = [nd && `download and unzip ${nd} donor${nd > 1 ? "s" : ""} (about 0.5–1 GB each)`, nz && `unzip ${nz} zip${nz > 1 ? "s" : ""} already in the folder (then delete ${nz > 1 ? "them" : "it"})`].filter(Boolean).join(" and ");
+  if (!confirm(`In “${dataDir.name}/”: ${what}?\n\nEach donor gets its own subfolder, e.g. ${dataDir.name}/${list[0]}/`)) return;
   const bar = $e("dl-progress"), fill = bar.firstElementChild, done = [];
   $e("dl-start").disabled = true;
   bar.hidden = false;
   for (const [i, d] of list.entries()) {
     const head = `Donor ${donorLabel(d)} (${i + 1} of ${list.length})`;
     try {
-      await downloadDonor(d, (what, got, total) => {
+      const progress = (what, got, total) => {
         fill.style.width = total ? `${(got / total * 100).toFixed(1)}%` : "100%";
         dlLog([...done, `${head}: ${what}${got ? ` ${(got / 1e6).toFixed(0)}${total ? ` of ${(total / 1e6).toFixed(0)}` : ""} MB` : "…"}`]);
-      });
+      };
+      if (unzipOnly(d)) await unzipDonor(d, foundZips.get(d), progress);
+      else await downloadDonor(d, progress);
       done.push(`Donor ${donorLabel(d)}: saved to ${dataDir.name}/${d}/`);
     } catch (err) {
       console.error(err);
@@ -2284,34 +2335,56 @@ ribbonCanvas.parentElement.addEventListener("wheel", e => {
   setRibbonZoom(ribbon.zoom * Math.exp(-e.deltaY * 0.0015), ribbonLocal(e.clientX, e.clientY, ribbonCanvas.parentElement).x);
 }, { passive: false });
 ribbonCanvas.addEventListener("dblclick", () => setRibbonZoom(1));
-// Touch: pinch zooms around the fingers, one or two fingers drag to pan (sideways scrolls the
-// ribbon, up/down scrolls its rows); a tap still selects a sample
+// Touch: one finger pans (locked to its main direction: sideways scrolls the ribbon, up/down
+// its rows); two fingers pinch-zoom around their midpoint and pan with it. A tap still selects.
+// Fingers are captured once they drag, and a new first finger clears any finger whose lift was missed, so
+// a one-finger drag is never mistaken for a pinch.
 {
   const scroll = ribbonCanvas.parentElement, pts = new Map();
-  let last = null;   // { x, y, dist } of the previous gesture frame
+  let last = null, lock = null;   // previous gesture frame; one-finger axis lock ("x" | "y")
   const gesture = () => {
     const p = [...pts.values()], x = p.reduce((a, q) => a + q.x, 0) / p.length, y = p.reduce((a, q) => a + q.y, 0) / p.length;
     return { x, y, dist: p.length > 1 ? Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) : 0, n: p.length };
   };
   scroll.addEventListener("pointerdown", e => {
     if (e.pointerType !== "touch") return;
-    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    last = gesture();
+    if (e.isPrimary) pts.clear();
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY });
+    last = gesture(); lock = null;
   });
   scroll.addEventListener("pointermove", e => {
-    if (!pts.has(e.pointerId)) return;
-    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const q = pts.get(e.pointerId);
+    if (!q) return;
+    q.x = e.clientX; q.y = e.clientY;
     const g = gesture();
-    if (g.n !== last.n) { last = g; return; }
+    if (!last || g.n !== last.n) { last = g; lock = null; return; }
     const a = ribbonLocal(g.x, g.y, scroll), b = ribbonLocal(last.x, last.y, scroll);
-    if (g.n > 1 && last.dist > 0) setRibbonZoom(ribbon.zoom * g.dist / last.dist, a.x);
-    scroll.scrollLeft -= a.x - b.x;
-    $e("ribbon").scrollTop -= a.y - b.y;
+    let dx = a.x - b.x, dy = a.y - b.y;
+    const capture = () => { for (const id of pts.keys()) try { if (!scroll.hasPointerCapture(id)) scroll.setPointerCapture(id); } catch { /* gone */ } };
+    if (g.n === 1) {
+      const s0 = ribbonLocal(q.x0, q.y0, scroll);
+      if (!lock) {
+        const tx = Math.abs(a.x - s0.x), ty = Math.abs(a.y - s0.y);
+        if (Math.max(tx, ty) < 6) return;   // still a tap
+        lock = tx >= ty ? "x" : "y";
+        capture();   // from here on it is a drag (taps are left alone so they reach the canvas)
+      }
+      if (lock === "x") dy = 0; else dx = 0;
+    } else if (last.dist > 0 && g.dist > 0) {
+      capture();
+      setRibbonZoom(ribbon.zoom * g.dist / last.dist, a.x);
+    }
+    scroll.scrollLeft -= dx;
+    $e("ribbon").scrollTop -= dy;
     last = g;
   });
-  const lift = e => { if (pts.delete(e.pointerId)) last = pts.size ? gesture() : null; };
-  scroll.addEventListener("pointerup", lift);
-  scroll.addEventListener("pointercancel", lift);
+  const lift = e => {
+    // Taking capture fires lostpointercapture on the canvas (its implicit touch capture);
+    // that bubbles here but is not a lift
+    if (e.type === "lostpointercapture" && e.target !== scroll) return;
+    if (pts.delete(e.pointerId)) { last = pts.size ? gesture() : null; lock = null; }
+  };
+  for (const t of ["pointerup", "pointercancel", "lostpointercapture"]) scroll.addEventListener(t, lift);
 }
 $e("ribbon-fit").addEventListener("click", () => setRibbonZoom(1));
 // Landscape: the ribbon fills the whole screen; on a phone held upright it is also turned
