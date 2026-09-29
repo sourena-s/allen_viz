@@ -160,6 +160,30 @@
   .ribbon-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; min-width: 0; }
   .ribbon-head .title { font-weight: 600; }
   /* Gene box: looks like the ribbon's title, editable */
+  /* Probe panel: slides down over the top of the 3D view */
+  #probe-panel {
+    position: fixed; z-index: 3; left: calc(var(--sx) + 10px); top: calc(var(--sy) + 10px); width: calc(var(--ss) - 20px);
+    max-height: calc(var(--ss) * 0.5); box-sizing: border-box; display: flex; flex-direction: column; gap: 8px;
+    padding: 10px 12px; border-radius: 6px; color: var(--ink);
+    background: rgba(62, 68, 77, 0.45); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+    border: 1px solid var(--edge); box-shadow: 0 8px 30px rgba(20, 28, 38, 0.18);
+    transition: transform .22s cubic-bezier(.2, .8, .2, 1), opacity .22s;
+  }
+  #probe-panel:not(.open) { visibility: hidden; opacity: 0; transform: translateY(-16px); pointer-events: none; }
+  body.ribbon-min #probe-panel, body:not(.has-ribbon) #probe-panel { display: none; }
+  .pp-range { display: flex; align-items: center; gap: 10px; }
+  .pp-range input[type=range] { flex: 1; }
+  .pp-label { font: 600 12px var(--sans); }
+  .pp-list { display: flex; flex-wrap: wrap; gap: 5px; overflow-y: auto; min-height: 0; scrollbar-width: thin; }
+  .pp-item {
+    font: 11.5px var(--mono); color: var(--ink); cursor: pointer; padding: 4px 9px; border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1); border: 1.5px solid transparent;
+  }
+  .pp-item[aria-selected=true] { border-color: #ffd21f; background: rgba(255, 210, 31, 0.14); }
+  body.phone .pp-item { font-size: 13px; padding: 7px 11px; }
+  html body.ribbon-full #probe-panel { z-index: 7; left: 12px; right: 12px; width: auto; top: 56px; max-height: 40vh; }
+  body.phone.panel-open #probe-panel { display: none; }
+  body.phone:has(#probe-panel.open) .mesh-corner { visibility: hidden; }
   #alias-tip {
     position: fixed; z-index: 8; pointer-events: none; font: 11.5px var(--sans); color: var(--ink);
     padding: 4px 9px; border-radius: 6px; background: rgba(46, 51, 58, 0.95); border: 1px solid var(--edge); white-space: nowrap;
@@ -249,6 +273,7 @@
   html body.ribbon-full #readout, html body.ribbon-full .panel-toggle, html body.ribbon-full .edge-rail { display: none; }
   .ribbon-names.multi { width: 76px; }
   .rgene { flex: 1; min-width: 0; font: 9.5px var(--mono); color: var(--muted); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ribbon-names:not(.multi) { width: 0; }
   .ribbon-names { flex: none; width: 20px; padding-top: 34px; display: flex; flex-direction: column; gap: 2px; }
   .rname { height: var(--row-h, 16px); display: flex; align-items: center; gap: 6px; }
   .rname input[type=checkbox] { width: 20px; height: 12px; }
@@ -496,6 +521,10 @@
   <button type="button" data-mesh="show-hippocampus" aria-pressed="true">Hippocampus</button>
   <button type="button" data-mesh="show-amygdala" aria-pressed="false">Amygdala</button>
 </div>
+<div id="probe-panel" role="dialog" aria-label="Probes and colour range">
+  <div class="pp-range"><span class="pp-label">±z</span><input type="range" id="z-sym" min="0.5" max="5" step="0.1" value="2" aria-label="Colour range, z"><span id="z-sym-val" class="rm-value">2.0</span></div>
+  <div class="pp-list" id="probe-list" role="listbox" aria-multiselectable="true"></div>
+</div>
 <div id="busy" hidden role="status"><span class="spinner"></span><span id="busy-text">Loading…</span></div>
 <div class="views view-corner">
       <button data-view="L" title="Left">L</button><button data-view="R" title="Right">R</button>
@@ -509,9 +538,9 @@
   <div class="ribbon-head">
     <input type="text" class="title gene-box" id="gene-input" role="combobox" aria-autocomplete="list" aria-expanded="false"
            aria-controls="gene-suggestions" aria-label="Gene or probe" placeholder="Gene" autocomplete="off" spellcheck="false"><span class="probe" id="ribbon-probe"></span>
-    <label class="zsym" title="Colour range: z from minus to plus this value">±z
-      <input type="range" id="z-sym" min="0.5" max="5" step="0.1" value="2"><span id="z-sym-val" class="rm-value">2.0</span></label>
     <div class="rb-tools">
+      <button class="rb-btn" id="probe-panel-btn" type="button" aria-expanded="false" aria-controls="probe-panel" aria-label="Probes and colour range">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg></button>
       <button class="rb-btn" id="ribbon-orient" type="button" aria-pressed="false" aria-label="Maximise the ribbon">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path class="max" d="M14 4h6v6M10 20H4v-6M20 4l-6.5 6.5M4 20l6.5-6.5"/><path class="restore" d="M4 14h6v6M20 10h-6V4M14 10l6.5-6.5M10 14l-6.5 6.5"/></svg></button>
     </div>
@@ -2522,19 +2551,22 @@ function renderRibbon() {
   showRibbonProbe(ribbon.rows.find(r => r.id === ribbon.shownProbe));
   // Row names double as the probe selector for the brain colours
   $e("ribbon-names").replaceChildren(...ribbon.rows.map(r => {
-    const row = Object.assign(document.createElement("div"), { className: `rname${r.chosen ? " chosen" : ""}` });
-    const toggle = Object.assign(document.createElement("input"), { type: "checkbox", checked: r.chosen });
-    toggle.setAttribute("aria-label", `Include probe ${r.name} in the brain colours`);
-    toggle.title = `${r.name}: include in the average shown on the brain`;
-    toggle.addEventListener("change", () => {
+    const row = Object.assign(document.createElement("div"), { className: "rname" });
+    if (ribbon.multiGene) row.append(Object.assign(document.createElement("span"), { className: "rgene", textContent: symbolOf(r.id) ?? "" }));
+    return row;
+  }));
+  // Probe list in the panel over the 3D view: tap a probe to add it to (or drop it from) the
+  // average shown on the brain; chosen rows are outlined in yellow in the ribbon
+  $e("probe-list").replaceChildren(...ribbon.rows.map(r => {
+    const item = Object.assign(document.createElement("button"), { type: "button", className: "pp-item", textContent: r.name });
+    item.setAttribute("role", "option"); item.setAttribute("aria-selected", r.chosen);
+    item.addEventListener("click", () => {
       ribbon.shownProbe = r.id;
-      if (toggle.checked) expr.chosen.add(r.id);
+      if (!expr.chosen.has(r.id)) expr.chosen.add(r.id);
       else if (expr.chosen.size > 1) expr.chosen.delete(r.id);   // keep at least one probe on
       applyColouring();
     });
-    if (ribbon.multiGene) row.append(Object.assign(document.createElement("span"), { className: "rgene", textContent: symbolOf(r.id) ?? "" }));
-    row.append(toggle);
-    return row;
+    return item;
   }));
   drawRibbon();
   layoutStage();   // the square view shrinks or grows with the ribbon's height
@@ -2639,6 +2671,11 @@ function drawRibbon() {
       const x0 = ribbon.xs[r.from], x1 = ribbon.xs[r.to];
       if (x1 - x0 >= 2) ctx.strokeRect(x0 + 0.5, 0.5, x1 - x0 - 1, h - 1);
     }
+  }
+  // Probes in the brain average: yellow outline around their rows (unless every row is in it)
+  if (ribbon.rows.some(r => !r.chosen)) {
+    ctx.strokeStyle = "#ffd21f"; ctx.lineWidth = 1.5;
+    ribbon.rows.forEach((r, i) => { if (r.chosen) ctx.strokeRect(0.75, i * (ROW_H + ROW_GAP) + 0.75, ribbon.width - 1.5, ROW_H - 1.5); });
   }
   const sel = ribbon.cols.find(c => c.s === selected);
   if (sel) outline(sel, "#ffd21f");
@@ -2798,6 +2835,18 @@ searchBox.addEventListener("input", () => (aliasTip.hidden = true));
   for (const t of ["pointerup", "pointercancel"]) box.addEventListener(t, () => (start = null));
 }
 $e("ribbon-bar").addEventListener("click", () => setRibbonMin(false));
+function setProbePanel(open) {
+  $e("probe-panel").classList.toggle("open", open);
+  $e("probe-panel-btn").setAttribute("aria-expanded", open);
+}
+$e("probe-panel-btn").addEventListener("click", () => setProbePanel(!$e("probe-panel").classList.contains("open")));
+{
+  const panel = $e("probe-panel");
+  let y0 = null;
+  panel.addEventListener("pointerdown", e => { if (!e.target.closest("input, button")) y0 = e.clientY; });
+  panel.addEventListener("pointermove", e => { if (y0 !== null && y0 - e.clientY > 40) { y0 = null; setProbePanel(false); } });
+  for (const t of ["pointerup", "pointercancel"]) panel.addEventListener(t, () => (y0 = null));
+}
 
 // Column under a canvas x position (columns are sorted by x)
 function columnAt(x) {
