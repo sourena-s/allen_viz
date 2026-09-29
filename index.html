@@ -176,11 +176,13 @@
   /* Ribbon toolbar (menu, maximise, minimise) and its floating control panel */
   .rb-tools { margin-left: auto; display: flex; gap: 4px; flex: none; }
   .rb-btn {
-    width: 28px; height: 24px; padding: 0; display: grid; place-items: center; cursor: pointer; color: var(--ink);
-    background: rgba(255, 255, 255, 0.08); border: 1px solid var(--edge); border-radius: 8px;
+    width: 30px; height: 30px; padding: 0; display: grid; place-items: center; cursor: pointer; color: var(--ink);
+    background: transparent; border: 0; border-radius: 50%; transition: background .15s, transform .1s;
+    -webkit-tap-highlight-color: transparent;
   }
-  .rb-btn:hover, .rb-btn[aria-expanded=true] { background: var(--glass-hover); }
-  .rb-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .rb-btn:hover, .rb-btn[aria-expanded=true] { background: rgba(255, 255, 255, 0.16); }
+  .rb-btn:active { transform: scale(0.92); }
+  .rb-btn svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
   #ribbon-orient .restore, #ribbon-orient[aria-pressed=true] .max { display: none; }
   #ribbon-orient[aria-pressed=true] .restore { display: inline; }
   #ribbon-menu {
@@ -394,7 +396,7 @@
   <div class="group">
     <span class="label">Brain surface</span>
     <div class="row"><span class="swatch mesh-swatch" style="background:#8a9099"></span><input type="checkbox" id="show-brain" checked><label for="show-brain">Pial</label></div>
-    <div class="row"><input type="checkbox" id="show-hippocampus"><label for="show-hippocampus">Hippocampus</label></div>
+    <div class="row"><input type="checkbox" id="show-hippocampus" checked><label for="show-hippocampus">Hippocampus</label></div>
     <div class="row"><input type="checkbox" id="show-amygdala"><label for="show-amygdala">Amygdala</label></div>
     <div class="row"><span class="swatch mesh-swatch" style="background:transparent"></span><input type="checkbox" id="mirror"><label for="mirror">Mirror right hemisphere onto the left</label></div>
     <label class="label" for="opacity">Surface opacity</label>
@@ -484,14 +486,15 @@
 
 <section id="ribbon" class="glass" hidden aria-label="Expression z-score of every sample, one row per probe">
   <div class="ribbon-head">
-    <span class="title" id="ribbon-title"></span><span class="probe" id="ribbon-probe"></span>
+    <span id="gene-slot-ribbon"><input type="text" class="title gene-box" id="gene-input" role="combobox" aria-autocomplete="list" aria-expanded="false"
+           aria-controls="gene-suggestions" aria-label="Gene or probe" placeholder="Gene…" autocomplete="off" spellcheck="false"></span><span class="probe" id="ribbon-probe"></span>
     <div class="rb-tools">
       <button class="rb-btn" id="ribbon-menu-btn" type="button" aria-expanded="false" aria-controls="ribbon-menu" aria-label="Ribbon controls" title="Ribbon controls">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h14"/></svg></button>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h11M4 17h7"/></svg></button>
       <button class="rb-btn" id="ribbon-orient" type="button" aria-pressed="false" aria-label="Maximise the ribbon" title="Maximise">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path class="max" d="M5 9V5h4M15 5h4v4M19 15v4h-4M9 19H5v-4"/><path class="restore" d="M9 5v4H5M15 5v4h4M19 15h-4v4M5 15h4v4"/></svg></button>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path class="max" d="M14 4h6v6M10 20H4v-6M20 4l-6.5 6.5M4 20l6.5-6.5"/><path class="restore" d="M4 14h6v6M20 10h-6V4M14 10l6.5-6.5M10 14l-6.5 6.5"/></svg></button>
       <button class="rb-btn" id="ribbon-min" type="button" aria-label="Minimise the ribbon" title="Minimise">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12"/></svg></button>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
     </div>
   </div>
   <div class="ribbon-grid">
@@ -506,8 +509,7 @@
 <ul class="suggestions" id="gene-suggestions" role="listbox" hidden></ul>
 <div id="ribbon-menu" class="glass" hidden role="dialog" aria-label="Ribbon controls">
   <label class="label" for="gene-input">Gene or probe</label>
-  <input type="text" class="gene-box" id="gene-input" role="combobox" aria-autocomplete="list" aria-expanded="false"
-         aria-controls="gene-suggestions" placeholder="Gene, e.g. RBFOX1 or znf…" autocomplete="off" spellcheck="false">
+  <span id="gene-slot-menu"></span>
   <label class="zsym" title="Colour range: z from minus to plus this value (estimated on each search)">Colour range ±z
     <input type="range" id="z-sym" min="0.5" max="5" step="0.1" value="2"><span id="z-sym-val" class="count">2.0</span></label>
   <div class="rm-row">
@@ -1024,7 +1026,7 @@ document.getElementById("mirror").addEventListener("change", e => {
   showReadout();
 });
 document.getElementById("opacity").addEventListener("input", e => {
-  Object.values(surfaces).flat().forEach(s => (s.shade.material.uniforms.opacity.value = +e.target.value));
+  Object.values(surfaces).flat().forEach(s => (s.shade.material.uniforms.opacity.value = +e.target.value + (s.boost ?? 0)));
 });
 document.getElementById("point-size").addEventListener("input", e => {
   pointSize = +e.target.value;
@@ -1609,7 +1611,7 @@ async function loadExpressionFiles(files, donor = $e("expr-donor").value) {
     buildSearchIndex();
     $e("expr-gene-controls").hidden = false;
     renderRibbon();
-    if (colouringActive() || $e("gene-input").value.trim()) onGeneChosen();   // include the new donor
+    if (colouringActive() || boxQuery()) onGeneChosen();   // include the new donor
   } catch (err) {
     bar.hidden = true;
     setExprStatus([err.message]);
@@ -1653,6 +1655,8 @@ function probesFor(query) {
 const SUGGEST_LIMIT = 12, PARTIAL_LIMIT = 300;
 let searchIndex = [], suggestions = [], activeSuggestion = -1;
 const searchBox = $e("gene-input"), suggestList = $e("gene-suggestions");
+// The box's text without a trailing "(Allen symbol)" note
+const boxQuery = () => searchBox.value.replace(/\s*\([^)]*\)\s*$/, "").trim();
 
 function buildSearchIndex() {
   const symbolOf = new Map();
@@ -1758,7 +1762,7 @@ searchBox.addEventListener("focus", () => {
   if (document.body.classList.contains("ribbon-rot")) { document.body.classList.remove("ribbon-full"); applyRibbonOrientation(); }
   if (searchBox.value.trim().length >= MIN_SUGGEST) showSuggestions(SUGGEST_LIMIT);
 });
-searchBox.addEventListener("blur", hideSuggestions);
+searchBox.addEventListener("blur", () => { hideSuggestions(); syncGeneBox(); });
 searchBox.addEventListener("keydown", e => {
   if (e.key === "ArrowDown") { e.preventDefault(); if (suggestList.hidden) showSuggestions(SUGGEST_LIMIT); moveActive(1); }
   else if (e.key === "ArrowUp") { e.preventDefault(); moveActive(-1); }
@@ -1766,13 +1770,19 @@ searchBox.addEventListener("keydown", e => {
   else if (e.key === "Enter") {
     e.preventDefault();
     if (activeSuggestion >= 0) { pickSuggestion(suggestions[activeSuggestion]); return; }
+    searchBox.value = boxQuery();
+    expr.alias = null;
     const q = searchBox.value.trim().toLowerCase();
     const exact = searchIndex.find(entry => entry.keys.includes(q));
     if (exact) pickSuggestion(exact);
     else if (q && !q.endsWith("*") && !symbolsStarting(q).length) {
       // Not in the Allen annotation: the gene may have been renamed since (e.g. RBFOX1 was A2BP1)
       resolveAlias(searchBox.value.trim()).then(sym => {
-        if (sym) { searchBox.value = sym; hideSuggestions(); onGeneChosen(); setScaleNote(`${searchBox.dataset.asked} is ${sym} in the Allen probe annotation.`); }
+        if (sym) {
+          searchBox.value = sym; hideSuggestions(); onGeneChosen();
+          expr.alias = searchBox.dataset.asked; syncGeneBox();
+          setScaleNote(`${expr.alias} is ${sym} in the Allen probe annotation.`);
+        }
         else showSuggestions(PARTIAL_LIMIT);
       });
     }
@@ -1840,7 +1850,7 @@ function showProbeBox(query, ids) {
 const chosenProbes = () => [...(expr.chosen ?? [])];
 
 function onGeneChosen() {
-  const query = $e("gene-input").value.trim(), ids = probesFor(query);
+  const query = boxQuery(), ids = probesFor(query);
   if (!ids.length) { if (query) setScaleNote(`No probes found for "${query}" in this file.`); return; }
   // A gene lists all its probes; a single probe picked by id or name lists just that one;
   // "PREFIX*" lists the probes of every gene starting with PREFIX
@@ -1899,7 +1909,7 @@ function applyScales() {
 }
 
 function applyColouring() {
-  const query = $e("gene-input").value.trim(), ids = probesFor(query);
+  const query = boxQuery(), ids = probesFor(query);
   if (!ids.length) return;
   const use = chosenProbes().filter(id => ids.includes(id));
   if (!use.length) return;
@@ -2414,6 +2424,9 @@ function setRibbonZoom(zoom, anchor) {
   anchor ??= scroll.clientWidth / 2;
   const frac = (scroll.scrollLeft + anchor) / Math.max(1, ribbon.width);   // keep this spot under the cursor
   ribbon.zoom = Math.min(MAX_ZOOM, Math.max(1, zoom));
+  if (ribbon.donorGroups && ribbon.zoom < MAX_ZOOM - 1e-6) {   // zoomed out: drop the donor grouping
+    ribbon.donorGroups = false; $e("ribbon-donors").checked = false; buildRibbon();
+  }
   layoutRibbon();
   drawRibbon();
   scroll.scrollLeft = frac * ribbon.width - anchor;
@@ -2421,8 +2434,8 @@ function setRibbonZoom(zoom, anchor) {
 
 // Rows: every probe of the chosen gene; a cell is that sample's value for the probe
 function ribbonRows() {
-  const ids = probesFor($e("gene-input").value), chosen = new Set(chosenProbes());
-  const group = $e("gene-input").value.trim().endsWith("*");
+  const ids = probesFor(boxQuery()), chosen = new Set(chosenProbes());
+  const group = boxQuery().endsWith("*");
   return ids.map(id => ({ id, name: group ? `${symbolOf(id)} · ${expr.probeName.get(id) ?? id}` : expr.probeName.get(id) ?? id, chosen: chosen.has(id) }));
 }
 // A cell is the probe's z-score for that sample, standardised across the donor's samples
@@ -2447,7 +2460,7 @@ function renderRibbon() {
   ribbon.multiGene = new Set(ribbon.rows.map(r => symbolOf(r.id))).size > 1;
   $e("ribbon-names").classList.toggle("multi", ribbon.multiGene);
   if (document.activeElement !== searchBox && expr.gene) searchBox.value = expr.gene;
-  $e("ribbon-title").textContent = expr.gene ?? "";
+  syncGeneBox();
   showRibbonProbe(ribbon.rows.find(r => r.id === ribbon.shownProbe));
   // Row names double as the probe selector for the brain colours
   $e("ribbon-names").replaceChildren(...ribbon.rows.map(r => {
@@ -2510,7 +2523,7 @@ function drawRibbon() {
   };
   // Donor groups: a dark outline around each donor's samples within a region
   if (ribbon.donorGroups) {
-    ctx.strokeStyle = "rgba(58, 63, 70, 0.55)"; ctx.lineWidth = 1;   // grey donor-group outline
+    ctx.strokeStyle = "#0b0d10"; ctx.lineWidth = 1;
     for (const r of ribbon.runs) {
       const x0 = ribbon.xs[r.from], x1 = ribbon.xs[r.to];
       if (x1 - x0 >= 2) ctx.strokeRect(x0 + 0.5, 0.5, x1 - x0 - 1, h - 1);
@@ -2641,8 +2654,19 @@ function setRibbonMin(min) {
 $e("ribbon-min").addEventListener("click", () => { setRibbonMenu(false); setRibbonMin(true); });
 // Ribbon controls: a frosted panel over the 3D view, opened with the ribbon's menu button and
 // closed by the button again, Escape, or a tap anywhere outside it
+// One gene box: it sits in the ribbon's header and moves into the control panel while that
+// is open. In the ribbon it shows the Allen symbol; in the panel a name found through an
+// alias reads "RBFOX1 (A2BP1)", the Allen symbol in parentheses.
+function syncGeneBox() {
+  if (document.activeElement === searchBox || !expr.gene) return;
+  const inMenu = !$e("ribbon-menu").hidden;
+  searchBox.value = inMenu && expr.alias ? `${expr.alias} (${expr.gene})` : expr.gene;
+}
 function setRibbonMenu(open) {
+  $e(open ? "gene-slot-menu" : "gene-slot-ribbon").append(searchBox);
+  searchBox.placeholder = open ? "Gene, e.g. RBFOX1 or znf…" : "Gene…";
   $e("ribbon-menu").hidden = !open;
+  syncGeneBox();
   $e("ribbon-menu-btn").setAttribute("aria-expanded", open);
   if (!open) hideSuggestions();
 }
@@ -2653,9 +2677,13 @@ document.addEventListener("pointerdown", e => {
   setRibbonMenu(false);
 });
 addEventListener("keydown", e => { if (e.key === "Escape" && !$e("ribbon-menu").hidden && suggestList.hidden) setRibbonMenu(false); });
+// Grouping by donor needs room: switching it on zooms the ribbon all the way in, and
+// zooming back out from there switches it off again
 $e("ribbon-donors").addEventListener("change", e => {
   ribbon.donorGroups = e.target.checked;
-  if (ribbon.built) { buildRibbon(); drawRibbon(); }
+  if (!ribbon.built) return;
+  buildRibbon();
+  if (ribbon.donorGroups) setRibbonZoom(MAX_ZOOM); else drawRibbon();
 });
 $e("ribbon-bar").addEventListener("click", () => setRibbonMin(false));
 
@@ -2774,12 +2802,13 @@ try {
   brainGeometry.computeBoundingBox();
   brainGeometry.boundingBox.getCenter(brainCenter);
   focusOn(brainCenter, true);
-  // Hippocampus and amygdala from the Allen atlas (ICBM2009sym, MNI), off until switched on
+  // Hippocampus (on at start, grey) and amygdala (off) from the Allen atlas (ICBM2009sym, MNI)
   const atlas = parseNifti(atlasBytes);
-  for (const [key, labels, color] of [["hippocampus", HIPPOCAMPUS_LABELS, 0xffc46b], ["amygdala", AMYGDALA_LABELS, 0xff86b8]]) {
+  for (const [key, labels, color] of [["hippocampus", HIPPOCAMPUS_LABELS, 0x7d848d], ["amygdala", AMYGDALA_LABELS, 0xff86b8]]) {
     const mesh = labelSurface(atlas, labels);
     addSurface(key, mesh.positions, mesh.indices, color, 0);
     surfaces[key].forEach(s => (s.group.visible = document.getElementById(`show-${key}`).checked));
+    if (key === "hippocampus") surfaces[key].forEach(s => { s.boost = 0.2; s.shade.material.uniforms.opacity.value += 0.2; });   // 20 points more opaque than the pial surface
   }
   const list = parseSamples(sampleText);
   addSamples(list);
