@@ -173,6 +173,31 @@
   .ribbon-fit { flex: none; margin-left: auto; padding: 3px 12px; font-size: 11px; }
   .ribbon-grid { display: flex; gap: 8px; }
   .ribbon-fit2 { margin-left: 0; }
+  /* Ribbon toolbar (menu, maximise, minimise) and its floating control panel */
+  .rb-tools { margin-left: auto; display: flex; gap: 4px; flex: none; }
+  .rb-btn {
+    width: 28px; height: 24px; padding: 0; display: grid; place-items: center; cursor: pointer; color: var(--ink);
+    background: rgba(255, 255, 255, 0.08); border: 1px solid var(--edge); border-radius: 8px;
+  }
+  .rb-btn:hover, .rb-btn[aria-expanded=true] { background: var(--glass-hover); }
+  .rb-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  #ribbon-orient .restore, #ribbon-orient[aria-pressed=true] .max { display: none; }
+  #ribbon-orient[aria-pressed=true] .restore { display: inline; }
+  #ribbon-menu {
+    position: fixed; z-index: 9; left: calc(var(--sx) + 10px); width: min(340px, calc(var(--ss) - 20px));
+    bottom: calc(100dvh - var(--sy) - var(--ss) + 10px); box-sizing: border-box;
+    padding: 14px; border-radius: 16px; display: flex; flex-direction: column; gap: 10px;
+    background: rgba(62, 68, 77, 0.55); -webkit-backdrop-filter: blur(18px) saturate(140%); backdrop-filter: blur(18px) saturate(140%);
+  }
+  #ribbon-menu[hidden] { display: none; }
+  html body.ribbon-full #ribbon-menu { left: auto; right: 12px; top: 48px; bottom: auto; }
+  html #ribbon-menu .gene-box { font: 600 14px var(--sans); width: 100%; box-sizing: border-box; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--edge); background: var(--field); color: var(--ink); }
+  body.phone #ribbon-menu .gene-box { font-size: 16px; }
+  #ribbon-menu .zsym { background: none; border: 0; padding: 0; }
+  #ribbon-menu .zsym input[type=range] { flex: 1; width: auto; }
+  .rm-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .rm-row .ribbon-donors { margin-left: 0; }
+  .rm-row .text-button { padding: 6px 14px; }
   .zsym {
     display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; color: var(--ink); white-space: nowrap;
     padding: 2px 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.14); border: 1px solid var(--edge);
@@ -459,14 +484,15 @@
 
 <section id="ribbon" class="glass" hidden aria-label="Expression z-score of every sample, one row per probe">
   <div class="ribbon-head">
-    <input type="text" class="title gene-box" id="gene-input" role="combobox" aria-autocomplete="list" aria-expanded="false"
-           aria-controls="gene-suggestions" aria-label="Gene or probe" placeholder="Gene…" autocomplete="off" spellcheck="false"><span class="probe" id="ribbon-probe"></span>
-    <label class="zsym" title="Colour range: z from minus to plus this value (estimated from the rows on each search)">±z
-      <input type="range" id="z-sym" min="0.5" max="5" step="0.1" value="2"><span id="z-sym-val" class="count">2.0</span></label>
-    <label class="ribbon-donors" title="Group each region's samples by donor"><input type="checkbox" id="ribbon-donors">Donors</label>
-    <button class="text-button ribbon-fit" id="ribbon-min" type="button" aria-label="Minimise the ribbon" title="Minimise">–</button>
-    <button class="text-button ribbon-fit ribbon-fit2" id="ribbon-orient" type="button" aria-pressed="false" title="Show the ribbon full screen (landscape) or docked (portrait)">Landscape</button>
-    <button class="text-button ribbon-fit ribbon-fit2" id="ribbon-fit" type="button" title="Show the whole ribbon (or double-click it). Scroll the wheel over the ribbon, or pinch it, to zoom.">Fit</button>
+    <span class="title" id="ribbon-title"></span><span class="probe" id="ribbon-probe"></span>
+    <div class="rb-tools">
+      <button class="rb-btn" id="ribbon-menu-btn" type="button" aria-expanded="false" aria-controls="ribbon-menu" aria-label="Ribbon controls" title="Ribbon controls">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h14"/></svg></button>
+      <button class="rb-btn" id="ribbon-orient" type="button" aria-pressed="false" aria-label="Maximise the ribbon" title="Maximise">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path class="max" d="M5 9V5h4M15 5h4v4M19 15v4h-4M9 19H5v-4"/><path class="restore" d="M9 5v4H5M15 5v4h4M19 15h-4v4M5 15h4v4"/></svg></button>
+      <button class="rb-btn" id="ribbon-min" type="button" aria-label="Minimise the ribbon" title="Minimise">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12"/></svg></button>
+    </div>
   </div>
   <div class="ribbon-grid">
     <div class="ribbon-names" id="ribbon-names"></div>
@@ -478,6 +504,17 @@
 </section>
 <div id="ribbon-tip" hidden></div>
 <ul class="suggestions" id="gene-suggestions" role="listbox" hidden></ul>
+<div id="ribbon-menu" class="glass" hidden role="dialog" aria-label="Ribbon controls">
+  <label class="label" for="gene-input">Gene or probe</label>
+  <input type="text" class="gene-box" id="gene-input" role="combobox" aria-autocomplete="list" aria-expanded="false"
+         aria-controls="gene-suggestions" placeholder="Gene, e.g. RBFOX1 or znf…" autocomplete="off" spellcheck="false">
+  <label class="zsym" title="Colour range: z from minus to plus this value (estimated on each search)">Colour range ±z
+    <input type="range" id="z-sym" min="0.5" max="5" step="0.1" value="2"><span id="z-sym-val" class="count">2.0</span></label>
+  <div class="rm-row">
+    <label class="ribbon-donors" title="Group each region's samples by donor"><input type="checkbox" id="ribbon-donors">Group by donor</label>
+    <button class="text-button" id="ribbon-fit" type="button" title="Show the whole ribbon (or double-click it). Scroll the wheel over the ribbon, or pinch it, to zoom.">Fit width</button>
+  </div>
+</div>
 <button id="ribbon-bar" type="button" hidden aria-label="Show the ribbon" title="Show the ribbon"></button>
 <div class="edge-rail v left" data-rail="coronal" role="slider" tabindex="0" aria-label="Coronal cut (y)" aria-orientation="vertical"><div class="rail-track"></div><div class="rail-thumb"><span></span></div></div>
 <div class="edge-rail v right" data-rail="axial" role="slider" tabindex="0" aria-label="Axial cut (z)" aria-orientation="vertical"><div class="rail-track"></div><div class="rail-thumb"><span></span></div></div>
@@ -1748,29 +1785,45 @@ searchBox.addEventListener("keydown", e => {
   }
 });
 
-// Current gene symbols the Allen annotation (about 2013) still lists under an older name.
-// A few well-known renames are built in; anything else is looked up on mygene.info (current
-// symbol or alias -> Entrez id -> the Allen symbol with that Entrez id).
-const OLD_SYMBOLS = {
-  RBFOX1: "A2BP1", RBFOX2: "RBM9", RBFOX3: "HRNBP3", CELF1: "CUGBP1", CELF2: "CUGBP2",
-  CELF4: "BRUNOL4", CELF5: "BRUNOL5", CELF6: "BRUNOL6", CELF3: "TNRC4", KMT2A: "MLL",
-  TENM1: "ODZ1", TENM2: "ODZ2", TENM3: "ODZ3", TENM4: "ODZ4",
-  ADGRL1: "LPHN1", ADGRL2: "LPHN2", ADGRL3: "LPHN3", ADGRB1: "BAI1", ADGRB2: "BAI2", ADGRB3: "BAI3", NSMCE3: "NDNL2",
-};
+// Gene names that are not in the Allen annotation (about 2013), which uses older symbols
+// for renamed genes (e.g. A2BP1 for RBFOX1): resolved offline with the HGNC table in
+// assets/hgnc_aliases.tsv.gz (approved symbol, Entrez id, previous and alias symbols), loaded
+// on first use. The approved gene's Entrez id is matched against Probes.csv first, then its
+// previous/alias symbols against the Allen symbols.
+let hgnc = null;
+async function loadHgnc() {
+  if (hgnc) return hgnc;
+  const res = await fetch("assets/hgnc_aliases.tsv.gz");
+  let stream = res.body;
+  // A host may already have decompressed it (then it no longer starts with the gzip magic)
+  const buf = new Uint8Array(await new Response(stream).arrayBuffer());
+  const text = buf[0] === 0x1f && buf[1] === 0x8b
+    ? await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"))).text()
+    : new TextDecoder().decode(buf);
+  const genes = new Map(), bySynonym = new Map();
+  for (const line of text.split("\n")) {
+    if (!line || line[0] === "#") continue;
+    const [sym, entrez, syn] = line.split("\t");
+    const synonyms = syn ? syn.split("|") : [];
+    genes.set(sym.toUpperCase(), { sym, entrez, synonyms });
+    for (const a of synonyms) (bySynonym.get(a.toUpperCase()) ?? bySynonym.set(a.toUpperCase(), []).get(a.toUpperCase())).push(sym.toUpperCase());
+  }
+  return (hgnc = { genes, bySynonym });
+}
 async function resolveAlias(query) {
   const q = query.toUpperCase();
   searchBox.dataset.asked = q;
-  const local = OLD_SYMBOLS[q];
-  if (local && expr.bySymbol.has(local)) return local;
-  try {
-    const url = `https://mygene.info/v3/query?q=${encodeURIComponent(`symbol:${q} OR alias:${q}`)}&species=human&fields=symbol,alias,entrezgene&size=5`;
-    const hits = (await (await fetch(url)).json()).hits ?? [];
-    for (const h of hits) {
-      const sym = expr.symbolByEntrez?.get(String(h.entrezgene));
-      if (sym) return sym;
-      for (const a of [h.symbol, ...[].concat(h.alias ?? [])]) if (a && expr.bySymbol.has(a)) return a;
-    }
-  } catch { /* offline or blocked: nothing more to try */ }
+  let table;
+  try { table = await loadHgnc(); } catch { return null; }
+  const inAllen = sym => expr.bySymbol.has(sym) ? sym : [...expr.bySymbol.keys()].find(k => k.toUpperCase() === sym.toUpperCase());
+  // The approved gene(s) the query names: itself, or those listing it as a previous/alias symbol
+  const approved = table.genes.has(q) ? [q] : table.bySynonym.get(q) ?? [];
+  for (const key of approved) {
+    const g = table.genes.get(key);
+    const byEntrez = g.entrez && expr.symbolByEntrez?.get(g.entrez);
+    if (byEntrez) return byEntrez;
+    for (const name of [g.sym, ...g.synonyms]) { const hit = inAllen(name); if (hit) return hit; }
+  }
   return null;
 }
 
@@ -2394,6 +2447,7 @@ function renderRibbon() {
   ribbon.multiGene = new Set(ribbon.rows.map(r => symbolOf(r.id))).size > 1;
   $e("ribbon-names").classList.toggle("multi", ribbon.multiGene);
   if (document.activeElement !== searchBox && expr.gene) searchBox.value = expr.gene;
+  $e("ribbon-title").textContent = expr.gene ?? "";
   showRibbonProbe(ribbon.rows.find(r => r.id === ribbon.shownProbe));
   // Row names double as the probe selector for the brain colours
   $e("ribbon-names").replaceChildren(...ribbon.rows.map(r => {
@@ -2539,7 +2593,8 @@ $e("ribbon-fit").addEventListener("click", () => setRibbonZoom(1));
 function applyRibbonOrientation() {
   const full = document.body.classList.contains("ribbon-full");
   document.body.classList.toggle("ribbon-rot", full && innerHeight > innerWidth);
-  $e("ribbon-orient").textContent = full ? "Portrait" : "Landscape";
+  $e("ribbon-orient").title = full ? "Restore" : "Maximise";
+  $e("ribbon-orient").setAttribute("aria-label", full ? "Restore the ribbon" : "Maximise the ribbon");
   $e("ribbon-orient").setAttribute("aria-pressed", full);
   if (ribbon.built && !$e("ribbon").hidden) { layoutRibbon(); drawRibbon(); }
   layoutStage();
@@ -2583,7 +2638,21 @@ function setRibbonMin(min) {
   if (!min) { layoutRibbon(); drawRibbon(); }
   layoutStage();
 }
-$e("ribbon-min").addEventListener("click", () => setRibbonMin(true));
+$e("ribbon-min").addEventListener("click", () => { setRibbonMenu(false); setRibbonMin(true); });
+// Ribbon controls: a frosted panel over the 3D view, opened with the ribbon's menu button and
+// closed by the button again, Escape, or a tap anywhere outside it
+function setRibbonMenu(open) {
+  $e("ribbon-menu").hidden = !open;
+  $e("ribbon-menu-btn").setAttribute("aria-expanded", open);
+  if (!open) hideSuggestions();
+}
+$e("ribbon-menu-btn").addEventListener("click", () => setRibbonMenu($e("ribbon-menu").hidden));
+document.addEventListener("pointerdown", e => {
+  if ($e("ribbon-menu").hidden) return;
+  if (e.target.closest("#ribbon-menu, #ribbon-menu-btn, #gene-suggestions")) return;
+  setRibbonMenu(false);
+});
+addEventListener("keydown", e => { if (e.key === "Escape" && !$e("ribbon-menu").hidden && suggestList.hidden) setRibbonMenu(false); });
 $e("ribbon-donors").addEventListener("change", e => {
   ribbon.donorGroups = e.target.checked;
   if (ribbon.built) { buildRibbon(); drawRibbon(); }
