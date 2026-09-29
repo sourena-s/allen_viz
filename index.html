@@ -540,7 +540,7 @@
            aria-controls="gene-suggestions" aria-label="Gene or probe" placeholder="Gene" autocomplete="off" spellcheck="false"><span class="probe zval" id="ribbon-probe" hidden></span>
     <div class="rb-tools">
       <label class="zsym" title="Colour range: z from minus to plus this value">±z
-        <input type="range" id="z-sym" min="0.5" max="5" step="0.1" value="2" aria-label="Colour range, z"><span id="z-sym-val" class="rm-value">2.0</span></label>
+        <input type="range" id="z-sym" min="0.5" max="6" step="0.1" value="2" aria-label="Colour range, z"><span id="z-sym-val" class="rm-value">2.0</span></label>
       <button class="rb-btn" id="ribbon-orient" type="button" aria-pressed="false" aria-label="Maximise the ribbon">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path class="max" d="M14 4h6v6M10 20H4v-6M20 4l-6.5 6.5M4 20l6.5-6.5"/><path class="restore" d="M4 14h6v6M20 10h-6V4M14 10l6.5-6.5M10 14l-6.5 6.5"/></svg></button>
     </div>
@@ -585,7 +585,7 @@
   </form>
 </dialog>
 
-<div id="readout" class="glass"><div class="name">Click a sample</div><div class="meta">MNI x, y, z (mm)</div></div>
+<div id="readout" class="glass" hidden></div>
 <div id="status">Loading meshes…</div>
 
 <script src="assets/bundle.js"></script>
@@ -1109,9 +1109,10 @@ function showReadout() {
   if (s !== readoutFor) { readout.classList.remove("open"); readoutFor = s; }
   readout.classList.toggle("empty", !s);
   if (!s) {
-    readout.innerHTML = `<div class="name">${document.body.classList.contains("phone") ? "Tap a sample" : "Click a sample"}</div>`;
+    readout.hidden = true;   // nothing until a sample is chosen
     return;
   }
+  readout.hidden = false;
   readout.innerHTML = `<div class="name"></div><div class="meta more"></div>`;
   readout.title = "Click for details";
   readout.querySelector(".name").textContent = `${s.name} (${s.acronym})`;
@@ -1540,7 +1541,7 @@ setPalette($e("palette").value);
 // Colour range boxes: apply when both are numbers and low < high, otherwise mark them
 // Symmetric colour range from the ribbon's ±z slider
 function setSymmetricZ(t, live = false) {
-  t = Math.min(5, Math.max(0.5, Math.round(t * 10) / 10));
+  t = Math.min(6, Math.max(0.5, Math.round(t * 10) / 10));
   $e("z-sym").value = t; $e("z-sym-val").textContent = t.toFixed(1);
   $e("z-min").value = -t; $e("z-max").value = t;
   if (!live) { readZRange(); return; }
@@ -2696,7 +2697,7 @@ function drawRibbon() {
   }
   // Probes in the brain average: yellow outline around their rows (unless every row is in it)
   if (ribbon.rows.some(r => !r.chosen)) {
-    ctx.strokeStyle = "#ffd21f"; ctx.lineWidth = 1.5; ctx.setLineDash([5, 3]);
+    ctx.strokeStyle = "#0b0d10"; ctx.lineWidth = 1.5;   // solid black, under the yellow column outline
     ribbon.rows.forEach((r, i) => { if (r.chosen) ctx.strokeRect(0.75, i * (ROW_H + ROW_GAP) + 0.75, ribbon.width - 1.5, ROW_H - 1.5); });
   }
   ctx.setLineDash([]);
