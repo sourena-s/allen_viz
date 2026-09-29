@@ -446,7 +446,7 @@
         <span class="hint" id="z-filter-note"></span>
       </div>
       <div class="group" id="expr-scale" hidden>
-        <div class="row range-row">
+        <div class="row range-row" hidden>
           <label class="label" for="z-min">Colour range, z</label>
           <input type="text" id="z-min" value="-2" inputmode="decimal" aria-label="Lowest z-score (first colour of the palette)">
           <span class="count">to</span>
@@ -2428,7 +2428,14 @@ function ribbonLocal(clientX, clientY, el = ribbonCanvas) {
 function setRibbonZoom(zoom, anchor) {
   const scroll = ribbonCanvas.parentElement;
   anchor ??= scroll.clientWidth / 2;
-  const frac = (scroll.scrollLeft + anchor) / Math.max(1, ribbon.width);   // keep this spot under the cursor
+  // Keep the sample under the pointer (or the pinch) where it is, even when the donor
+  // grouping switches on or off and adds or removes gaps
+  const x = scroll.scrollLeft + anchor;
+  let ci = columnAt(x);
+  if (ci < 0) ci = ribbon.cols.findIndex(c => c.x + c.w > x);   // in a gap: the next sample
+  if (ci < 0) ci = ribbon.cols.length - 1;
+  const pinned = ribbon.cols[ci], within = pinned ? (x - pinned.x) / Math.max(1e-6, pinned.w) : 0;
+  const frac = x / Math.max(1, ribbon.width);
   // Zooming in past the maximum groups each region's samples by donor; zooming back out
   // from the maximum ungroups them
   const atMax = ribbon.zoom >= MAX_ZOOM - 1e-6;
@@ -2437,7 +2444,8 @@ function setRibbonZoom(zoom, anchor) {
   else if (ribbon.donorGroups && ribbon.zoom < MAX_ZOOM - 1e-6) { ribbon.donorGroups = false; buildRibbon(); }
   layoutRibbon();
   drawRibbon();
-  scroll.scrollLeft = frac * ribbon.width - anchor;
+  const col = pinned && ribbon.cols.find(c => c.s === pinned.s);
+  scroll.scrollLeft = (col ? col.x + within * col.w : frac * ribbon.width) - anchor;
 }
 
 // Rows: every probe of the chosen gene; a cell is that sample's value for the probe
