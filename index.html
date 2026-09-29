@@ -1477,7 +1477,7 @@ async function loadExpressionFiles(files, donor = $e("expr-donor").value) {
   try {
     if (probesFile) {
       setExprStatus([`Reading ${probesFile.name}…`]);
-      Object.assign(expr, await readProbesFile(probesFile));
+      Object.assign(expr, await readProbesFile(probesFile), { symbolOf: null });
     }
     if (exprFile) {
       bar.hidden = false;
@@ -1515,8 +1515,23 @@ function showLoadedStatus() {
 }
 
 // Probe ids for a gene symbol, probe name or probe_id; only probes present in a loaded file
+// "ZNF*" (what Enter on a partial name becomes) means every gene whose symbol starts with
+// ZNF: their probes, sorted by gene symbol and then probe name, capped at MAX_GROUP_PROBES
+const MAX_GROUP_PROBES = 600;
+const symbolsStarting = prefix => {
+  const p = prefix.toUpperCase();
+  return [...expr.bySymbol.keys()].filter(sym => sym.toUpperCase().startsWith(p)).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+};
+function symbolOf(id) {
+  if (!expr.symbolOf) { expr.symbolOf = new Map(); for (const [sym, ids] of expr.bySymbol) for (const i of ids) expr.symbolOf.set(i, sym); }
+  return expr.symbolOf.get(id);
+}
 function probesFor(query) {
   const q = query.trim();
+  if (q.length > 1 && q.endsWith("*")) {
+    const byName = (a, b) => (expr.probeName.get(a) ?? a).localeCompare(expr.probeName.get(b) ?? b, undefined, { numeric: true });
+    return symbolsStarting(q.slice(0, -1)).flatMap(sym => expr.bySymbol.get(sym).filter(hasProbe).sort(byName)).slice(0, MAX_GROUP_PROBES);
+  }
   const ids = expr.bySymbol.get(q) ?? expr.bySymbol.get(q.toUpperCase()) ?? [expr.nameToId?.get(q) ?? q];
   return ids.filter(hasProbe);
 }
@@ -1638,7 +1653,12 @@ searchBox.addEventListener("keydown", e => {
     const q = searchBox.value.trim().toLowerCase();
     const exact = searchIndex.find(entry => entry.keys.includes(q));
     if (exact) pickSuggestion(exact);
-    else showSuggestions(PARTIAL_LIMIT);
+    else if (q && (q.endsWith("*") ? q.length > 1 : symbolsStarting(q).length)) {
+      // A partial gene name: take every gene starting with it (e.g. znf -> all ZNF genes)
+      searchBox.value = `${searchBox.value.trim().replace(/\*$/, "").toUpperCase()}*`;
+      hideSuggestions();
+      onGeneChosen();
+    } else showSuggestions(PARTIAL_LIMIT);
   }
 });
 
@@ -1657,7 +1677,16 @@ const chosenProbes = () => [...(expr.chosen ?? [])];
 function onGeneChosen() {
   const query = $e("gene-input").value.trim(), ids = probesFor(query);
   if (!ids.length) { if (query) setScaleNote(`No probes found for "${query}" in this file.`); return; }
-  // A gene lists all its probes; a single probe picked by id or name lists just that one
+  // A gene lists all its probes; a single probe picked by id or name lists just that one;
+  // "PREFIX*" lists the probes of every gene starting with PREFIX
+  const n = query.endsWith("*") ? symbolsStarting(query.slice(0, -1)).length : 0;
+  if (n) {
+    const all = symbolsStarting(query.slice(0, -1)).reduce((a, sym) => a + expr.bySymbol.get(sym).filter(hasProbe).length, 0);
+    setScaleNote(`${query}: ${n} genes, ${ids.length}${all > ids.length ? ` of ${all}` : ""} probes${all > ids.length ? ` (first ${MAX_GROUP_PROBES} shown)` : ""}.`);
+    showProbeBox(query, ids);
+    applyColouring();
+    return;
+  }
   const symbol = expr.bySymbol.has(query) || expr.bySymbol.has(query.toUpperCase()) ? query : (expr.probeName.get(ids[0]) ?? ids[0]);
   showProbeBox(symbol, ids);
   applyColouring();
@@ -2226,7 +2255,8 @@ function setRibbonZoom(zoom, anchor) {
 // Rows: every probe of the chosen gene; a cell is that sample's value for the probe
 function ribbonRows() {
   const ids = probesFor($e("gene-input").value), chosen = new Set(chosenProbes());
-  return ids.map(id => ({ id, name: expr.probeName.get(id) ?? id, chosen: chosen.has(id) }));
+  const group = $e("gene-input").value.trim().endsWith("*");
+  return ids.map(id => ({ id, name: group ? `${symbolOf(id)} · ${expr.probeName.get(id) ?? id}` : expr.probeName.get(id) ?? id, chosen: chosen.has(id) }));
 }
 // A cell is the probe's z-score for that sample, standardised across the donor's samples
 function cellValue(s, probeId) {
