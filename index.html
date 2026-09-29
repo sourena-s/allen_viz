@@ -173,7 +173,10 @@
   .ribbon-fit { flex: none; margin-left: auto; padding: 3px 12px; font-size: 11px; }
   .ribbon-grid { display: flex; gap: 8px; }
   .ribbon-fit2 { margin-left: 0; }
-  .zsym { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ink); white-space: nowrap; }
+  .zsym {
+    display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; color: var(--ink); white-space: nowrap;
+    padding: 2px 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.14); border: 1px solid var(--edge);
+  }
   .zsym input[type=range] { width: 90px; height: 16px; }
   .zsym .count { min-width: 2.2em; }
   .ribbon-donors { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ink); cursor: pointer; white-space: nowrap; }
@@ -1507,16 +1510,18 @@ async function readProbesFile(file) {
   const [headerLine, ...lines] = (await file.text()).split(/\r?\n/).filter(l => l.trim());
   const header = parseCsvLine(headerLine).map(h => h.trim().toLowerCase());
   const col = name => header.indexOf(name);
-  const [idCol, nameCol, symCol] = [col("probe_id"), col("probe_name"), col("gene_symbol")];
+  const [idCol, nameCol, symCol, entrezCol] = [col("probe_id"), col("probe_name"), col("gene_symbol"), col("entrez_id")];
   if (idCol < 0 || symCol < 0) throw new Error(`${file.name} has no probe_id / gene_symbol columns`);
-  const probeName = new Map(), bySymbol = new Map();
+  const probeName = new Map(), bySymbol = new Map(), symbolByEntrez = new Map();
   for (const line of lines) {
     const c = parseCsvLine(line);
     const id = c[idCol].trim(), sym = c[symCol].trim();
     probeName.set(id, nameCol >= 0 ? c[nameCol] : id);
     if (sym) (bySymbol.get(sym) ?? bySymbol.set(sym, []).get(sym)).push(id);
+    const entrez = entrezCol >= 0 ? c[entrezCol]?.trim() : "";
+    if (sym && entrez && !symbolByEntrez.has(entrez)) symbolByEntrez.set(entrez, sym);
   }
-  return { probeName, bySymbol };
+  return { probeName, bySymbol, symbolByEntrez };
 }
 
 async function loadExpressionFiles(files, donor = $e("expr-donor").value) {
@@ -1663,7 +1668,7 @@ function showSuggestions(limit) {
     return li;
   });
   const note = text => Object.assign(document.createElement("li"), { className: "note", textContent: text });
-  if (query.trim() && !total) items.push(note(`No gene or probe matches "${query.trim()}".`));
+  if (query.trim() && !total) items.push(note(`No gene or probe matches "${query.trim()}". Press Enter to look it up under older gene names.`));
   else if (total > list.length) items.push(note(`${list.length} of ${total.toLocaleString()} matches · press Enter to list more`));
   else if (limit === PARTIAL_LIMIT && total) items.unshift(note(`${total.toLocaleString()} partial match${total > 1 ? "es" : ""}`));
   suggestList.replaceChildren(...items);
@@ -1697,11 +1702,13 @@ function pickSuggestion(entry) {
   onGeneChosen();
 }
 
-searchBox.addEventListener("input", () => showSuggestions(SUGGEST_LIMIT));
+// Suggestions appear from the fourth character on (Enter still searches shorter text)
+const MIN_SUGGEST = 4;
+searchBox.addEventListener("input", () => { if (searchBox.value.trim().length >= MIN_SUGGEST) showSuggestions(SUGGEST_LIMIT); else hideSuggestions(); });
 searchBox.addEventListener("focus", () => {
   // The keyboard cannot turn with a CSS-rotated ribbon: go back to portrait to type
   if (document.body.classList.contains("ribbon-rot")) { document.body.classList.remove("ribbon-full"); applyRibbonOrientation(); }
-  if (searchBox.value.trim()) showSuggestions(SUGGEST_LIMIT);
+  if (searchBox.value.trim().length >= MIN_SUGGEST) showSuggestions(SUGGEST_LIMIT);
 });
 searchBox.addEventListener("blur", hideSuggestions);
 searchBox.addEventListener("keydown", e => {
@@ -1714,6 +1721,13 @@ searchBox.addEventListener("keydown", e => {
     const q = searchBox.value.trim().toLowerCase();
     const exact = searchIndex.find(entry => entry.keys.includes(q));
     if (exact) pickSuggestion(exact);
+    else if (q && !q.endsWith("*") && !symbolsStarting(q).length) {
+      // Not in the Allen annotation: the gene may have been renamed since (e.g. RBFOX1 was A2BP1)
+      resolveAlias(searchBox.value.trim()).then(sym => {
+        if (sym) { searchBox.value = sym; hideSuggestions(); onGeneChosen(); setScaleNote(`${searchBox.dataset.asked} is ${sym} in the Allen probe annotation.`); }
+        else showSuggestions(PARTIAL_LIMIT);
+      });
+    }
     else if (q && (q.endsWith("*") ? q.length > 1 : symbolsStarting(q).length)) {
       // A partial gene name: take every gene starting with it (e.g. znf -> all ZNF genes)
       searchBox.value = `${searchBox.value.trim().replace(/\*$/, "").toUpperCase()}*`;
@@ -1722,6 +1736,32 @@ searchBox.addEventListener("keydown", e => {
     } else showSuggestions(PARTIAL_LIMIT);
   }
 });
+
+// Current gene symbols the Allen annotation (about 2013) still lists under an older name.
+// A few well-known renames are built in; anything else is looked up on mygene.info (current
+// symbol or alias -> Entrez id -> the Allen symbol with that Entrez id).
+const OLD_SYMBOLS = {
+  RBFOX1: "A2BP1", RBFOX2: "RBM9", RBFOX3: "HRNBP3", CELF1: "CUGBP1", CELF2: "CUGBP2",
+  CELF4: "BRUNOL4", CELF5: "BRUNOL5", CELF6: "BRUNOL6", CELF3: "TNRC4", KMT2A: "MLL",
+  TENM1: "ODZ1", TENM2: "ODZ2", TENM3: "ODZ3", TENM4: "ODZ4",
+  ADGRL1: "LPHN1", ADGRL2: "LPHN2", ADGRL3: "LPHN3", ADGRB1: "BAI1", ADGRB2: "BAI2", ADGRB3: "BAI3", NSMCE3: "NDNL2",
+};
+async function resolveAlias(query) {
+  const q = query.toUpperCase();
+  searchBox.dataset.asked = q;
+  const local = OLD_SYMBOLS[q];
+  if (local && expr.bySymbol.has(local)) return local;
+  try {
+    const url = `https://mygene.info/v3/query?q=${encodeURIComponent(`symbol:${q} OR alias:${q}`)}&species=human&fields=symbol,alias,entrezgene&size=5`;
+    const hits = (await (await fetch(url)).json()).hits ?? [];
+    for (const h of hits) {
+      const sym = expr.symbolByEntrez?.get(String(h.entrezgene));
+      if (sym) return sym;
+      for (const a of [h.symbol, ...[].concat(h.alias ?? [])]) if (a && expr.bySymbol.has(a)) return a;
+    }
+  } catch { /* offline or blocked: nothing more to try */ }
+  return null;
+}
 
 // Point size factor for a z-score: 0.5× at the low end of the colour range, 1× at its
 // midpoint, 2× at the high end
