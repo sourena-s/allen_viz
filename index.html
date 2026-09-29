@@ -139,8 +139,8 @@
   .hint { font-size: 11.5px; color: var(--muted); }
 
   #readout {
-    position: fixed; right: 16px; top: 16px; z-index: 1;
-    max-width: min(320px, calc(100vw - 32px)); border-radius: 14px; padding: 11px 14px;
+    position: fixed; z-index: 1; top: calc(var(--sy, 16px) + 8px); right: calc(100vw - var(--sx, 0px) - var(--ss, 100vw) + 64px);
+    max-width: min(320px, calc(var(--ss, 100vw) * 0.5 - 72px)); box-sizing: border-box; border-radius: 14px; padding: 11px 14px;
     pointer-events: none;
   }
   #readout .name { font-weight: 500; font-size: 12px; }
@@ -160,17 +160,6 @@
   .ribbon-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; min-width: 0; }
   .ribbon-head .title { font-weight: 600; }
   /* Gene box: looks like the ribbon's title, editable */
-  /* Probe panel: slides down over the top of the 3D view */
-  #probe-panel {
-    position: fixed; z-index: 3; left: calc(var(--sx) + 10px); top: calc(var(--sy) + 10px); width: calc(var(--ss) - 20px);
-    max-height: calc(var(--ss) * 0.5); box-sizing: border-box; display: flex; flex-direction: column; gap: 8px;
-    padding: 10px 12px; border-radius: 6px; color: var(--ink);
-    background: rgba(62, 68, 77, 0.45); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
-    border: 1px solid var(--edge); box-shadow: 0 8px 30px rgba(20, 28, 38, 0.18);
-    transition: transform .22s cubic-bezier(.2, .8, .2, 1), opacity .22s;
-  }
-  #probe-panel:not(.open) { visibility: hidden; opacity: 0; transform: translateY(-16px); pointer-events: none; }
-  body.ribbon-min #probe-panel, body:not(.has-ribbon) #probe-panel { display: none; }
   .pp-range { display: flex; align-items: center; gap: 10px; }
   .pp-range input[type=range] { flex: 1; }
   .pp-label { font: 600 12px var(--sans); }
@@ -183,9 +172,12 @@
   .pp-item:hover { background: rgba(255, 255, 255, 0.26); }
   .pp-item[aria-selected=true] { border-color: #ffd21f; background: rgba(255, 210, 31, 0.22); }
   body.phone .pp-item { height: 22px; }
-  html body.ribbon-full #probe-panel { z-index: 7; left: 12px; right: 12px; width: auto; top: 56px; max-height: 40vh; }
-  body.phone.panel-open #probe-panel { display: none; }
-  body.phone:has(#probe-panel.open) .mesh-corner { visibility: hidden; }
+  #probe-tip {
+    position: fixed; z-index: 8; pointer-events: none; font: 11.5px var(--mono); color: var(--ink);
+    padding: 4px 9px; border-radius: 4px; background: rgba(62, 68, 77, 0.8); border: 1px solid var(--edge); white-space: nowrap;
+    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  }
+  #probe-tip[hidden] { display: none; }
   #alias-tip {
     position: fixed; z-index: 8; pointer-events: none; font: 11.5px var(--sans); color: var(--ink);
     padding: 4px 9px; border-radius: 6px; background: rgba(46, 51, 58, 0.95); border: 1px solid var(--edge); white-space: nowrap;
@@ -210,6 +202,8 @@
   .zsym .rm-value { min-width: 2.2em; font-size: 11px; }
   body.phone .zsym input[type=range] { width: 70px; height: 24px; }
   .ribbon-head { align-items: center; touch-action: none; }
+  .rb-tools .zsym { margin-right: 6px; }
+  .rb-tools { align-items: center; }
   .rb-tools { margin-left: auto; display: flex; gap: 4px; flex: none; }
   .rb-btn {
     width: 30px; height: 30px; padding: 0; display: grid; place-items: center; cursor: pointer; color: var(--ink);
@@ -225,7 +219,7 @@
   /* Surface toggles in the square's bottom-right corner, styled like the view buttons */
   .mesh-corner {
     position: fixed; z-index: 2; display: flex; flex-direction: column; gap: 4px;
-    right: calc(100vw - var(--sx) - var(--ss) + 8px); top: calc(var(--sy) + var(--ss) / 2); transform: translateY(-50%);
+    right: calc(100vw - var(--sx) - var(--ss) + 8px); top: calc(var(--sy) + 8px);
   }
   .mesh-corner button {
     font: 500 11px var(--sans); padding: 4px 9px; border-radius: 999px; cursor: pointer;
@@ -279,8 +273,8 @@
     transform-origin: top left; transform: rotate(90deg); padding: 12px 14px;
   }
   html body.ribbon-full #readout, html body.ribbon-full .panel-toggle, html body.ribbon-full .edge-rail { display: none; }
-  .ribbon-names.multi { width: 76px; }
-  .rgene { flex: 1; min-width: 0; font: 9.5px var(--mono); color: var(--muted); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ribbon-names.multi { width: auto; max-width: 70px; }
+  .rgene { flex: none; min-width: 0; font: 9.5px var(--mono); color: var(--muted); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ribbon-names:not(.multi) { width: 0; }
   .ribbon-names { flex: none; width: 20px; padding-top: 34px; display: flex; flex-direction: column; gap: 2px; }
   .rname { height: var(--row-h, 16px); display: flex; align-items: center; gap: 6px; }
@@ -298,8 +292,8 @@
   #ribbon-canvas { display: block; cursor: pointer; }
   #ribbon-tip {
     position: fixed; z-index: 7; pointer-events: none; border-radius: 8px; padding: 7px 10px;
-    left: calc(var(--sx) + 8px) !important; top: auto !important; bottom: calc(100dvh - var(--sy) - var(--ss) + 44px);
-    font-size: 12px; max-width: calc(var(--ss) - 90px); color: var(--ink); background: rgba(62, 68, 77, 0.55);
+    left: calc(var(--sx) + 8px) !important; top: calc(var(--sy) + 8px) !important;
+    font-size: 12px; max-width: calc(var(--ss) * 0.5 - 16px); box-sizing: border-box; color: var(--ink); background: rgba(62, 68, 77, 0.55);
     -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); box-shadow: 0 6px 20px rgba(20, 28, 38, 0.25); border: 1px solid var(--edge);
   }
   #ribbon-tip .meta { font: 11px var(--mono); color: var(--muted); margin-top: 2px; }
@@ -529,9 +523,6 @@
   <button type="button" data-mesh="show-hippocampus" aria-pressed="true" aria-label="Hippocampus">Hipp</button>
   <button type="button" data-mesh="show-amygdala" aria-pressed="false" aria-label="Amygdala">Amyg</button>
 </div>
-<div id="probe-panel" role="dialog" aria-label="Probes and colour range">
-  <div class="pp-range"><span class="pp-label">±z</span><input type="range" id="z-sym" min="0.5" max="5" step="0.1" value="2" aria-label="Colour range, z"><span id="z-sym-val" class="rm-value">2.0</span></div>
-</div>
 <button id="resume-load" type="button" hidden></button>
 <div id="busy" hidden role="status"><span class="spinner"></span><span id="busy-text">Loading…</span></div>
 <div class="views view-corner">
@@ -545,10 +536,10 @@
 <section id="ribbon" class="glass" hidden aria-label="Expression z-score of every sample, one row per probe">
   <div class="ribbon-head">
     <input type="text" class="title gene-box" id="gene-input" role="combobox" aria-autocomplete="list" aria-expanded="false"
-           aria-controls="gene-suggestions" aria-label="Gene or probe" placeholder="Gene" autocomplete="off" spellcheck="false"><span class="probe" id="ribbon-probe"></span>
+           aria-controls="gene-suggestions" aria-label="Gene or probe" placeholder="Gene" autocomplete="off" spellcheck="false"><span class="probe" id="ribbon-probe" hidden></span>
     <div class="rb-tools">
-      <button class="rb-btn" id="probe-panel-btn" type="button" aria-expanded="false" aria-controls="probe-panel" aria-label="Probes and colour range">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg></button>
+      <label class="zsym" title="Colour range: z from minus to plus this value">±z
+        <input type="range" id="z-sym" min="0.5" max="5" step="0.1" value="2" aria-label="Colour range, z"><span id="z-sym-val" class="rm-value">2.0</span></label>
       <button class="rb-btn" id="ribbon-orient" type="button" aria-pressed="false" aria-label="Maximise the ribbon">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path class="max" d="M14 4h6v6M10 20H4v-6M20 4l-6.5 6.5M4 20l6.5-6.5"/><path class="restore" d="M4 14h6v6M20 10h-6V4M14 10l6.5-6.5M10 14l-6.5 6.5"/></svg></button>
     </div>
@@ -2581,9 +2572,19 @@ function renderRibbon() {
 }
 
 // The probe name of the last clicked row (toggle or cell) is shown beside the gene name
-function showRibbonProbe(r) {
+const probeTip = Object.assign(document.createElement("div"), { id: "probe-tip", hidden: true });
+document.body.append(probeTip);
+function showRibbonProbe(r, announce = false) {
   ribbon.shownProbe = r?.id ?? null;
-  $e("ribbon-probe").textContent = r ? r.name : "";
+  if (!announce || !r) return;
+  // Tapped row: its probe name and id just above the ribbon's left edge, for 2 s
+  const box = $e("ribbon").getBoundingClientRect();
+  probeTip.textContent = `${r.name}${r.name.includes(r.id) ? "" : ` · probe ${r.id}`}`;
+  probeTip.hidden = false;
+  probeTip.style.left = `${box.left}px`;
+  probeTip.style.top = `${box.top - probeTip.offsetHeight - 6}px`;
+  clearTimeout(showRibbonProbe.timer);
+  showRibbonProbe.timer = setTimeout(() => (probeTip.hidden = true), 2000);
 }
 
 function fitRowHeight() {
@@ -2844,18 +2845,6 @@ searchBox.addEventListener("input", () => (aliasTip.hidden = true));
   for (const t of ["pointerup", "pointercancel"]) box.addEventListener(t, () => (start = null));
 }
 $e("ribbon-bar").addEventListener("click", () => setRibbonMin(false));
-function setProbePanel(open) {
-  $e("probe-panel").classList.toggle("open", open);
-  $e("probe-panel-btn").setAttribute("aria-expanded", open);
-}
-$e("probe-panel-btn").addEventListener("click", () => setProbePanel(!$e("probe-panel").classList.contains("open")));
-{
-  const panel = $e("probe-panel");
-  let y0 = null;
-  panel.addEventListener("pointerdown", e => { if (!e.target.closest("input, button")) y0 = e.clientY; });
-  panel.addEventListener("pointermove", e => { if (y0 !== null && y0 - e.clientY > 40) { y0 = null; setProbePanel(false); } });
-  for (const t of ["pointerup", "pointercancel"]) panel.addEventListener(t, () => (y0 = null));
-}
 
 // Column under a canvas x position (columns are sorted by x)
 function columnAt(x) {
@@ -2909,7 +2898,7 @@ ribbonCanvas.addEventListener("click", e => {
   }
   const row = ribbon.rows[Math.floor(p.y / (ROW_H + ROW_GAP))];
   if (row) {
-    showRibbonProbe(row);
+    showRibbonProbe(row, true);
     // Tapping a row makes its probe the one shown on the brain (one at a time)
     if (!expr.chosen?.has(row.id) || expr.chosen.size > 1) { expr.chosen = new Set([row.id]); applyColouring(); }
   }
