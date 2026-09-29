@@ -155,7 +155,7 @@
   #ribbon {
     position: fixed; left: 300px; right: 16px; top: var(--rt, auto); bottom: auto;
     max-height: calc(100dvh - var(--rt, 0px) - 10px); overflow-y: auto;
-    border-radius: 14px; padding: 10px 12px 10px; box-sizing: border-box;
+    border-radius: 4px; padding: 10px 12px 10px; box-sizing: border-box;
   }
   .ribbon-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; min-width: 0; }
   .ribbon-head .title { font-weight: 600; }
@@ -196,6 +196,30 @@
   #ribbon-orient .restore, #ribbon-orient[aria-pressed=true] .max { display: none; }
   #ribbon-orient[aria-pressed=true] .restore { display: inline; }
   /* Panel sections: small caps label above each control, hairlines between sections */
+  /* Surface toggles in the square's bottom-right corner, styled like the view buttons */
+  .mesh-corner {
+    position: fixed; z-index: 2; display: flex; gap: 3px;
+    right: calc(100vw - var(--sx) - var(--ss) + 8px); top: calc(var(--sy) + var(--ss) - 34px);
+  }
+  .mesh-corner button {
+    font: 500 11px var(--sans); padding: 4px 9px; border-radius: 999px; cursor: pointer;
+    color: #3e444d; background: rgba(255, 255, 255, 0.7); border: 1px solid rgba(62, 68, 77, 0.2);
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  }
+  .mesh-corner button[aria-pressed=true] { color: #fff; background: rgba(62, 68, 77, 0.78); border-color: transparent; }
+  body.phone .mesh-corner { top: calc(var(--sy) + 8px); }   /* the view buttons fill the bottom edge */
+  body.phone .mesh-corner button { font-size: 12px; padding: 7px 10px; }
+  body.phone.panel-open .mesh-corner, html body.ribbon-full .mesh-corner { display: none; }
+  /* Busy notice while donor files are read */
+  #busy {
+    position: fixed; z-index: 9; left: calc(var(--sx) + var(--ss) / 2); top: calc(var(--sy) + var(--ss) / 2);
+    transform: translate(-50%, -50%); display: flex; align-items: center; gap: 10px;
+    padding: 12px 18px; border-radius: 12px; font: 13px var(--sans); color: #fff;
+    background: rgba(46, 51, 58, 0.88); box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+  }
+  #busy[hidden] { display: none; }
+  .spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.3); border-top-color: #fff; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
   .rm-value { font: 12px var(--mono); color: var(--ink); font-variant-numeric: tabular-nums; }
   .ribbon-donors { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ink); cursor: pointer; white-space: nowrap; }
   .ribbon-donors input[type=checkbox] { width: 20px; height: 12px; }
@@ -386,9 +410,9 @@
 
   <div class="group">
     <span class="label">Brain surface</span>
-    <div class="row"><span class="swatch mesh-swatch" style="background:#8a9099"></span><input type="checkbox" id="show-brain" checked><label for="show-brain">Pial</label></div>
-    <div class="row"><input type="checkbox" id="show-hippocampus" checked><label for="show-hippocampus">Hippocampus</label></div>
-    <div class="row"><input type="checkbox" id="show-amygdala"><label for="show-amygdala">Amygdala</label></div>
+    <div class="row" hidden><span class="swatch mesh-swatch" style="background:#8a9099"></span><input type="checkbox" id="show-brain" checked><label for="show-brain">Pial</label></div>
+    <div class="row" hidden><input type="checkbox" id="show-hippocampus" checked><label for="show-hippocampus">Hippocampus</label></div>
+    <div class="row" hidden><input type="checkbox" id="show-amygdala"><label for="show-amygdala">Amygdala</label></div>
     <div class="row"><span class="swatch mesh-swatch" style="background:transparent"></span><input type="checkbox" id="mirror"><label for="mirror">Mirror right hemisphere onto the left</label></div>
     <label class="label" for="opacity">Surface opacity</label>
     <input type="range" id="opacity" min="0" max="0.6" step="0.01" value="0.05">
@@ -467,6 +491,12 @@
   </div>
 </aside>
 
+<div class="mesh-corner" role="group" aria-label="Surfaces">
+  <button type="button" data-mesh="show-brain" aria-pressed="true">Pial</button>
+  <button type="button" data-mesh="show-hippocampus" aria-pressed="true">Hippocampus</button>
+  <button type="button" data-mesh="show-amygdala" aria-pressed="false">Amygdala</button>
+</div>
+<div id="busy" hidden role="status"><span class="spinner"></span><span id="busy-text">Loading…</span></div>
 <div class="views view-corner">
       <button data-view="L" title="Left">L</button><button data-view="R" title="Right">R</button>
       <button data-view="A" title="Anterior">A</button><button data-view="P" title="Posterior">P</button>
@@ -478,7 +508,7 @@
 <section id="ribbon" class="glass" hidden aria-label="Expression z-score of every sample, one row per probe">
   <div class="ribbon-head">
     <input type="text" class="title gene-box" id="gene-input" role="combobox" aria-autocomplete="list" aria-expanded="false"
-           aria-controls="gene-suggestions" aria-label="Gene or probe" placeholder="Gene…" autocomplete="off" spellcheck="false"><span class="probe" id="ribbon-probe"></span>
+           aria-controls="gene-suggestions" aria-label="Gene or probe" placeholder="Gene" autocomplete="off" spellcheck="false"><span class="probe" id="ribbon-probe"></span>
     <label class="zsym" title="Colour range: z from minus to plus this value">±z
       <input type="range" id="z-sym" min="0.5" max="5" step="0.1" value="2"><span id="z-sym-val" class="rm-value">2.0</span></label>
     <div class="rb-tools">
@@ -1579,7 +1609,12 @@ async function readProbesFile(file) {
   return { probeName, bySymbol, symbolByEntrez };
 }
 
+function setBusy(text) { $e("busy").hidden = !text; if (text) $e("busy-text").textContent = text; }
 async function loadExpressionFiles(files, donor = $e("expr-donor").value) {
+  setBusy(`Loading donor ${donorShort(donor)}…`);
+  try { await loadExpressionFilesNow(files, donor); } finally { setBusy(null); }
+}
+async function loadExpressionFilesNow(files, donor) {
   files = [...files];
   const zip = files.find(f => /\.zip$/i.test(f.name));
   if (zip) {
@@ -1599,6 +1634,7 @@ async function loadExpressionFiles(files, donor = $e("expr-donor").value) {
     if (exprFile) {
       bar.hidden = false;
       const rows = await readExpressionFile(exprFile, (frac, n) => {
+        setBusy(`Loading donor ${donorShort(donor)}… ${n.toLocaleString()} probes`);
         fill.style.width = frac == null ? "100%" : `${(frac * 100).toFixed(1)}%`;
         setExprStatus([`Reading ${exprFile.name}… ${n.toLocaleString()} probes`]);
       });
@@ -1612,7 +1648,7 @@ async function loadExpressionFiles(files, donor = $e("expr-donor").value) {
     bar.hidden = true;
     if (!expr.byDonor.size) { setExprStatus([`Probes loaded (${expr.bySymbol.size.toLocaleString()} genes). Now choose MicroarrayExpression.csv.`]); return; }
     showLoadedStatus();
-    $e("gene-input").placeholder = expr.bySymbol.size ? "Gene, probe name or probe_id" : "probe_id, e.g. 1058685";
+    $e("gene-input").placeholder = expr.bySymbol.size ? "Gene" : "Probe id";
     buildSearchIndex();
     $e("expr-gene-controls").hidden = false;
     renderRibbon();
@@ -1964,6 +2000,11 @@ function initExpressionPanel() {
     if (!expr.byDonor.has(d)) setExprStatus([...(expr.byDonor.size ? [`Loaded: donors ${loadedDonors().map(donorShort).join(", ")}`] : []), `Choose MicroarrayExpression.csv for donor ${donorShort(d)}.`]);
   });
 }
+document.querySelectorAll("[data-mesh]").forEach(btn => btn.addEventListener("click", () => {
+  const box = document.getElementById(btn.dataset.mesh);
+  box.checked = !box.checked; box.dispatchEvent(new Event("change"));
+  btn.setAttribute("aria-pressed", box.checked);
+}));
 $e("expr-files").addEventListener("change", e => { loadExpressionFiles(e.target.files); e.target.value = ""; });
 
 // ---------------------------------------------------------------- zip reading
@@ -2254,9 +2295,10 @@ const REGION_LAYOUT = [
     { name: "Temporal", keys: ["TP", "STG", "PLP", "HG", "TG", "PLT", "MTG", "ITG", "FuG", "OTG"] },
     { name: "Parietal", short: "Parietal", keys: ["PoG", "SPL", "SMG", "AnG", "Pcu", "PCLp"] },
     { name: "Occipital", short: "Occ", keys: ["Cun", "LiG", "SOG", "IOG", "OP"] },
-    { name: "Limbic", keys: ["CgGf", "CgGp", "CgGr", "SCG", "PTG", "PHG", "Pir"] },
+    { name: "Limbic", keys: ["CgGf", "CgGp", "CgGr", "SCG", "PTG", "Pir"] },
   ] },
-  { division: "Hippocampus", wide: true, groups: [["CA1", "CA1"], ["CA2", "CA2"], ["CA3", "CA3"], ["CA4", "CA4"], ["DG", "DG"], ["S", "Sub"]].map(([k, n]) => ({ name: n, keys: [k] })) },
+  { division: "Hippocampus", wide: true, groups: [["CA1", "CA1"], ["CA2", "CA2"], ["CA3", "CA3"], ["CA4", "CA4"], ["DG", "DG"], ["S", "Sub"]].map(([k, n]) => ({ name: n, keys: [k] }))
+    .concat({ name: "Parahippocampal gyrus", short: "PHG", keys: ["PHG"] }) },
   { division: "Amygdala", wide: true, groups: [["LA", "La"], ["BLA", "BL"], ["BMA", "BM"], ["CeA", "Ce"], ["COMA", "CoM"], ["ATZ", "AHi"]].map(([k, n]) => ({ name: n, keys: [k] })) },
   { division: "Basal ganglia", groups: [
     { name: "Striatum", short: "Str", keys: ["HCd", "BCd", "TCd", "Pu", "Acb", "OlfT"] },
