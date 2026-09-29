@@ -79,8 +79,8 @@
     grid-template-columns: repeat(6, 26px); gap: 3px;
   }
   html .view-corner button {
-    padding: 4px 0; font-size: 11px; color: #3e444d; background: rgba(255, 255, 255, 0.7);
-    border-color: rgba(62, 68, 77, 0.2); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+    padding: 4px 0; font-size: 11px; color: #3e444d; background: rgba(255, 255, 255, 0.3); border-radius: 4px;
+    border-color: rgba(62, 68, 77, 0.22); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
   }
   html .view-corner button:hover { background: rgba(62, 68, 77, 0.12); }
   html body.phone .view-corner button { padding: 7px 0; font-size: 12px; }
@@ -140,7 +140,7 @@
 
   #readout {
     position: fixed; z-index: 1; top: calc(var(--sy, 16px) + 8px); right: calc(100vw - var(--sx, 0px) - var(--ss, 100vw) + 64px);
-    max-width: min(320px, calc(var(--ss, 100vw) * 0.5 - 72px)); box-sizing: border-box; border-radius: 14px; padding: 11px 14px;
+    max-width: min(320px, calc(var(--ss, 100vw) * 0.5 - 72px)); box-sizing: border-box; border-radius: 4px; padding: 11px 14px;
     pointer-events: none;
   }
   #readout .name { font-weight: 500; font-size: 12px; }
@@ -191,6 +191,7 @@
   html .ribbon-head .gene-box:focus { border-color: var(--edge); background: var(--field); outline: none; }
   .ribbon-head .gene-box::placeholder { color: var(--muted); font-weight: 500; }
   #gene-suggestions { position: fixed; z-index: 8; width: 260px; margin: 0; background: rgba(62, 68, 77, 0.95); color: var(--ink); }
+  .ribbon-head .zval { font: 600 12px var(--mono); color: var(--ink); flex: none; }
   .ribbon-head .probe { font: 11.5px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .ribbon-head .meta { flex: 1; min-width: 0; font: 11px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ribbon-fit { flex: none; margin-left: auto; padding: 3px 12px; font-size: 11px; }
@@ -222,11 +223,11 @@
     right: calc(100vw - var(--sx) - var(--ss) + 8px); top: calc(var(--sy) + 8px);
   }
   .mesh-corner button {
-    font: 500 11px var(--sans); padding: 4px 9px; border-radius: 999px; cursor: pointer;
-    color: #3e444d; background: rgba(255, 255, 255, 0.7); border: 1px solid rgba(62, 68, 77, 0.2);
-    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+    font: 500 11px var(--sans); padding: 4px 9px; border-radius: 4px; cursor: pointer;
+    color: #3e444d; background: rgba(255, 255, 255, 0.3); border: 1px solid rgba(62, 68, 77, 0.22);
+    -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
   }
-  .mesh-corner button[aria-pressed=true] { color: #fff; background: rgba(62, 68, 77, 0.78); border-color: transparent; }
+  .mesh-corner button[aria-pressed=true] { color: #fff; background: rgba(62, 68, 77, 0.5); border-color: transparent; }
   .mesh-corner button { min-width: 46px; }
   body.phone .mesh-corner button { font-size: 12px; padding: 7px 8px; }
   #resume-load {
@@ -354,7 +355,7 @@
 
   .panel-toggle {
     display: none; position: fixed; z-index: 2; left: 10px; top: calc(10px + env(safe-area-inset-top, 0px));
-    width: 44px; height: 44px; padding: 0; border-radius: 12px; color: var(--ink);
+    width: 44px; height: 44px; padding: 0; border-radius: 4px; color: var(--ink);
     align-items: center; justify-content: center; cursor: pointer; -webkit-tap-highlight-color: transparent;
   }
   .panel-toggle svg { width: 22px; height: 22px; flex: none; }
@@ -413,7 +414,7 @@
 
   body.phone #readout {
     top: calc(10px + env(safe-area-inset-top, 0px)); bottom: auto; left: 62px; right: 10px; max-width: none; min-height: 44px; box-sizing: border-box;
-    padding: 9px 13px; border-radius: 14px;
+    padding: 9px 13px; border-radius: 4px;
   }
   body.phone #readout .meta { font-size: 12px; }
   body.phone.panel-open #readout, body.phone.panel-open #ribbon { display: none; }
@@ -536,7 +537,7 @@
 <section id="ribbon" class="glass" hidden aria-label="Expression z-score of every sample, one row per probe">
   <div class="ribbon-head">
     <input type="text" class="title gene-box" id="gene-input" role="combobox" aria-autocomplete="list" aria-expanded="false"
-           aria-controls="gene-suggestions" aria-label="Gene or probe" placeholder="Gene" autocomplete="off" spellcheck="false"><span class="probe" id="ribbon-probe" hidden></span>
+           aria-controls="gene-suggestions" aria-label="Gene or probe" placeholder="Gene" autocomplete="off" spellcheck="false"><span class="probe zval" id="ribbon-probe" hidden></span>
     <div class="rb-tools">
       <label class="zsym" title="Colour range: z from minus to plus this value">±z
         <input type="range" id="z-sym" min="0.5" max="5" step="0.1" value="2" aria-label="Colour range, z"><span id="z-sym-val" class="rm-value">2.0</span></label>
@@ -1091,8 +1092,20 @@ function pick(e) {
 // again when another sample is selected
 let readoutFor = null;
 readout.addEventListener("click", () => { if (selected) readout.classList.toggle("open"); });
+// While a sample is selected: its MNI coordinates and z-score in the 3D view's top-left,
+// and the z-score next to the gene name in the ribbon header
+function showSampleTips(s) {
+  const tip = document.getElementById("ribbon-tip"), zLabel = document.getElementById("ribbon-probe");
+  const z = s?.expr && Number.isFinite(s.expr.z) ? `z ${s.expr.z >= 0 ? "+" : ""}${s.expr.z.toFixed(2)}` : "";
+  zLabel.hidden = !z; zLabel.textContent = z;
+  tip.hidden = !s;
+  if (!s) return;
+  clearTimeout(ribbonTip.timer);
+  tip.replaceChildren(Object.assign(document.createElement("div"), { className: "meta", textContent: `MNI ${shownMni(s).map(v => v.toFixed(0)).join(", ")}${z ? ` · ${z}` : ""}` }));
+}
 function showReadout() {
   const s = selected;   // details only for a clicked (tapped) sample, not on hover
+  showSampleTips(s);
   if (s !== readoutFor) { readout.classList.remove("open"); readoutFor = s; }
   readout.classList.toggle("empty", !s);
   if (!s) {
@@ -2858,7 +2871,7 @@ function columnAt(x) {
 
 function ribbonTip(content, clientX, clientY) {
   const tip = $e("ribbon-tip");
-  if (!content) { tip.hidden = true; return; }
+  if (!content) { showSampleTips(selected); return; }   // back to the selected sample's coordinates
   tip.replaceChildren(...content.map(([cls, text]) => Object.assign(document.createElement("div"), { className: cls, textContent: text })));
   tip.hidden = false;
   const t = tip.getBoundingClientRect();
@@ -2902,7 +2915,6 @@ ribbonCanvas.addEventListener("click", e => {
     // Tapping a row makes its probe the one shown on the brain (one at a time)
     if (!expr.chosen?.has(row.id) || expr.chosen.size > 1) { expr.chosen = new Set([row.id]); applyColouring(); }
   }
-  ribbonCellTip(e);
 });
 
 // Square 3D view: as large as fits beside the controls (desktop) or under the menu button and
