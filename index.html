@@ -1445,6 +1445,17 @@ function setSymmetricZ(t) {
 $e("z-sym").addEventListener("input", e => setSymmetricZ(+e.target.value));
 // Estimate for a new search: the 98th percentile of |z| over every cell of its rows (each
 // probe z-scored within each loaded donor), so outliers do not wash out the colours
+// The estimate is made once per set of genes (all probes of every gene shown), so picking
+// another probe of the same gene, or switching probes on and off, keeps the range and the
+// colours stay comparable; the slider can always be moved by hand
+let autoZKey = null;
+function autoZ(ids) {
+  const genes = [...new Set(ids.map(id => symbolOf(id) ?? id))].sort();
+  const key = genes.join("|");
+  if (key === autoZKey) { if (colouringActive()) applyColouring(); return; }
+  autoZKey = key;
+  setSymmetricZ(estimateZ(genes.flatMap(g => expr.bySymbol.get(g) ?? [g]).filter(hasProbe)));
+}
 function estimateZ(ids) {
   const abs = [];
   for (const [, rows] of expr.byDonor) for (const id of ids) {
@@ -1785,13 +1796,13 @@ function onGeneChosen() {
     const all = symbolsStarting(query.slice(0, -1)).reduce((a, sym) => a + expr.bySymbol.get(sym).filter(hasProbe).length, 0);
     setScaleNote(`${query}: ${n} genes, ${ids.length}${all > ids.length ? ` of ${all}` : ""} probes${all > ids.length ? ` (first ${MAX_GROUP_PROBES} shown)` : ""}.`);
     showProbeBox(query, ids);
-    setSymmetricZ(estimateZ(ids));   // repaints when colouring is already on
+    autoZ(ids);
     if (!colouringActive()) applyColouring();
     return;
   }
   const symbol = expr.bySymbol.has(query) || expr.bySymbol.has(query.toUpperCase()) ? query : (expr.probeName.get(ids[0]) ?? ids[0]);
   showProbeBox(symbol, ids);
-  setSymmetricZ(estimateZ(ids));   // repaints when colouring is already on
+  autoZ(ids);
   if (!colouringActive()) applyColouring();
 }
 
@@ -2445,7 +2456,7 @@ function drawRibbon() {
   };
   // Donor groups: a dark outline around each donor's samples within a region
   if (ribbon.donorGroups) {
-    ctx.strokeStyle = "#0b0d10"; ctx.lineWidth = 1;
+    ctx.strokeStyle = "rgba(58, 63, 70, 0.55)"; ctx.lineWidth = 1;   // grey donor-group outline
     for (const r of ribbon.runs) {
       const x0 = ribbon.xs[r.from], x1 = ribbon.xs[r.to];
       if (x1 - x0 >= 2) ctx.strokeRect(x0 + 0.5, 0.5, x1 - x0 - 1, h - 1);
@@ -2597,6 +2608,8 @@ function ribbonTip(content, clientX, clientY) {
   const t = tip.getBoundingClientRect();
   tip.style.left = `${Math.min(innerWidth - t.width - 8, Math.max(8, clientX - t.width / 2))}px`;
   tip.style.top = `${clientY - t.height - 14}px`;
+  clearTimeout(ribbonTip.timer);
+  ribbonTip.timer = setTimeout(() => { tip.hidden = true; }, 1000);   // shown for 1 s after a click
 }
 
 // Hover: details + the sample highlighted in 3D; click: select it
