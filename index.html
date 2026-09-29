@@ -174,13 +174,15 @@
   .pp-range { display: flex; align-items: center; gap: 10px; }
   .pp-range input[type=range] { flex: 1; }
   .pp-label { font: 600 12px var(--sans); }
-  .pp-list { display: flex; flex-wrap: wrap; gap: 5px; overflow-y: auto; min-height: 0; scrollbar-width: thin; }
+  .pp-name { font: 12px var(--mono); color: var(--ink); min-height: 1.3em; }
+  .pp-list { display: flex; flex-direction: column; gap: 3px; overflow-y: auto; min-height: 0; scrollbar-width: thin; }
   .pp-item {
-    font: 11.5px var(--mono); color: var(--ink); cursor: pointer; padding: 4px 9px; border-radius: 4px;
-    background: rgba(255, 255, 255, 0.1); border: 1.5px solid transparent;
+    flex: none; height: 14px; width: 100%; cursor: pointer; padding: 0; border-radius: 3px;
+    background: rgba(255, 255, 255, 0.14); border: 1.5px solid transparent;
   }
-  .pp-item[aria-selected=true] { border-color: #ffd21f; background: rgba(255, 210, 31, 0.14); }
-  body.phone .pp-item { font-size: 13px; padding: 7px 11px; }
+  .pp-item:hover { background: rgba(255, 255, 255, 0.26); }
+  .pp-item[aria-selected=true] { border-color: #ffd21f; background: rgba(255, 210, 31, 0.22); }
+  body.phone .pp-item { height: 22px; }
   html body.ribbon-full #probe-panel { z-index: 7; left: 12px; right: 12px; width: auto; top: 56px; max-height: 40vh; }
   body.phone.panel-open #probe-panel { display: none; }
   body.phone:has(#probe-panel.open) .mesh-corner { visibility: hidden; }
@@ -438,16 +440,14 @@
     <div class="row" hidden><span class="swatch mesh-swatch" style="background:#8a9099"></span><input type="checkbox" id="show-brain" checked><label for="show-brain">Pial</label></div>
     <div class="row" hidden><input type="checkbox" id="show-hippocampus" checked><label for="show-hippocampus">Hippocampus</label></div>
     <div class="row" hidden><input type="checkbox" id="show-amygdala"><label for="show-amygdala">Amygdala</label></div>
-    <div class="row"><span class="swatch mesh-swatch" style="background:transparent"></span><input type="checkbox" id="mirror"><label for="mirror">Mirror right hemisphere onto the left</label></div>
+    <div class="row"><span class="swatch mesh-swatch" style="background:transparent"></span><input type="checkbox" id="mirror"><label for="mirror">Mirror hemispheres</label></div>
     <label class="label" for="opacity">Surface opacity</label>
     <input type="range" id="opacity" min="0" max="0.6" step="0.01" value="0.05">
   </div>
 
   <div class="group">
-    <span class="label">Cut (one at a time)</span>
-    <div class="row"><input type="checkbox" id="cut-axial" data-cut="axial"><label for="cut-axial">Axial</label></div>
-    <div class="row"><input type="checkbox" id="cut-coronal" data-cut="coronal"><label for="cut-coronal">Coronal</label></div>
-    <div class="row"><input type="checkbox" id="cut-sagittal" data-cut="sagittal"><label for="cut-sagittal">Sagittal</label></div>
+    <span class="label" id="cut-label" hidden>Cut</span>
+    <div hidden><input type="checkbox" id="cut-axial" data-cut="axial"><input type="checkbox" id="cut-coronal" data-cut="coronal"><input type="checkbox" id="cut-sagittal" data-cut="sagittal"></div>
     <div class="group" id="cut-controls" hidden>
       <input type="range" id="cut-pos" min="-70" max="85" step="1" value="20" hidden>
       <div class="row"><input type="checkbox" id="cut-band"><label for="cut-band">Only samples near the cut</label></div>
@@ -523,7 +523,8 @@
 </div>
 <div id="probe-panel" role="dialog" aria-label="Probes and colour range">
   <div class="pp-range"><span class="pp-label">±z</span><input type="range" id="z-sym" min="0.5" max="5" step="0.1" value="2" aria-label="Colour range, z"><span id="z-sym-val" class="rm-value">2.0</span></div>
-  <div class="pp-list" id="probe-list" role="listbox" aria-multiselectable="true"></div>
+  <div class="pp-name" id="pp-name"></div>
+  <div class="pp-list" id="probe-list" role="listbox"></div>
 </div>
 <div id="busy" hidden role="status"><span class="spinner"></span><span id="busy-text">Loading…</span></div>
 <div class="views view-corner">
@@ -1790,8 +1791,7 @@ function showSuggestions(limit) {
     return li;
   });
   const note = text => Object.assign(document.createElement("li"), { className: "note", textContent: text });
-  if (query.trim() && !total) items.push(note(`No gene or probe matches "${query.trim()}". Press Enter to look it up under older gene names.`));
-  else if (total > list.length) items.push(note(`${list.length} of ${total.toLocaleString()} matches · press Enter to list more`));
+  if (total > list.length) items.push(note(`${list.length} of ${total.toLocaleString()} matches · press Enter to list more`));
   else if (limit === PARTIAL_LIMIT && total) items.unshift(note(`${total.toLocaleString()} partial match${total > 1 ? "es" : ""}`));
   suggestList.replaceChildren(...items);
   suggestList.hidden = !items.length;
@@ -1915,7 +1915,7 @@ const zScale = z => 2 ** rangePosition(z);
 // in the ribbon's row names: a switch per probe, or click a name to use that probe alone.
 function showProbeBox(query, ids) {
   expr.gene = query;
-  expr.chosen = new Set(ids);   // all probes on at first
+  expr.chosen = new Set(ids.slice(0, 1));   // one probe at a time: the first row to start
 }
 const chosenProbes = () => [...(expr.chosen ?? [])];
 
@@ -2557,17 +2557,18 @@ function renderRibbon() {
   }));
   // Probe list in the panel over the 3D view: tap a probe to add it to (or drop it from) the
   // average shown on the brain; chosen rows are outlined in yellow in the ribbon
+  // One button per ribbon row, stacked in the ribbon's order; only the chosen probe is named
   $e("probe-list").replaceChildren(...ribbon.rows.map(r => {
-    const item = Object.assign(document.createElement("button"), { type: "button", className: "pp-item", textContent: r.name });
-    item.setAttribute("role", "option"); item.setAttribute("aria-selected", r.chosen);
+    const item = Object.assign(document.createElement("button"), { type: "button", className: "pp-item" });
+    item.setAttribute("role", "option"); item.setAttribute("aria-selected", r.chosen); item.setAttribute("aria-label", r.name);
     item.addEventListener("click", () => {
       ribbon.shownProbe = r.id;
-      if (!expr.chosen.has(r.id)) expr.chosen.add(r.id);
-      else if (expr.chosen.size > 1) expr.chosen.delete(r.id);   // keep at least one probe on
+      expr.chosen = new Set([r.id]);   // exclusive
       applyColouring();
     });
     return item;
   }));
+  $e("pp-name").textContent = ribbon.rows.find(r => r.chosen)?.name ?? "";
   drawRibbon();
   layoutStage();   // the square view shrinks or grows with the ribbon's height
 }
