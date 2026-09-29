@@ -195,17 +195,22 @@
   html body.ribbon-full #ribbon-menu { left: auto; right: 12px; top: 48px; bottom: auto; }
   html #ribbon-menu .gene-box { font: 600 14px var(--sans); width: 100%; box-sizing: border-box; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--edge); background: var(--field); color: var(--ink); }
   body.phone #ribbon-menu .gene-box { font-size: 16px; }
-  #ribbon-menu .zsym { background: none; border: 0; padding: 0; }
-  #ribbon-menu .zsym input[type=range] { flex: 1; width: auto; }
-  .rm-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-  .rm-row .ribbon-donors { margin-left: 0; }
-  .rm-row .text-button { padding: 6px 14px; }
-  .zsym {
-    display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; color: var(--ink); white-space: nowrap;
-    padding: 2px 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.14); border: 1px solid var(--edge);
+  /* Panel sections: small caps label above each control, hairlines between sections */
+  #ribbon-menu { gap: 0; padding: 4px 16px; }
+  .rm-sec { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; }
+  .rm-sec + .rm-sec { border-top: 1px solid var(--edge); }
+  .rm-head { display: flex; align-items: baseline; justify-content: space-between; }
+  .rm-label { font-size: 10.5px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .rm-value { font: 12px var(--mono); color: var(--ink); font-variant-numeric: tabular-nums; }
+  #ribbon-menu input[type=range] { width: 100%; }
+  .rm-row { flex-direction: row; align-items: center; justify-content: space-between; }
+  .rm-switch { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--ink); cursor: pointer; }
+  .rm-button {
+    font: 500 12.5px var(--sans); color: var(--ink); cursor: pointer; padding: 6px 14px; border-radius: 999px;
+    background: rgba(255, 255, 255, 0.1); border: 1px solid var(--edge);
   }
-  .zsym input[type=range] { width: 90px; height: 16px; }
-  .zsym .count { min-width: 2.2em; }
+  .rm-button:hover { background: rgba(255, 255, 255, 0.18); }
+  body:has(#ribbon-menu:not([hidden])) .view-corner { visibility: hidden; }
   .ribbon-donors { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ink); cursor: pointer; white-space: nowrap; }
   .ribbon-donors input[type=checkbox] { width: 20px; height: 12px; }
   .ribbon-donors input[type=checkbox]::after { top: 2px; left: 2px; width: 8px; height: 8px; }
@@ -489,11 +494,11 @@
     <span id="gene-slot-ribbon"><input type="text" class="title gene-box" id="gene-input" role="combobox" aria-autocomplete="list" aria-expanded="false"
            aria-controls="gene-suggestions" aria-label="Gene or probe" placeholder="Gene…" autocomplete="off" spellcheck="false"></span><span class="probe" id="ribbon-probe"></span>
     <div class="rb-tools">
-      <button class="rb-btn" id="ribbon-menu-btn" type="button" aria-expanded="false" aria-controls="ribbon-menu" aria-label="Ribbon controls" title="Ribbon controls">
+      <button class="rb-btn" id="ribbon-menu-btn" type="button" aria-expanded="false" aria-controls="ribbon-menu" aria-label="Ribbon controls">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h11M4 17h7"/></svg></button>
-      <button class="rb-btn" id="ribbon-orient" type="button" aria-pressed="false" aria-label="Maximise the ribbon" title="Maximise">
+      <button class="rb-btn" id="ribbon-orient" type="button" aria-pressed="false" aria-label="Maximise the ribbon">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path class="max" d="M14 4h6v6M10 20H4v-6M20 4l-6.5 6.5M4 20l6.5-6.5"/><path class="restore" d="M4 14h6v6M20 10h-6V4M14 10l6.5-6.5M10 14l-6.5 6.5"/></svg></button>
-      <button class="rb-btn" id="ribbon-min" type="button" aria-label="Minimise the ribbon" title="Minimise">
+      <button class="rb-btn" id="ribbon-min" type="button" aria-label="Minimise the ribbon">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
     </div>
   </div>
@@ -508,13 +513,17 @@
 <div id="ribbon-tip" hidden></div>
 <ul class="suggestions" id="gene-suggestions" role="listbox" hidden></ul>
 <div id="ribbon-menu" class="glass" hidden role="dialog" aria-label="Ribbon controls">
-  <label class="label" for="gene-input">Gene or probe</label>
-  <span id="gene-slot-menu"></span>
-  <label class="zsym" title="Colour range: z from minus to plus this value (estimated on each search)">Colour range ±z
-    <input type="range" id="z-sym" min="0.5" max="5" step="0.1" value="2"><span id="z-sym-val" class="count">2.0</span></label>
-  <div class="rm-row">
-    <label class="ribbon-donors" title="Group each region's samples by donor"><input type="checkbox" id="ribbon-donors">Group by donor</label>
-    <button class="text-button" id="ribbon-fit" type="button" title="Show the whole ribbon (or double-click it). Scroll the wheel over the ribbon, or pinch it, to zoom.">Fit width</button>
+  <div class="rm-sec">
+    <label class="rm-label" for="gene-input">Gene or probe</label>
+    <span id="gene-slot-menu"></span>
+  </div>
+  <div class="rm-sec">
+    <div class="rm-head"><label class="rm-label" for="z-sym">Colour range</label><span id="z-sym-val" class="rm-value">±2.0 z</span></div>
+    <input type="range" id="z-sym" min="0.5" max="5" step="0.1" value="2">
+  </div>
+  <div class="rm-sec rm-row">
+    <label class="rm-switch" for="ribbon-donors"><input type="checkbox" id="ribbon-donors"><span>Group by donor</span></label>
+    <button class="rm-button" id="ribbon-fit" type="button">Fit width</button>
   </div>
 </div>
 <button id="ribbon-bar" type="button" hidden aria-label="Show the ribbon" title="Show the ribbon"></button>
@@ -943,8 +952,8 @@ function placeMarker(marker, s) {
 
 // Current colour and size factor of a sample's dot (expression colouring / z-score sizing)
 const colouringActive = () => samples.some(s => s.expr);
-const sampleColor = s => (s.expr ? scaleColor(s.expr.z) : colouringActive() ? OTHER_DONOR_COLOR : SAMPLE_COLOR);
-const sampleScale = s => (s.expr && document.getElementById("size-by-z").checked ? zScale(s.expr.z) : 1);
+const sampleColor = (s, colouring = colouringActive()) => (s.expr ? scaleColor(s.expr.z) : colouring ? OTHER_DONOR_COLOR : SAMPLE_COLOR);
+const sampleScale = (s, bySize = document.getElementById("size-by-z").checked) => (s.expr && bySize ? zScale(s.expr.z) : 1);
 
 function updateSelectMarker() {
   placeMarker(selectMarker, selected); placeMarker(selectRing, selected);
@@ -964,7 +973,8 @@ function updateHoverMarker() {
 const paintColor = new THREE.Color();
 function paintCloud(cloud, colorOf) {
   const attr = cloud.geometry.getAttribute("color");
-  cloud.userData.items.forEach((s, i) => { paintColor.set(colorOf(s)); attr.setXYZ(i, paintColor.r, paintColor.g, paintColor.b); });
+  const colouring = colouringActive();   // once per cloud, not per sample
+  cloud.userData.items.forEach((s, i) => { paintColor.set(colorOf(s, colouring)); attr.setXYZ(i, paintColor.r, paintColor.g, paintColor.b); });
   attr.needsUpdate = true;
 }
 
@@ -1457,6 +1467,18 @@ function rangePosition(z) {
   const [lo, hi] = zRange, mid = (lo + hi) / 2, half = (hi - lo) / 2;
   return Math.max(-1, Math.min(1, (z - mid) / half));
 }
+// Ribbon cells: 256 precomputed CSS colours across the range (rebuilt when palette/range change)
+let paletteLut = null;
+function cellStyle(z) {
+  if (!paletteLut) {
+    paletteLut = [];
+    for (let i = 0; i < 256; i++) {
+      const u = i / 255 * (paletteStops.length - 1), k = Math.min(paletteStops.length - 2, Math.floor(u));
+      paletteLut.push(paletteStops[k].clone().lerp(paletteStops[k + 1], u - k).getStyle());
+    }
+  }
+  return paletteLut[Math.round((rangePosition(z) + 1) / 2 * 255)];
+}
 function scaleColor(z) {
   const u = (rangePosition(z) + 1) / 2 * (paletteStops.length - 1);   // 0 .. last stop
   const i = Math.min(paletteStops.length - 2, Math.floor(u));
@@ -1467,6 +1489,7 @@ function scaleColor(z) {
 $e("palette").replaceChildren(...Object.keys(PALETTES).map(name => Object.assign(document.createElement("option"), { value: name, textContent: name })));
 function setPalette(name) {
   paletteStops = PALETTES[name].map(c => new THREE.Color(c));
+  paletteLut = null;
   $e("scale-bar").style.background = `linear-gradient(90deg, ${PALETTES[name].join(", ")})`;
   if (colouringActive()) applyColouring();
 }
@@ -1475,13 +1498,24 @@ setPalette($e("palette").value);
 
 // Colour range boxes: apply when both are numbers and low < high, otherwise mark them
 // Symmetric colour range from the ribbon's ±z slider
-function setSymmetricZ(t) {
+function setSymmetricZ(t, live = false) {
   t = Math.min(5, Math.max(0.5, Math.round(t * 10) / 10));
-  $e("z-sym").value = t; $e("z-sym-val").textContent = t.toFixed(1);
+  $e("z-sym").value = t; $e("z-sym-val").textContent = `±${t.toFixed(1)} z`;
   $e("z-min").value = -t; $e("z-max").value = t;
-  readZRange();
+  if (!live) { readZRange(); return; }
+  // While dragging only the colours are redrawn (once per frame): the ribbon, the dots and
+  // their sizes. The rest (slice overlay, notes) follows on release.
+  zRange = [-t, t];
+  if (setSymmetricZ.frame) return;
+  setSymmetricZ.frame = requestAnimationFrame(() => {
+    setSymmetricZ.frame = 0;
+    for (const c of donorClouds) paintCloud(c, sampleColor);
+    applyScales();
+    drawRibbon();
+  });
 }
-$e("z-sym").addEventListener("input", e => setSymmetricZ(+e.target.value));
+$e("z-sym").addEventListener("input", e => setSymmetricZ(+e.target.value, true));
+$e("z-sym").addEventListener("change", e => setSymmetricZ(+e.target.value));
 // Estimate for a new search: the 98th percentile of |z| over every cell of its rows (each
 // probe z-scored within each loaded donor), so outliers do not wash out the colours
 // The estimate is made once per set of genes (all probes of every gene shown), so picking
@@ -1514,6 +1548,7 @@ function readZRange() {
   for (const id of ["z-min", "z-max"]) $e(id).setAttribute("aria-invalid", !valid);
   if (!valid) return;
   zRange = [lo, hi];
+  paletteLut = null;
   if (colouringActive()) applyColouring();
 }
 for (const id of ["z-min", "z-max"]) {
@@ -1874,9 +1909,9 @@ function setScaleNote(text) { $e("expr-scale").hidden = false; $e("scale-note").
 // z-score filter: when on, samples of the coloured donor outside the chosen range are hidden
 // (drawn at size 0 and not hoverable). Other donors, which have no z-score, are unaffected.
 // While a gene is shown, samples without its data (donor not loaded, or probe missing) are hidden
-const sampleDrawn = s => passesZ(s) && (!!s.expr || !colouringActive());
+const sampleDrawn = (s, colouring = colouringActive()) => passesZ(s) && (!!s.expr || !colouring);
 function passesZ(s) {
-  if (!$e("z-filter").checked || !s.expr) return true;
+  if (!s.expr || !$e("z-filter").checked) return true;
   const t = +$e("z-threshold").value, z = s.expr.z;
   switch ($e("z-filter-mode").value) {
     case "above": return z >= t;
@@ -1900,9 +1935,10 @@ function updateZFilter() {
 // Per-point size factors: z-score sizing on the coloured donor when switched on, else 1;
 // 0 hides a sample that the z-score filter leaves out
 function applyScales() {
+  const colouring = colouringActive(), bySize = document.getElementById("size-by-z").checked;   // read once, not per sample
   for (const cloud of donorClouds) {
     const attr = cloud.geometry.getAttribute("pointScale");
-    cloud.userData.items.forEach((s, i) => attr.setX(i, sampleDrawn(s) ? sampleScale(s) : 0));
+    cloud.userData.items.forEach((s, i) => attr.setX(i, sampleDrawn(s, colouring) ? sampleScale(s, bySize) : 0));
     attr.needsUpdate = true;
   }
   updateSelectMarker(); updateHoverMarker();
@@ -1926,7 +1962,7 @@ function applyColouring() {
     const { mean, sd } = meanSd(values);
     items.forEach((s, j) => { s.expr = { label, value: values[j], z: (values[j] - mean) / sd }; });
   }
-  for (const c of donorClouds) paintCloud(c, s => sampleColor(s));
+  for (const c of donorClouds) paintCloud(c, sampleColor);
   const [zLo, zHi] = zRange;
   $e("scale-lo").textContent = `z ${zLo}`;
   $e("scale-mid").textContent = `${(zLo + zHi) / 2}`;
@@ -2498,6 +2534,66 @@ function fitRowHeight() {
   box.style.setProperty("--row-h", `${ROW_H}px`);
 }
 
+// Cells are drawn per row as a one-pixel-high image line (RGBA written straight into an
+// ImageData, colours from a 256-entry table) stretched to the row height: about a hundred
+// times faster than one fillRect per cell, which matters while dragging the colour range
+const cellLine = document.createElement("canvas"), cellLineCtx = cellLine.getContext("2d");
+let rgbLut = null;
+function drawCells(ctx, dpr) {
+  const W = ribbonCanvas.width;
+  if (!W || !ribbon.rows.length) return;
+  if (!rgbLut || rgbLut.stops !== paletteStops) {
+    rgbLut = new Uint8Array(256 * 3); rgbLut.stops = paletteStops;
+    const c = new THREE.Color();
+    for (let i = 0; i < 256; i++) {
+      const u = i / 255 * (paletteStops.length - 1), k = Math.min(paletteStops.length - 2, Math.floor(u));
+      c.copy(paletteStops[k]).lerp(paletteStops[k + 1], u - k);
+      rgbLut[i * 3] = c.r * 255; rgbLut[i * 3 + 1] = c.g * 255; rgbLut[i * 3 + 2] = c.b * 255;
+    }
+  }
+  cellLine.width = W; cellLine.height = 1;
+  const img = cellLineCtx.createImageData(W, 1), px = img.data;
+  // Pixel span of each column (at least one pixel; later columns overwrite shared pixels)
+  const spans = ribbon.cols.map(c => {
+    const x0 = Math.min(W - 1, Math.floor(c.x * dpr));
+    return [x0, Math.max(x0 + 1, Math.min(W, Math.round((c.x + c.w) * dpr)))];
+  });
+  const [lo, hi] = zRange, mid = (lo + hi) / 2, half = (hi - lo) / 2;
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  ribbon.rows.forEach((row, r) => {
+    px.fill(0);
+    // Per donor: this probe's values and their mean / SD (cached)
+    const perDonor = new Map();
+    for (const [donor, rows] of expr.byDonor) {
+      const values = rows.get(row.id);
+      if (!values) continue;
+      const key = `${donor}|${row.id}`;
+      let st = ribbon.probeStats.get(key);
+      if (!st) ribbon.probeStats.set(key, (st = meanSd(values)));
+      perDonor.set(donor, { values, mean: st.mean, sd: st.sd });
+    }
+    ribbon.cols.forEach((col, ci) => {
+      const d = perDonor.get(col.s.donor);
+      let R = 255, G = 255, B = 255, A = 26;   // no data: faint white
+      if (d) {
+        const z = (d.values[col.s.column] - d.mean) / d.sd;
+        if (Number.isFinite(z)) {
+          const i = Math.round((Math.max(-1, Math.min(1, (z - mid) / half)) + 1) / 2 * 255) * 3;
+          R = rgbLut[i]; G = rgbLut[i + 1]; B = rgbLut[i + 2]; A = 255;
+        }
+      }
+      const [x0, x1] = spans[ci];
+      for (let x = x0; x < x1; x++) { const o = x * 4; px[o] = R; px[o + 1] = G; px[o + 2] = B; px[o + 3] = A; }
+    });
+    cellLineCtx.putImageData(img, 0, 0);
+    const y0 = Math.round(r * (ROW_H + ROW_GAP) * dpr), y1 = Math.round((r * (ROW_H + ROW_GAP) + ROW_H) * dpr);
+    ctx.drawImage(cellLine, 0, 0, W, 1, 0, y0, W, y1 - y0);
+  });
+  ctx.restore();
+}
+
 function drawRibbon() {
   if (!ribbon.built || $e("ribbon").hidden) return;
   fitRowHeight();
@@ -2508,14 +2604,7 @@ function drawRibbon() {
   const ctx = ribbonCtx;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, ribbon.width, h);
-  ribbon.rows.forEach((row, r) => {
-    const y = r * (ROW_H + ROW_GAP);
-    for (const col of ribbon.cols) {
-      const v = cellValue(col.s, row.id);
-      ctx.fillStyle = v == null ? NO_DATA : scaleColor(v).getStyle();
-      ctx.fillRect(col.x, y, col.w, ROW_H);
-    }
-  });
+  drawCells(ctx, dpr);
   // Selected sample: yellow outline through all rows; hovered column: white
   const outline = (col, colour) => {
     ctx.strokeStyle = colour; ctx.lineWidth = 1.5;
@@ -2606,7 +2695,6 @@ $e("ribbon-fit").addEventListener("click", () => setRibbonZoom(1));
 function applyRibbonOrientation() {
   const full = document.body.classList.contains("ribbon-full");
   document.body.classList.toggle("ribbon-rot", full && innerHeight > innerWidth);
-  $e("ribbon-orient").title = full ? "Restore" : "Maximise";
   $e("ribbon-orient").setAttribute("aria-label", full ? "Restore the ribbon" : "Maximise the ribbon");
   $e("ribbon-orient").setAttribute("aria-pressed", full);
   if (ribbon.built && !$e("ribbon").hidden) { layoutRibbon(); drawRibbon(); }
