@@ -193,6 +193,12 @@
   html .ribbon-head .gene-box:focus { border-color: var(--edge); background: var(--field); outline: none; }
   .ribbon-head .gene-box::placeholder { color: var(--muted); font-weight: 500; }
   #gene-suggestions { position: fixed; z-index: 8; width: 260px; margin: 0; background: rgba(62, 68, 77, 0.95); color: var(--ink); }
+  .corr-btn {
+    flex: none; font: 600 11px var(--mono); color: var(--ink); cursor: pointer; padding: 2px 7px; border-radius: 3px;
+    background: rgba(255, 255, 255, 0.14); border: 1px solid var(--edge);
+  }
+  .corr-btn:disabled { opacity: .35; cursor: default; }
+  .corr-btn:not(:disabled):hover { background: rgba(255, 255, 255, 0.26); }
   .ribbon-head .zval { font: 600 12px var(--mono); color: var(--ink); flex: none; }
   .ribbon-head .probe { font: 11.5px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .ribbon-head .meta { flex: 1; min-width: 0; font: 11px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -277,7 +283,7 @@
     transform-origin: top left; transform: rotate(90deg); padding: 12px 14px;
   }
   html body.ribbon-full #readout, html body.ribbon-full .panel-toggle, html body.ribbon-full .edge-rail { display: none; }
-  .ribbon-names.multi { width: auto; max-width: 70px; }
+  .ribbon-names.multi { width: auto; max-width: 104px; }
   .rgene { flex: none; min-width: 0; font: 9.5px var(--mono); color: var(--muted); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ribbon-names:not(.multi) { width: 0; }
   .ribbon-names { flex: none; width: 20px; padding-top: 34px; display: flex; flex-direction: column; gap: 2px; overflow: hidden; clip-path: inset(34px 0 0 0); padding-bottom: 40px; box-sizing: border-box; }
@@ -556,7 +562,7 @@
 <section id="ribbon" class="glass" hidden aria-label="Expression z-score of every sample, one row per probe">
   <div class="ribbon-head">
     <input type="text" class="title gene-box" id="gene-input" role="combobox" aria-autocomplete="list" aria-expanded="false"
-           aria-controls="gene-suggestions" aria-label="Gene or probe" placeholder="Gene" autocomplete="off" spellcheck="false"><span class="probe zval" id="ribbon-probe" hidden></span>
+           aria-controls="gene-suggestions" aria-label="Gene or probe" placeholder="Gene" autocomplete="off" spellcheck="false"><button type="button" class="corr-btn" id="corr-btn" disabled title="Probes correlated with the highlighted row (r > 0.8)">corr</button><span class="probe zval" id="ribbon-probe" hidden></span>
     <div class="rb-tools">
       <label class="zsym" title="Colour range: z from minus to plus this value">±z
         <input type="range" id="z-sym" min="0.5" max="6" step="0.1" value="2" aria-label="Colour range, z"><span id="z-sym-val" class="rm-value">2.0</span></label>
@@ -1801,6 +1807,7 @@ function symbolOf(id) {
 }
 function probesFor(query) {
   const q = query.trim();
+  if (expr.corr && q === expr.corr.query) return expr.corr.ids;
   if (q.length > 1 && q.endsWith("*")) {
     const byName = (a, b) => (expr.probeName.get(a) ?? a).localeCompare(expr.probeName.get(b) ?? b, undefined, { numeric: true });
     return symbolsStarting(q.slice(0, -1)).flatMap(sym => expr.bySymbol.get(sym).filter(hasProbe).sort(byName)).slice(0, MAX_GROUP_PROBES);
@@ -1930,6 +1937,7 @@ searchBox.addEventListener("keydown", e => {
   else if (e.key === "Enter") {
     e.preventDefault();
     if (activeSuggestion >= 0) { pickSuggestion(suggestions[activeSuggestion]); return; }
+    if (expr.corr && boxQuery() === expr.corr.query) { hideSuggestions(); return; }
     searchBox.value = boxQuery();
     expr.alias = null;
     const q = searchBox.value.trim().toLowerCase();
@@ -2010,6 +2018,8 @@ function showProbeBox(query, ids) {
 const chosenProbes = () => [...(expr.chosen ?? [])];
 
 function onGeneChosen() {
+  if (expr.corr && boxQuery() !== expr.corr.query) expr.corr = null;   // a new search leaves correlation mode
+  ribbon.userPicked = false; updateCorrButton();
   const query = boxQuery(), ids = probesFor(query);
   if (!ids.length) { if (query) setScaleNote(`No probes found for "${query}" in this file.`); return; }
   // A gene lists all its probes; a single probe picked by id or name lists just that one;
@@ -2650,7 +2660,7 @@ function renderRibbon() {
   if (!active) { ribbonTip(null); return; }
   if (!ribbon.built) buildRibbon();
   ribbon.rows = colouringActive() ? ribbonRows() : [];
-  ribbon.multiGene = new Set(ribbon.rows.map(r => symbolOf(r.id))).size > 1;
+  ribbon.multiGene = !!expr.corr || new Set(ribbon.rows.map(r => symbolOf(r.id))).size > 1;
   $e("ribbon-names").classList.toggle("multi", ribbon.multiGene);
   if (document.activeElement !== searchBox && expr.gene) searchBox.value = expr.gene;
   syncGeneBox();
@@ -2658,7 +2668,8 @@ function renderRibbon() {
   // Row names double as the probe selector for the brain colours
   $e("ribbon-names").replaceChildren(...ribbon.rows.map(r => {
     const row = Object.assign(document.createElement("div"), { className: "rname" });
-    if (ribbon.multiGene) row.append(Object.assign(document.createElement("span"), { className: "rgene", textContent: symbolOf(r.id) ?? "" }));
+    const rv = expr.corr?.r.get(r.id);
+    if (ribbon.multiGene) row.append(Object.assign(document.createElement("span"), { className: "rgene", textContent: `${rv != null ? `${rv.toFixed(2)} ` : ""}${symbolOf(r.id) ?? ""}` }));
     return row;
   }));
   // Probe list in the panel over the 3D view: tap a probe to add it to (or drop it from) the
@@ -2941,6 +2952,64 @@ searchBox.addEventListener("input", () => (aliasTip.hidden = true));
   for (const t of ["pointerup", "pointercancel"]) box.addEventListener(t, () => (start = null));
 }
 $e("ribbon-bar").addEventListener("click", () => setRibbonMin(false));
+
+// ---------------------------------------------------------------- correlated probes
+// "corr" (enabled once a ribbon row has been tapped): the highlighted probe becomes the top
+// row and every probe correlated with it at r > CORR_MIN follows, highest r first. r is
+// Pearson's correlation over all samples of the loaded donors, each probe z-scored within
+// each donor (so donor offsets do not count). With the seed z-scored, a probe's
+// contribution per donor is sum(x * zSeed) / sd(x), accumulated in one pass over its values.
+const CORR_MIN = 0.8;
+function updateCorrButton() {
+  $e("corr-btn").disabled = !(ribbon.userPicked && chosenProbes().length === 1 && expr.byDonor.size);
+}
+async function findCorrelated() {
+  const seed = chosenProbes()[0];
+  if (!seed) return;
+  setBusy("Correlating probes…");
+  await new Promise(r => setTimeout(r, 30));   // let the notice paint
+  try {
+    // Seed z-scores per donor
+    const donorsWithSeed = [];
+    let n = 0;
+    for (const [donor, rows] of expr.byDonor) {
+      const v = rows.get(seed);
+      if (!v) continue;
+      const { mean, sd } = meanSd(v);
+      if (!(sd > 0)) continue;
+      donorsWithSeed.push({ rows, z: Float32Array.from(v, x => (x - mean) / sd) });
+      n += v.length;
+    }
+    const ids = [...(donorsWithSeed[0]?.rows.keys() ?? [])];
+    const r = new Map();
+    for (let k = 0; k < ids.length; k++) {
+      const id = ids[k];
+      let acc = 0, ok = true;
+      for (const d of donorsWithSeed) {
+        const x = d.rows.get(id);
+        if (!x) { ok = false; break; }
+        let sx = 0, sxx = 0, sxz = 0;
+        const z = d.z, len = x.length;
+        for (let i = 0; i < len; i++) { const xi = x[i]; sx += xi; sxx += xi * xi; sxz += xi * z[i]; }
+        const sd = Math.sqrt(Math.max(0, sxx / len - (sx / len) ** 2));
+        if (!(sd > 0)) { ok = false; break; }
+        acc += sxz / sd;
+      }
+      if (ok) { const rv = acc / n; if (rv > CORR_MIN || id === seed) r.set(id, rv); }
+      if (k % 4000 === 3999) { setBusy(`Correlating probes… ${Math.round(k / ids.length * 100)}%`); await new Promise(res => setTimeout(res, 0)); }
+    }
+    const others = [...r.keys()].filter(id => id !== seed).sort((a, b) => r.get(b) - r.get(a)).slice(0, MAX_GROUP_PROBES - 1);
+    const name = symbolOf(seed) ?? expr.probeName.get(seed) ?? seed;
+    expr.corr = { query: `${name} r>${CORR_MIN}`, ids: [seed, ...others], r };
+    searchBox.value = expr.corr.query;
+    showProbeBox(expr.corr.query, expr.corr.ids);
+    expr.chosen = new Set([seed]);
+    autoZ(expr.corr.ids);
+    applyColouring();
+    setScaleNote(`${others.length} probes correlated with ${expr.probeName.get(seed) ?? seed} at r > ${CORR_MIN} across ${n} samples.`);
+  } finally { setBusy(null); }
+}
+$e("corr-btn").addEventListener("click", findCorrelated);
 // Tap a division or subdivision label to highlight (or un-highlight) its samples in 3D
 $e("ribbon-axis").addEventListener("click", e => {
   const key = e.target.closest("[data-key]")?.dataset.key;
@@ -3005,6 +3074,7 @@ ribbonCanvas.addEventListener("click", e => {
   const row = ribbon.rows[Math.floor(p.y / (ROW_H + ROW_GAP))];
   if (row) {
     showRibbonProbe(row, true);
+    ribbon.userPicked = true; updateCorrButton();
     // Tapping a row makes its probe the one shown on the brain (one at a time)
     if (!expr.chosen?.has(row.id) || expr.chosen.size > 1) { expr.chosen = new Set([row.id]); applyColouring(); }
   }
