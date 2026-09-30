@@ -294,6 +294,8 @@
     border-bottom: 2px solid var(--edge); padding-bottom: 1px; min-height: 15px; box-sizing: border-box;
   }
   .ribbon-axis .slabel { top: 18px; font-size: 10px; color: var(--muted); }
+  .ribbon-axis > div { cursor: pointer; pointer-events: auto; }
+  .ribbon-axis .on { color: #fff !important; background: rgba(255, 255, 255, 0.22); border-radius: 2px; }
   #ribbon-canvas { display: block; cursor: pointer; }
   #ribbon-tip {
     position: fixed; z-index: 7; pointer-events: none; border-radius: 8px; padding: 7px 10px;
@@ -363,7 +365,7 @@
     position: absolute; white-space: nowrap; font: 11px var(--mono); color: #fff; background: rgba(62, 68, 77, 0.85);
     padding: 2px 7px; border-radius: 999px; pointer-events: none; opacity: 0; transition: opacity .15s;
   }
-  .edge-rail.on .rail-thumb span, .edge-rail:hover .rail-thumb span { opacity: 1; }
+  .edge-rail.show-val .rail-thumb span { opacity: 1; }
   .left .rail-thumb span { left: 18px; top: 50%; transform: translateY(-50%); }
   .right .rail-thumb span { right: 18px; top: 50%; transform: translateY(-50%); }
   .h .rail-thumb span { bottom: 16px; left: 50%; transform: translateX(-50%); }
@@ -976,6 +978,11 @@ const shownMni = s => (mirrored && s.mni[0] > 0 ? [-s.mni[0], s.mni[1], s.mni[2]
 
 // Each point also carries a `pointScale` attribute (1 = normal) multiplying its drawn size,
 // used to size samples by expression z-score. It is patched into three.js' points shader.
+// Occlusion by the cut brain section, shared by every sample cloud (set in placeOccluder)
+const OCC = {
+  occOn: { value: 0 }, occD: { value: 0 }, occN: { value: new THREE.Vector3() }, occC0: { value: new THREE.Vector3() },
+  occU: { value: new THREE.Vector3() }, occV: { value: new THREE.Vector3() }, occMap: { value: null },
+};
 function pointsFrom(list, color, size, map = dot) {
   const pos = new Float32Array(list.length * 3);
   list.forEach((s, i) => pos.set(toScene(...shownMni(s)), i * 3));
@@ -987,9 +994,26 @@ function pointsFrom(list, color, size, map = dot) {
     clippingPlanes: [pointTop, pointBottom],
   });
   material.onBeforeCompile = shader => {
+    Object.assign(shader.uniforms, OCC);
     shader.vertexShader = shader.vertexShader
-      .replace("uniform float size;", "uniform float size;\nattribute float pointScale;")
-      .replace("gl_PointSize = size;", "gl_PointSize = size * pointScale;");
+      .replace("uniform float size;", `uniform float size;\nattribute float pointScale;
+uniform float occOn, occD; uniform vec3 occN, occC0, occU, occV; uniform sampler2D occMap;`)
+      .replace("gl_PointSize = size;", "gl_PointSize = size * pointScale;")
+      // Whole-dot test: hide the dot when the line from the camera to its centre crosses the
+      // occluding plane over brain (the slice's mask), so dots never flicker half-clipped
+      .replace("#include <fog_vertex>", `#include <fog_vertex>
+  if (occOn > 0.5) {
+    vec3 w = (modelMatrix * vec4(position, 1.0)).xyz, dir = w - cameraPosition;
+    float den = dot(occN, dir);
+    if (abs(den) > 1e-6) {
+      float t = (occD - dot(occN, cameraPosition)) / den;
+      if (t > 0.0 && t < 1.0) {
+        vec3 r = cameraPosition + dir * t - occC0;
+        vec2 uv = vec2(dot(r, occU) / dot(occU, occU), dot(r, occV) / dot(occV, occV));
+        if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0 && texture2D(occMap, uv).a > 0.5) gl_PointSize = 0.0;
+      }
+    }
+  }`);
   };
   const cloud = new THREE.Points(geom, material);
   cloud.renderOrder = 5;
@@ -1015,7 +1039,18 @@ function placeMarker(marker, s) {
 
 // Current colour and size factor of a sample's dot (expression colouring / z-score sizing)
 const colouringActive = () => samples.some(s => s.expr);
-const sampleColor = (s, colouring = colouringActive()) => (s.expr ? scaleColor(s.expr.z) : colouring ? OTHER_DONOR_COLOR : SAMPLE_COLOR);
+// Regions switched on by tapping their labels above the ribbon: their samples are drawn in
+// their division's colour (a division or a single subdivision can be on)
+const regionHighlight = new Set();
+function highlightColor(s) {
+  if (!regionHighlight.size || !s.region) return null;
+  const group = ribbon.groupOf.get(s.region);
+  if (!group) return null;
+  const div = group.split(" · ")[0];
+  if (!regionHighlight.has(`d:${div}`) && !regionHighlight.has(`g:${group}`)) return null;
+  return DIVISION_COLORS[REGION_LAYOUT.findIndex(d => d.division === div) % DIVISION_COLORS.length];
+}
+const sampleColor = (s, colouring = colouringActive()) => highlightColor(s) ?? (s.expr ? scaleColor(s.expr.z) : colouring ? OTHER_DONOR_COLOR : SAMPLE_COLOR);
 const sampleScale = (s, bySize = document.getElementById("size-by-z").checked) => (s.expr && bySize ? zScale(s.expr.z) : 1);
 
 function updateSelectMarker() {
@@ -1053,7 +1088,6 @@ function addSamples(list) {
     cloud.material.vertexColors = true;
     cloud.material.color.set(0xffffff);
     paintCloud(cloud, () => SAMPLE_COLOR);
-    cloud.material.depthTest = true;   // hidden behind the slice's occluder (cut brain section)
     sampleScene.add(cloud);
     return cloud;
   });
@@ -1402,7 +1436,9 @@ function railValueAt(rail, e) {
 for (const rail of rails) {
   const name = rail.dataset.rail;
   let down = null, dragged = false;
-  const moveTo = e => { if (activeCut() !== name) setActiveCut(name); setCutPos(railValueAt(rail, e)); };
+  // The value label shows while the slider is used and for 1 s after
+  const flashVal = () => { rail.classList.add("show-val"); clearTimeout(rail.valTimer); rail.valTimer = setTimeout(() => rail.classList.remove("show-val"), 1000); };
+  const moveTo = e => { if (activeCut() !== name) setActiveCut(name); setCutPos(railValueAt(rail, e)); flashVal(); };
   rail.addEventListener("pointerdown", e => {
     rail.setPointerCapture(e.pointerId); down = [e.clientX, e.clientY]; dragged = false;
   });
@@ -1424,26 +1460,34 @@ for (const rail of rails) {
   rail.addEventListener("wheel", e => {
     e.preventDefault();
     if (activeCut() !== name) setActiveCut(name);
-    setCutPos(+cutSlider.value - Math.sign(e.deltaY || -e.deltaX) * 2);
+    setCutPos(+cutSlider.value - Math.sign(e.deltaY || -e.deltaX) * 2); flashVal();
   }, { passive: false });
   rail.addEventListener("keydown", e => {
     const step = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: 10, PageDown: -10 }[e.key];
-    if (step) { e.preventDefault(); if (activeCut() !== name) setActiveCut(name); setCutPos(+cutSlider.value + step); }
+    if (step) { e.preventDefault(); if (activeCut() !== name) setActiveCut(name); setCutPos(+cutSlider.value + step); flashVal(); }
     if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setActiveCut(activeCut() === name ? null : name); }
   });
 }
 
 // Keep the occluder one slab-thickness beyond the cut on the far side from the camera
 const _camDir = new THREE.Vector3();
+const _c = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
 function placeOccluder() {
   if (!sliceOccluder) return;
+  sliceOccluder.visible = false;   // the test now runs per dot in the point shader
   const cut = activeCut();
-  sliceOccluder.visible = !!cut && sliceMesh.visible && !bandOn();
-  if (!sliceOccluder.visible) return;
+  const on = !!cut && sliceMesh.visible && !bandOn() && !!sliceMesh.material.map;
+  OCC.occOn.value = on ? 1 : 0;
+  if (!on) return;
   const { axis } = CUTS[cut], dir = AXIS_DIR[axis], pos = +cutSlider.value, tol = +tolSlider.value;
   const camCoord = camera.position.dot(dir);   // camera's MNI coordinate along the cut axis
-  const target = camCoord > pos ? pos - tol : pos + tol;
-  sliceOccluder.position.copy(dir).multiplyScalar(target - (pos + 0.05));   // the quad sits at pos + 0.05
+  const target = camCoord > pos ? pos - tol : pos + tol;   // one slab-thickness beyond the cut
+  const shift = target - (pos + 0.05);                      // the slice quad sits at pos + 0.05
+  const attr = sliceMesh.geometry.getAttribute("position");
+  [0, 1, 3].forEach((k, i) => _c[i].fromBufferAttribute(attr, k).addScaledVector(dir, shift));
+  OCC.occN.value.copy(dir); OCC.occD.value = target;
+  OCC.occC0.value.copy(_c[0]); OCC.occU.value.subVectors(_c[1], _c[0]); OCC.occV.value.subVectors(_c[2], _c[0]);
+  OCC.occMap.value = sliceMesh.material.map;
 }
 
 // Only one cut at a time: ticking one unticks the others and restores its last position
@@ -1990,7 +2034,7 @@ function setScaleNote(text) { $e("expr-scale").hidden = false; $e("scale-note").
 // z-score filter: when on, samples of the coloured donor outside the chosen range are hidden
 // (drawn at size 0 and not hoverable). Other donors, which have no z-score, are unaffected.
 // While a gene is shown, samples without its data (donor not loaded, or probe missing) are hidden
-const sampleDrawn = (s, colouring = colouringActive()) => passesZ(s) && (!!s.expr || !colouring);
+const sampleDrawn = (s, colouring = colouringActive()) => (passesZ(s) && (!!s.expr || !colouring)) || !!highlightColor(s);
 function passesZ(s) {
   if (!s.expr || !$e("z-filter").checked) return true;
   const t = +$e("z-threshold").value, z = s.expr.z;
@@ -2435,7 +2479,7 @@ function regionName(s) {
 // "Fit" or a double-click returns to the full view.
 const THICK = 4;                                            // hippocampus/amygdala width, in thin-column units
 // Underline colour of each top-level division (cortex, hippocampus, ...), in layout order
-const DIVISION_COLORS = ["#e8a33d", "#5fb3e6", "#e0697a", "#8bc86a", "#b48ae6", "#4fc6b0", "#e6d35a", "#c58b5f", "#9aa4b1"];
+const DIVISION_COLORS = ["#f28e00", "#0a84ff", "#e6194b", "#22a83a", "#9b3fe6", "#00a3a3", "#d9a400", "#b35900", "#5f6b7a"];   // vivid, distinct on white
 const GAP_DONOR = 3;                                        // px between donors' runs when grouped
 const GAP_REGION = 0.6, GAP_GROUP = 3, GAP_DIVISION = 8;    // px between structures / subgroups / divisions
 // Row height: 16 px docked; full screen, rows grow to share the height (up to 72 px)
@@ -2491,13 +2535,13 @@ function buildRibbon() {
         });
         if (ribbon.donorGroups) ribbon.runs.push({ from: runStart, to: ribbon.items.length });
       });
-      ribbon.spans.push({ cls: "slabel", text: g.short ?? g.name, title: g.name, from: groupStart, to: ribbon.items.length });
+      ribbon.spans.push({ cls: "slabel", text: g.short ?? g.name, title: g.name, from: groupStart, to: ribbon.items.length, key: `g:${div.division} · ${g.name}` });
       groupsAdded++;
     }
     if (groupsAdded) {
       // the division label starts after the gap that precedes it
       const from = ribbon.items[divStart]?.gap ? divStart + 1 : divStart;
-      ribbon.spans.push({ cls: "dlabel", text: div.division, title: div.division, from, to: ribbon.items.length,
+      ribbon.spans.push({ cls: "dlabel", text: div.division, title: div.division, from, to: ribbon.items.length, key: `d:${div.division}`,
         color: DIVISION_COLORS[REGION_LAYOUT.indexOf(div) % DIVISION_COLORS.length] });
       divisionsAdded++;
     }
@@ -2535,6 +2579,8 @@ function layoutRibbon() {
   axis.replaceChildren(...ribbon.spans.map(sp => {
     const el = Object.assign(document.createElement("div"), { className: sp.cls, textContent: sp.text, title: sp.title });
     el.style.left = `${xs[sp.from]}px`; el.style.width = `${Math.max(0, xs[sp.to] - xs[sp.from])}px`;
+    el.dataset.key = sp.key;
+    el.classList.toggle("on", regionHighlight.has(sp.key));
     if (sp.color) el.style.borderBottomColor = sp.color;
     return el;
   }));
@@ -2895,6 +2941,15 @@ searchBox.addEventListener("input", () => (aliasTip.hidden = true));
   for (const t of ["pointerup", "pointercancel"]) box.addEventListener(t, () => (start = null));
 }
 $e("ribbon-bar").addEventListener("click", () => setRibbonMin(false));
+// Tap a division or subdivision label to highlight (or un-highlight) its samples in 3D
+$e("ribbon-axis").addEventListener("click", e => {
+  const key = e.target.closest("[data-key]")?.dataset.key;
+  if (!key) return;
+  if (regionHighlight.has(key)) regionHighlight.delete(key); else regionHighlight.add(key);
+  for (const c of donorClouds) paintCloud(c, sampleColor);
+  applyScales();
+  layoutRibbon();
+});
 ribbonCanvas.parentElement.addEventListener("scroll", () => { $e("ribbon-names").scrollTop = ribbonCanvas.parentElement.scrollTop; });
 
 // Column under a canvas x position (columns are sorted by x)
