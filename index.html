@@ -231,8 +231,8 @@
     -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
   }
   .mesh-corner button[aria-pressed=true] { color: #fff; background: rgba(62, 68, 77, 0.5); border-color: transparent; }
-  .mesh-corner button { min-width: 46px; }
-  body.phone .mesh-corner button { font-size: 12px; padding: 7px 8px; }
+  html .mesh-corner button { width: 38px; padding: 4px 0; text-align: center; }
+  html body.phone .mesh-corner button { width: 44px; font-size: 12px; padding: 7px 0; }
   #resume-load {
     position: fixed; z-index: 4; left: calc(var(--sx) + var(--ss) / 2); top: calc(var(--sy) + 12px); transform: translateX(-50%);
     font: 500 12.5px var(--sans); color: #fff; padding: 8px 16px; border-radius: 999px; border: 0; cursor: pointer;
@@ -587,6 +587,8 @@
     <p>Use of Allen Institute content is subject to the Allen Institute <a href="https://alleninstitute.org/terms-of-use/" target="_blank" rel="noopener">Terms of Use</a> and <a href="https://alleninstitute.org/citation-policy/" target="_blank" rel="noopener">Citation Policy</a>. The Allen Institute and Allen Human Brain Atlas names, trademarks and logos remain the property of the Allen Institute or their respective owners. This website is not affiliated with or endorsed by the Allen Institute.</p>
     <h3>Other sources</h3>
     <p>Brain template: ICBM 2009 MNI152 nonlinear template, © McConnell Brain Imaging Centre, Montreal Neurological Institute (Fonov et al., <i>NeuroImage</i> 2011). Hippocampus and amygdala surfaces: Allen Human Reference Atlas labels in MNI space. Gene-name aliases: HGNC database (<a href="https://www.genenames.org/" target="_blank" rel="noopener">genenames.org</a>).</p>
+    <h3>Copyright and licence</h3>
+    <p>© 2026 Sourena Soheili-Nezhad. This website (its code, design and visualisations) is licensed under the <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener">Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International licence (CC BY-NC-SA 4.0)</a>: you may use, share and adapt it free of charge for non-commercial purposes, provided you credit the source (Sourena Soheili-Nezhad, with a link to this website) and distribute any derivative work under the same licence. This licence does not cover the Allen Institute data or the other third-party sources listed above, which remain under their own terms.</p>
     <h3>Disclaimer</h3>
     <p>This website is provided for research and educational purposes only, without warranty of any kind. It is not intended for clinical or diagnostic use.</p>
     <div class="dl-actions"><button class="text-button primary" value="close">Close</button></div>
@@ -1130,8 +1132,8 @@ function showSampleTips(s) {
   const tip = document.getElementById("ribbon-tip"), zLabel = document.getElementById("ribbon-probe");
   const z = s?.expr && Number.isFinite(s.expr.z) ? `z ${s.expr.z >= 0 ? "+" : ""}${s.expr.z.toFixed(2)}` : "";
   zLabel.hidden = !z; zLabel.textContent = z;
-  tip.hidden = !s;
-  if (!s) return;
+  tip.hidden = true;   // coordinates live in the sample box's details; nothing over the 3D view
+  return;
   clearTimeout(ribbonTip.timer);
   tip.replaceChildren(Object.assign(document.createElement("div"), { className: "meta", textContent: `MNI ${shownMni(s).map(v => v.toFixed(0)).join(", ")}${z ? ` · ${z}` : ""}` }));
 }
