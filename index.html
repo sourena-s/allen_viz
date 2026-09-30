@@ -562,7 +562,7 @@
 <section id="ribbon" class="glass" hidden aria-label="Expression z-score of every sample, one row per probe">
   <div class="ribbon-head">
     <input type="text" class="title gene-box" id="gene-input" role="combobox" aria-autocomplete="list" aria-expanded="false"
-           aria-controls="gene-suggestions" aria-label="Gene or probe" placeholder="Gene" autocomplete="off" spellcheck="false"><button type="button" class="corr-btn" id="corr-btn" disabled title="Probes correlated with the highlighted row (r > 0.8)">corr</button><span class="probe zval" id="ribbon-probe" hidden></span>
+           aria-controls="gene-suggestions" aria-label="Gene or probe" placeholder="Gene" autocomplete="off" spellcheck="false"><button type="button" class="corr-btn" id="corr-btn" disabled title="The 20 probes most correlated with the highlighted row">corr</button><span class="probe zval" id="ribbon-probe" hidden></span>
     <div class="rb-tools">
       <label class="zsym" title="Colour range: z from minus to plus this value">±z
         <input type="range" id="z-sym" min="0.5" max="6" step="0.1" value="2" aria-label="Colour range, z"><span id="z-sym-val" class="rm-value">2.0</span></label>
@@ -2790,12 +2790,11 @@ function drawRibbon() {
   }
   // Probes in the brain average: yellow outline around their rows (unless every row is in it)
   if (ribbon.rows.some(r => !r.chosen)) {
-    ctx.strokeStyle = "#0b0d10"; ctx.lineWidth = 1.5;   // solid black, under the yellow column outline
+    ctx.strokeStyle = "#ffe600"; ctx.lineWidth = 1.5;   // bright yellow row outline
     ribbon.rows.forEach((r, i) => { if (r.chosen) ctx.strokeRect(0.75, i * (ROW_H + ROW_GAP) + 0.75, ribbon.width - 1.5, ROW_H - 1.5); });
   }
   ctx.setLineDash([]);
   const sel = ribbon.cols.find(c => c.s === selected);
-  if (sel) outline(sel, "#ffd21f");
   if (ribbon.hoverCol >= 0) outline(ribbon.cols[ribbon.hoverCol], "#ffffff");
 }
 // Redraw for a new selection and scroll its column into view if it is off screen
@@ -2955,11 +2954,11 @@ $e("ribbon-bar").addEventListener("click", () => setRibbonMin(false));
 
 // ---------------------------------------------------------------- correlated probes
 // "corr" (enabled once a ribbon row has been tapped): the highlighted probe becomes the top
-// row and every probe correlated with it at r > CORR_MIN follows, highest r first. r is
+// row and the CORR_TOP probes most correlated with it follow, highest r first. r is
 // Pearson's correlation over all samples of the loaded donors, each probe z-scored within
 // each donor (so donor offsets do not count). With the seed z-scored, a probe's
 // contribution per donor is sum(x * zSeed) / sd(x), accumulated in one pass over its values.
-const CORR_MIN = 0.8;
+const CORR_TOP = 20;   // rows listed after the seed
 function updateCorrButton() {
   $e("corr-btn").disabled = !(ribbon.userPicked && chosenProbes().length === 1 && expr.byDonor.size);
 }
@@ -2995,18 +2994,18 @@ async function findCorrelated() {
         if (!(sd > 0)) { ok = false; break; }
         acc += sxz / sd;
       }
-      if (ok) { const rv = acc / n; if (rv > CORR_MIN || id === seed) r.set(id, rv); }
+      if (ok) r.set(id, acc / n);
       if (k % 4000 === 3999) { setBusy(`Correlating probes… ${Math.round(k / ids.length * 100)}%`); await new Promise(res => setTimeout(res, 0)); }
     }
-    const others = [...r.keys()].filter(id => id !== seed).sort((a, b) => r.get(b) - r.get(a)).slice(0, MAX_GROUP_PROBES - 1);
+    const others = [...r.keys()].filter(id => id !== seed).sort((a, b) => r.get(b) - r.get(a)).slice(0, CORR_TOP);
     const name = symbolOf(seed) ?? expr.probeName.get(seed) ?? seed;
-    expr.corr = { query: `${name} r>${CORR_MIN}`, ids: [seed, ...others], r };
+    expr.corr = { query: `${name} top ${CORR_TOP}`, ids: [seed, ...others], r };
     searchBox.value = expr.corr.query;
     showProbeBox(expr.corr.query, expr.corr.ids);
     expr.chosen = new Set([seed]);
     autoZ(expr.corr.ids);
     applyColouring();
-    setScaleNote(`${others.length} probes correlated with ${expr.probeName.get(seed) ?? seed} at r > ${CORR_MIN} across ${n} samples.`);
+    setScaleNote(`The ${others.length} probes most correlated with ${expr.probeName.get(seed) ?? seed} across ${n} samples (r ${r.get(others.at(-1))?.toFixed(2) ?? "–"} to ${r.get(others[0])?.toFixed(2) ?? "–"}).`);
   } finally { setBusy(null); }
 }
 $e("corr-btn").addEventListener("click", findCorrelated);
