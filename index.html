@@ -154,9 +154,11 @@
   /* Region ribbon: one column per sample (all donors), one row per probe, grouped by region */
   #ribbon {
     position: fixed; left: 300px; right: 16px; top: var(--rt, auto); bottom: auto;
-    max-height: calc(100dvh - var(--rt, 0px) - 10px); overflow-y: auto;
+    max-height: calc(100dvh - var(--rt, 0px) - 10px); overflow: hidden;
     border-radius: 4px; padding: 10px 12px 10px; box-sizing: border-box;
+    display: flex; flex-direction: column;
   }
+  #ribbon[hidden] { display: none; }
   .ribbon-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; min-width: 0; }
   .ribbon-head .title { font-weight: 600; }
   /* Gene box: looks like the ribbon's title, editable */
@@ -195,7 +197,8 @@
   .ribbon-head .probe { font: 11.5px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .ribbon-head .meta { flex: 1; min-width: 0; font: 11px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ribbon-fit { flex: none; margin-left: auto; padding: 3px 12px; font-size: 11px; }
-  .ribbon-grid { display: flex; gap: 8px; }
+  .ribbon-grid { display: flex; gap: 8px; flex: 1; min-height: 0; }
+  .ribbon-head { flex: none; }
   .ribbon-fit2 { margin-left: 0; }
   /* Ribbon toolbar (menu, maximise, minimise) and its floating control panel */
   .zsym { display: flex; align-items: center; gap: 6px; flex: none; font: 600 12px var(--sans); color: var(--ink); }
@@ -267,7 +270,7 @@
   html body.ribbon-full #ribbon {
     background: #878b91; -webkit-backdrop-filter: none; backdrop-filter: none;
     left: 0; right: 0; top: 0; bottom: 0; z-index: 6; border-radius: 0; border: 0; max-height: none;
-    overflow-y: auto; padding: calc(12px + env(safe-area-inset-top, 0px)) 14px 14px;
+    overflow: hidden; padding: calc(12px + env(safe-area-inset-top, 0px)) 14px 14px;
   }
   html body.ribbon-full.ribbon-rot #ribbon {
     width: 100vh; width: 100dvh; height: 100vw; height: 100dvw; right: auto; bottom: auto; left: 100vw; left: 100dvw;
@@ -277,13 +280,14 @@
   .ribbon-names.multi { width: auto; max-width: 70px; }
   .rgene { flex: none; min-width: 0; font: 9.5px var(--mono); color: var(--muted); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ribbon-names:not(.multi) { width: 0; }
-  .ribbon-names { flex: none; width: 20px; padding-top: 34px; display: flex; flex-direction: column; gap: 2px; }
+  .ribbon-names { flex: none; width: 20px; padding-top: 34px; display: flex; flex-direction: column; gap: 2px; overflow: hidden; clip-path: inset(34px 0 0 0); }
   .rname { height: var(--row-h, 16px); display: flex; align-items: center; gap: 6px; }
   .rname input[type=checkbox] { width: 20px; height: 12px; }
   .rname input[type=checkbox]::after { top: 2px; left: 2px; width: 8px; height: 8px; }
   .rname input[type=checkbox]:checked::after { transform: translateX(8px); }
-  .ribbon-scroll { flex: 1; min-width: 0; overflow-x: auto; touch-action: none; padding-bottom: 4px; scrollbar-width: thin; scrollbar-color: var(--track) transparent; }
-  .ribbon-axis { position: relative; height: 32px; margin-bottom: 2px; }
+  .ribbon-scroll { flex: 1; min-width: 0; overflow: auto; touch-action: none; padding-bottom: 4px; scrollbar-width: thin; scrollbar-color: var(--track) transparent; }
+  /* Region labels and their coloured lines stay pinned while the rows scroll under them */
+  .ribbon-axis { position: sticky; top: 0; z-index: 1; height: 32px; margin-bottom: 2px; background: #878b91; box-shadow: 0 -6px 0 #878b91, 0 2px 0 #878b91; }
   .ribbon-axis > div { position: absolute; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ribbon-axis .dlabel {
     top: 0; font-size: 11px; font-weight: 600; color: var(--ink);
@@ -306,6 +310,18 @@
     border-radius: 16px; color: var(--ink); background: var(--sheet); overflow-y: auto;
   }
   #dl-dialog::backdrop { background: rgba(20, 28, 38, 0.3); }
+  #legal-dialog {
+    width: min(560px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); box-sizing: border-box; padding: 0;
+    border-radius: 4px; color: var(--ink); background: var(--sheet); overflow-y: auto;
+  }
+  #legal-dialog::backdrop { background: rgba(20, 28, 38, 0.3); }
+  .legal { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 18px 20px; font-size: 12.5px; line-height: 1.5; }
+  .legal h2 { margin: 0; font-size: 15px; font-weight: 600; }
+  .legal h3 { margin: 6px 0 0; font-size: 11px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .legal p { margin: 0; }
+  .legal .cite { padding-left: 10px; border-left: 2px solid var(--edge); color: var(--muted); }
+  .legal a { color: inherit; }
+  #legal-open { margin-top: 10px; }
   #dl-dialog form { display: flex; flex-direction: column; gap: 14px; margin: 0; padding: 18px; }
   #dl-dialog h2 { margin: 0; font-size: 15px; font-weight: 600; }
   #dl-dialog .row .count { margin-left: auto; }
@@ -516,6 +532,7 @@
 
   <div class="group">
     <span class="hint" id="controls-hint">Drag to rotate · middle- or right-drag to pan · scroll to zoom</span>
+    <button class="text-button" id="legal-open" type="button">Data sources &amp; disclaimer</button>
   </div>
 </aside>
 
@@ -560,6 +577,21 @@
 <div class="edge-rail v right" data-rail="axial" role="slider" tabindex="0" aria-label="Axial cut (z)" aria-orientation="vertical"><div class="rail-track"></div><div class="rail-thumb"><span></span></div></div>
 <div class="edge-rail h" data-rail="sagittal" role="slider" tabindex="0" aria-label="Sagittal cut (x)" aria-orientation="horizontal"><div class="rail-track"></div><div class="rail-thumb"><span></span></div></div>
 
+<dialog id="legal-dialog" class="glass" aria-labelledby="legal-title">
+  <form method="dialog" class="legal">
+    <h2 id="legal-title">Data sources and attribution</h2>
+    <p>Gene-expression data displayed on this website are derived from the Allen Human Brain Atlas, Allen Institute for Brain Science: microarray measurements of gene expression across the adult human brain, normalised with the Allen Institute's March 2013 normalisation procedure.</p>
+    <p class="cite">Hawrylycz MJ, Lein ES, Guillozet-Bongaarts AL, et al. (2012). An anatomically comprehensive atlas of the adult human transcriptome. <i>Nature</i>, 489, 391–399. <a href="https://doi.org/10.1038/nature11405" target="_blank" rel="noopener">doi:10.1038/nature11405</a></p>
+    <p class="cite">© 2010 Allen Institute for Brain Science. Allen Human Brain Atlas. Available from: <a href="https://human.brain-map.org/" target="_blank" rel="noopener">human.brain-map.org</a></p>
+    <p>The original data are provided by the Allen Institute for Brain Science. This website does not claim ownership of the underlying Allen Institute data and does not host or redistribute the expression files: they are downloaded from the Allen Institute by the visitor and processed only in the visitor's browser. Expression values shown here may have been processed, reformatted, aggregated or visualised (for example z-scored within each donor, or interpolated onto slices).</p>
+    <p>Use of Allen Institute content is subject to the Allen Institute <a href="https://alleninstitute.org/terms-of-use/" target="_blank" rel="noopener">Terms of Use</a> and <a href="https://alleninstitute.org/citation-policy/" target="_blank" rel="noopener">Citation Policy</a>. The Allen Institute and Allen Human Brain Atlas names, trademarks and logos remain the property of the Allen Institute or their respective owners. This website is not affiliated with or endorsed by the Allen Institute.</p>
+    <h3>Other sources</h3>
+    <p>Brain template: ICBM 2009 MNI152 nonlinear template, © McConnell Brain Imaging Centre, Montreal Neurological Institute (Fonov et al., <i>NeuroImage</i> 2011). Hippocampus and amygdala surfaces: Allen Human Reference Atlas labels in MNI space. Gene-name aliases: HGNC database (<a href="https://www.genenames.org/" target="_blank" rel="noopener">genenames.org</a>).</p>
+    <h3>Disclaimer</h3>
+    <p>This website is provided for research and educational purposes only, without warranty of any kind. It is not intended for clinical or diagnostic use.</p>
+    <div class="dl-actions"><button class="text-button primary" value="close">Close</button></div>
+  </form>
+</dialog>
 <dialog id="dl-dialog" class="glass" aria-labelledby="dl-title">
   <form method="dialog">
     <div>
@@ -2314,6 +2346,8 @@ async function loadSavedDonors(ask = true) {
 }
 
 $e("dl-open").addEventListener("click", openDownloadDialog);
+$e("legal-open").addEventListener("click", () => $e("legal-dialog").showModal());
+$e("legal-dialog").addEventListener("click", e => { if (e.target === $e("legal-dialog")) $e("legal-dialog").close(); });   // tap outside
 $e("dl-pick").addEventListener("click", pickDataDir);
 $e("dl-start").addEventListener("click", startDownloads);
 $e("dl-load").addEventListener("click", () => loadSavedDonors(true));
@@ -2761,7 +2795,7 @@ ribbonCanvas.addEventListener("dblclick", () => setRibbonZoom(1));
       setRibbonZoom(ribbon.zoom * g.dist / last.dist, a.x);
     }
     scroll.scrollLeft -= dx;
-    $e("ribbon").scrollTop -= dy;
+    scroll.scrollTop -= dy;
     last = g;
   });
   const lift = e => {
@@ -2859,6 +2893,7 @@ searchBox.addEventListener("input", () => (aliasTip.hidden = true));
   for (const t of ["pointerup", "pointercancel"]) box.addEventListener(t, () => (start = null));
 }
 $e("ribbon-bar").addEventListener("click", () => setRibbonMin(false));
+ribbonCanvas.parentElement.addEventListener("scroll", () => { $e("ribbon-names").scrollTop = ribbonCanvas.parentElement.scrollTop; });
 
 // Column under a canvas x position (columns are sorted by x)
 function columnAt(x) {
@@ -2925,7 +2960,8 @@ function layoutStage() {
   const rail = phone ? 26 : 28, gap = 8;
   const ribbonEl = $e("ribbon");
   const ribbonShown = !ribbonEl.hidden && !b.classList.contains("ribbon-min") && !b.classList.contains("ribbon-full");
-  const rh = ribbonShown ? Math.min(ribbonEl.scrollHeight, H * 0.45) : b.classList.contains("ribbon-min") && !ribbonEl.hidden ? 22 : 0;
+  const natural = () => ribbonEl.querySelector(".ribbon-head").offsetHeight + ribbonCanvas.parentElement.scrollHeight + 26;
+  const rh = ribbonShown ? Math.min(natural(), H * 0.45) : b.classList.contains("ribbon-min") && !ribbonEl.hidden ? 22 : 0;
   const x0 = (phone ? 0 : 300) + rail, x1 = W - (phone ? 0 : 16) - rail;
   const y0 = phone ? 72 : 16;
   const S = Math.max(140, Math.floor(Math.min(x1 - x0, H - y0 - rail - (rh ? rh + gap : 0) - (phone ? 8 : 16))));
