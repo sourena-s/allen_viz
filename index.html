@@ -3038,16 +3038,27 @@ searchBox.addEventListener("input", () => (aliasTip.hidden = true));
 $e("ribbon-bar").addEventListener("click", () => setRibbonMin(false));
 
 // ---------------------------------------------------------------- LRP1B
-// Searching LRP1B turns the ribbon into a piano for a moment, playing the opening of the
-// Andante of Mozart's Piano Concerto No. 21 in C major, K. 467 (public domain), synthesised
+// Searching LRP1B turns the ribbon into a five-octave piano for a moment, playing the
+// opening of Chopin's Nocturne No. 8 in D-flat major, Op. 27 No. 2 (public domain), synthesised
 // with Web Audio; the keys light up as they sound.
-const PIANO_LOW = 53, PIANO_HIGH = 84;   // MIDI F3..C6
-// [MIDI note, beats]; a transcription of the theme's opening phrase, at about 60 bpm
-const K467 = [
-  [72, 1.5], [72, 0.5], [74, 0.33], [72, 0.33], [69, 0.34], [72, 1], [77, 1],
-  [76, 0.5], [74, 0.5], [72, 0.5], [70, 0.5], [69, 1.5], [67, 0.5],
-  [69, 0.33], [70, 0.33], [72, 0.34], [74, 0.5], [72, 0.5], [70, 0.5], [69, 0.5], [67, 1], [65, 2],
+const PIANO_LOW = 36, PIANO_HIGH = 96;   // MIDI C2..C7, five octaves
+// Left-hand arpeggio per bar of six eighths, by harmony
+const ARP = { Db: [37, 44, 53, 56, 53, 44], Gb: [42, 49, 58, 61, 58, 49], Ab7: [44, 51, 60, 54, 60, 51] };
+const NOCT_BARS = ["Db", "Db", "Db", "Gb", "Db", "Ab7", "Db"];
+// Right-hand melody from bar 3, [MIDI note, eighths]; an approximate transcription
+const NOCT_MELODY = [
+  [68, 3], [65, 1], [66, 1], [68, 1],
+  [70, 2], [68, 1], [73, 3],
+  [72, 1.5], [70, 0.5], [68, 1], [66, 2], [65, 1],
+  [63, 3], [65, 1], [66, 1], [63, 1],
+  [61, 6],
 ];
+function nocturneNotes() {   // [MIDI, start eighth, eighths, level]
+  const out = [];
+  NOCT_BARS.forEach((h, bar) => ARP[h].forEach((m, i) => out.push([m, bar * 6 + i, 1.6, 0.11])));
+  let t = 12; for (const [m, d] of NOCT_MELODY) { out.push([m, t, d, 0.24]); t += d; }
+  return out;
+}
 function playPiano() {
   const host = $e("ribbon");
   if (host.querySelector(".piano")) return;
@@ -3067,25 +3078,26 @@ function playPiano() {
   host.append(piano);
   let ctx = null;
   try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch { /* no audio */ }
-  const beat = 0.62, t0 = (ctx?.currentTime ?? 0) + 0.15;
-  let t = 0;
-  for (const [m, beats] of K467) {
-    const start = t, dur = beats * beat;
-    if (ctx) {   // a soft piano-like tone: two detuned partials with a fast attack and decay
+  const eighth = 0.34, t0 = (ctx?.currentTime ?? 0) + 0.15;   // Lento sostenuto
+  let end = 0;
+  for (const [m, at, len, lvl] of nocturneNotes()) {
+    const start = at * eighth, dur = len * eighth;
+    if (ctx) {   // a soft piano-like tone: two partials with a fast attack and decay
       const g = ctx.createGain(); g.connect(ctx.destination);
       g.gain.setValueAtTime(0, t0 + start);
-      g.gain.linearRampToValueAtTime(0.22, t0 + start + 0.012);
-      g.gain.exponentialRampToValueAtTime(0.001, t0 + start + Math.max(0.35, dur * 1.6));
-      for (const [mult, type, lvl] of [[1, "triangle", 1], [2, "sine", 0.25]]) {
+      g.gain.linearRampToValueAtTime(lvl, t0 + start + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + start + Math.max(0.5, dur * 1.6));
+      for (const [mult, type, l] of [[1, "triangle", 1], [2, "sine", 0.25]]) {
         const o = ctx.createOscillator(), og = ctx.createGain();
-        o.type = type; o.frequency.value = 440 * 2 ** ((m - 69) / 12) * mult; og.gain.value = lvl;
-        o.connect(og); og.connect(g); o.start(t0 + start); o.stop(t0 + start + Math.max(0.4, dur * 1.7));
+        o.type = type; o.frequency.value = 440 * 2 ** ((m - 69) / 12) * mult; og.gain.value = l;
+        o.connect(og); og.connect(g); o.start(t0 + start); o.stop(t0 + start + Math.max(0.55, dur * 1.7));
       }
     }
     setTimeout(() => keys.get(m)?.classList.add("down"), (start + 0.15) * 1000);
-    setTimeout(() => keys.get(m)?.classList.remove("down"), (start + 0.15 + dur * 0.9) * 1000);
-    t += dur;
+    setTimeout(() => keys.get(m)?.classList.remove("down"), (start + 0.15 + Math.min(dur, eighth * 1.5) * 0.9) * 1000);
+    end = Math.max(end, start + dur);
   }
+  const t = end;
   setTimeout(() => { piano.classList.add("gone"); setTimeout(() => { piano.remove(); ctx?.close?.(); }, 400); }, (t + 0.9) * 1000);
 }
 
