@@ -1843,7 +1843,9 @@ const MAX_GROUP_PROBES = 600;
 const shownName = sym => expr.currentName?.get(sym) ?? sym;
 const symbolsStarting = prefix => {
   const p = prefix.toUpperCase();
-  const set = new Set([...expr.bySymbol.keys()].filter(sym => sym.toUpperCase().startsWith(p)));
+  // Once the HGNC table is in, only Allen symbols that are still official count by their own name
+  const official = sym => !hgnc || hgnc.genes.has(sym.toUpperCase());
+  const set = new Set([...expr.bySymbol.keys()].filter(sym => sym.toUpperCase().startsWith(p) && (official(sym) || sym.toUpperCase() === p)));
   for (const sym of expr.hgncPrefix?.get(p) ?? []) set.add(sym);
   return [...set].sort((a, b) => shownName(a).localeCompare(shownName(b), undefined, { numeric: true }));
 };
@@ -2014,7 +2016,15 @@ searchBox.addEventListener("keydown", e => {
     expr.alias = null;
     const q = searchBox.value.trim().toLowerCase();
     const exact = searchIndex.find(entry => entry.keys.includes(q));
-    if (exact) pickSuggestion(exact);
+    if (exact?.kind === "gene") {
+      // An exact gene also brings the official symbols that start with it: dusp -> DUSP, DUSP1, DUSP2…
+      const raw = searchBox.value.trim();
+      hgncPrefixMatches(raw).then(() => {
+        if (symbolsStarting(raw).length > 1) { searchBox.value = `${raw.toUpperCase()}*`; hideSuggestions(); onGeneChosen(); }
+        else pickSuggestion(exact);
+      });
+    }
+    else if (exact) pickSuggestion(exact);
     else if (q && !q.endsWith("*")) {
       // Partial or renamed names: match Allen symbols and current official (HGNC) symbols
       // starting with the text, e.g. rbfox -> RBFOX1/2/3 (Allen: A2BP1, RBM9, HRNBP3)
