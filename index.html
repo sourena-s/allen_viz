@@ -324,7 +324,7 @@
   .ribbon-axis .slabel { top: 18px; font-size: 10px; color: var(--muted); }
   .ribbon-axis > div { cursor: pointer; pointer-events: auto; }
   .ribbon-axis .on { color: #fff !important; background: rgba(255, 255, 255, 0.22); border-radius: 2px; }
-  #ribbon-canvas { display: block; cursor: pointer; }
+  #ribbon-canvas { display: block; cursor: pointer; position: sticky; top: 34px; }
   #ribbon-tip {
     position: fixed; z-index: 7; pointer-events: none; border-radius: 8px; padding: 7px 10px;
     left: calc(var(--sx) + 8px) !important; top: calc(var(--sy) + 8px) !important;
@@ -617,6 +617,7 @@
     <div class="ribbon-scroll">
       <div class="ribbon-axis" id="ribbon-axis"></div>
       <canvas id="ribbon-canvas"></canvas>
+      <div id="ribbon-spacer"></div>
     </div>
   </div>
 </section>
@@ -1698,6 +1699,8 @@ function autoZ(ids) {
   setSymmetricZ(estimateZ(genes.flatMap(g => expr.bySymbol.get(g) ?? [g]).filter(hasProbe)));
 }
 function estimateZ(ids) {
+  // Long lists: an evenly spaced sample of 200 probes estimates the percentile well enough
+  if (ids.length > 200) ids = Array.from({ length: 200 }, (_, i) => ids[Math.floor(i * ids.length / 200)]);
   const abs = [];
   for (const [, rows] of expr.byDonor) for (const id of ids) {
     const v = rows.get(id);
@@ -2613,7 +2616,7 @@ let ROW_H = 16;
 const ROW_GAP = 2, NO_DATA = "rgba(255,255,255,0.10)", MAX_ZOOM = 20;
 const ribbon = {
   names: new Map(), groupOf: new Map(), probeStats: new Map(),
-  items: [], spans: [], cols: [], rows: [], built: false, hoverCol: -1, zoom: 1,
+  items: [], spans: [], cols: [], rows: [], built: false, hoverCol: -1, zoom: 1, y0: 0, viewH: 0,
 };
 const ribbonCanvas = $e("ribbon-canvas"), ribbonCtx = ribbonCanvas.getContext("2d");
 
@@ -2879,7 +2882,10 @@ function drawCells(ctx, dpr) {
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.imageSmoothingEnabled = false;
+  const RH = ROW_H + ROW_GAP, first = Math.max(0, Math.floor(ribbon.y0 / RH));
+  const last = Math.min(ribbon.rows.length - 1, Math.ceil((ribbon.y0 + ribbon.viewH) / RH));
   ribbon.rows.forEach((row, r) => {
+    if (r < first || r > last) return;
     px.fill(0);
     // Per donor: this probe's values and their mean / SD (cached)
     const perDonor = new Map();
@@ -2905,7 +2911,7 @@ function drawCells(ctx, dpr) {
       for (let x = x0; x < x1; x++) { const o = x * 4; px[o] = R; px[o + 1] = G; px[o + 2] = B; px[o + 3] = A; }
     });
     cellLineCtx.putImageData(img, 0, 0);
-    const y0 = Math.round(r * (ROW_H + ROW_GAP) * dpr), y1 = Math.round((r * (ROW_H + ROW_GAP) + ROW_H) * dpr);
+    const y0 = Math.round((r * RH - ribbon.y0) * dpr), y1 = Math.round((r * RH + ROW_H - ribbon.y0) * dpr);
     ctx.drawImage(cellLine, 0, 0, W, 1, 0, y0, W, y1 - y0);
   });
   ctx.restore();
@@ -2915,26 +2921,37 @@ function drawRibbon() {
   if (!ribbon.built || $e("ribbon").hidden) return;
   fitRowHeight();
   // Canvases wider than ~32k device pixels fail, so high zoom lowers the resolution instead
-  const h = Math.max(0, ribbon.rows.length * (ROW_H + ROW_GAP) - ROW_GAP);
-  // (and so do very tall ones: thousands of rows lower it too)
-  const dpr = Math.min(devicePixelRatio || 1, 2, 32000 / Math.max(1, ribbon.width), 32000 / Math.max(1, h));
-  ribbonCanvas.width = Math.ceil(ribbon.width * dpr); ribbonCanvas.height = Math.ceil(h * dpr);
+  // Only the rows in view are drawn: the canvas is at most as tall as the visible area and
+  // sticks under the region labels, while a spacer below it gives the scroll height of all
+  // rows. ribbon.y0 is the offset (px) of the canvas's top row line within all rows.
+  const total = Math.max(0, ribbon.rows.length * (ROW_H + ROW_GAP) - ROW_GAP);
+  const scroll = ribbonCanvas.parentElement, axisH = $e("ribbon-axis").offsetHeight + 2;
+  const h = Math.min(total, Math.max(ROW_H, scroll.clientHeight - axisH - 4));
+  ribbon.viewH = h;
+  ribbon.y0 = Math.max(0, Math.min(scroll.scrollTop, total - h));
+  $e("ribbon-spacer").style.height = `${total - h}px`;
+  ribbonCanvas.style.top = `${axisH}px`;
+  const dpr = Math.min(devicePixelRatio || 1, 2, 32000 / Math.max(1, ribbon.width));
+  const cw = Math.ceil(ribbon.width * dpr), ch = Math.ceil(h * dpr);
+  if (ribbonCanvas.width !== cw) ribbonCanvas.width = cw;
+  if (ribbonCanvas.height !== ch) ribbonCanvas.height = ch;
   ribbonCanvas.style.width = `${ribbon.width}px`; ribbonCanvas.style.height = `${h}px`;
   const ctx = ribbonCtx;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, ribbon.width, h);
   drawCells(ctx, dpr);
+  ctx.translate(0, -ribbon.y0);   // overlays below are drawn in all-rows coordinates
   // Selected sample: yellow outline through all rows; hovered column: white
   const outline = (col, colour) => {
     ctx.strokeStyle = colour; ctx.lineWidth = 1.5;
-    ctx.strokeRect(col.x - 1, 0.75, col.w + 2, h - 1.5);
+    ctx.strokeRect(col.x - 1, ribbon.y0 + 0.75, col.w + 2, h - 1.5);
   };
   // Donor groups: a dark outline around each donor's samples within a region
   if (ribbon.donorGroups) {
     ctx.strokeStyle = "#0b0d10"; ctx.lineWidth = 1;
     for (const r of ribbon.runs) {
       const x0 = ribbon.xs[r.from], x1 = ribbon.xs[r.to];
-      if (x1 - x0 >= 2) ctx.strokeRect(x0 + 0.5, 0.5, x1 - x0 - 1, h - 1);
+      if (x1 - x0 >= 2) ctx.strokeRect(x0 + 0.5, ribbon.y0 + 0.5, x1 - x0 - 1, h - 1);
     }
   }
   // Probes in the brain average: yellow outline around their rows (unless every row is in it)
@@ -3337,19 +3354,19 @@ async function showLongGenes() {
       for (const id of probes) { ids.push(id); lenOf.set(id, g.len / 1e6); }
     }
     if (!ids.length) { note.textContent = "None of these genes has probes in the loaded data."; return; }
-    // Row labels: the gene's length in Mb before its symbol, or with "Sort by hippocampal
-    // z-score" ticked, the probe's mean hippocampal z-score (rows sorted by it, highest first)
+    // Row labels: the gene's length in Mb before its symbol. With "Sort by hippocampal z-score"
+    // ticked, rows are sorted by the probe's mean hippocampal z-score, highest first
     const byHipp = $e("long-hipp").checked;
     const hz = byHipp ? hippocampalZ(ids) : null;
     if (byHipp && !hz) { note.textContent = "No hippocampal samples in the loaded donors."; return; }
     if (hz) ids.sort((a, b) => (hz.get(b) ?? -Infinity) - (hz.get(a) ?? -Infinity));
-    expr.corr = { query: `Longest ${N} genes${hz ? " · hippocampus" : ""}`, ids, r: hz ?? lenOf };
+    expr.corr = { query: `Longest ${N} genes${hz ? " · hippocampus" : ""}`, ids, r: lenOf };
     searchBox.value = expr.corr.query;
     showProbeBox(expr.corr.query, ids);
     autoZ(ids.slice(0, 2000));
     applyColouring();
     const msg = hz
-      ? `Longest ${N} protein-coding genes: ${found} with Allen probes, ${ids.length} probes (one row each), sorted by mean hippocampal z-score, highest first. Row labels give that z-score.`
+      ? `Longest ${N} protein-coding genes: ${found} with Allen probes, ${ids.length} probes (one row each), sorted by mean hippocampal z-score, highest first. Row labels give the gene length in Mb.`
       : `Longest ${N} protein-coding genes, longest first: ${found} with Allen probes, ${ids.length} probes (one row each). Row labels give the gene length in Mb.`;
     note.textContent = msg; setScaleNote(msg);
     setPanelOpen(false);
@@ -3394,7 +3411,18 @@ $e("ribbon-axis").addEventListener("click", e => {
   applyScales();
   layoutRibbon();
 });
-ribbonCanvas.parentElement.addEventListener("scroll", () => { $e("ribbon-names").scrollTop = ribbonCanvas.parentElement.scrollTop; });
+// The visible height decides how many rows the canvas holds: redraw when it changes
+new ResizeObserver(() => {
+  const scroll = ribbonCanvas.parentElement, axisH = $e("ribbon-axis").offsetHeight + 2;
+  if (ribbon.built && Math.round(scroll.clientHeight - axisH - 4) !== Math.round(ribbon.viewH)) drawRibbon();
+}).observe(ribbonCanvas.parentElement);
+ribbonCanvas.parentElement.addEventListener("scroll", () => {
+  const scroll = ribbonCanvas.parentElement;
+  $e("ribbon-names").scrollTop = scroll.scrollTop;
+  // Rows scrolled into view are drawn as they arrive (once per frame)
+  if (Math.min(scroll.scrollTop, Math.max(0, scroll.scrollHeight)) !== ribbon.y0 && !drawRibbon.frame)
+    drawRibbon.frame = requestAnimationFrame(() => { drawRibbon.frame = 0; drawRibbon(); });
+});
 
 // Column under a canvas x position (columns are sorted by x)
 function columnAt(x) {
@@ -3427,7 +3455,7 @@ ribbonCanvas.addEventListener("mousemove", e => {
 // Click (tap): select the sample and show its details for the probe row under the pointer
 function ribbonCellTip(e) {
   const p = ribbonLocal(e.clientX, e.clientY);
-  const ci = columnAt(p.x), row = Math.floor(p.y / (ROW_H + ROW_GAP));
+  const ci = columnAt(p.x), row = Math.floor((p.y + ribbon.y0) / (ROW_H + ROW_GAP));
   if (ci < 0 || !ribbon.rows[row]) { ribbonTip(null); return; }
   const s = ribbon.cols[ci].s, probe = ribbon.rows[row], v = cellValue(s, probe.id);
   const hemi = /right/.test(s.name) ? "right" : /left/.test(s.name) ? "left" : "midline";
@@ -3446,7 +3474,7 @@ ribbonCanvas.addEventListener("click", e => {
     flashUntil = performance.now() + 1000;
     if (cut) setCutPos(shownMni(s)[CUTS[cut].axis]);   // move the slice to this sample's level
   }
-  const row = ribbon.rows[Math.floor(p.y / (ROW_H + ROW_GAP))];
+  const row = ribbon.rows[Math.floor((p.y + ribbon.y0) / (ROW_H + ROW_GAP))];
   if (row) {
     showRibbonProbe(row, true);
     ribbon.userPicked = true; updateCorrButton();
