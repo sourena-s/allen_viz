@@ -1752,9 +1752,16 @@ function setBusy(text, frac) {
   $e("busy-fill").parentElement.classList.toggle("indeterminate", !known);
   $e("busy-fill").style.width = known ? `${Math.round(Math.min(1, frac) * 100)}%` : "";
 }
+// While several donors load (saved folder), one bar covers the whole batch
+let loadBatch = null;   // { i, n }
+function donorBusy(donor, frac, n) {
+  const f = typeof frac === "number" && isFinite(frac) ? frac : 0;
+  if (loadBatch) setBusy(`Loading donors… ${loadBatch.i + 1} of ${loadBatch.n}`, (loadBatch.i + f) / loadBatch.n);
+  else setBusy(`Loading donor ${donorShort(donor)}…${n ? ` ${n.toLocaleString()} probes` : ""}`, frac);
+}
 async function loadExpressionFiles(files, donor = $e("expr-donor").value) {
-  setBusy(`Loading donor ${donorShort(donor)}…`);
-  try { await loadExpressionFilesNow(files, donor); } finally { setBusy(null); }
+  donorBusy(donor, loadBatch ? 0 : undefined);
+  try { await loadExpressionFilesNow(files, donor); } finally { if (!loadBatch) setBusy(null); }
 }
 async function loadExpressionFilesNow(files, donor) {
   files = [...files];
@@ -1776,7 +1783,7 @@ async function loadExpressionFilesNow(files, donor) {
     if (exprFile) {
       bar.hidden = false;
       const rows = await readExpressionFile(exprFile, (frac, n) => {
-        setBusy(`Loading donor ${donorShort(donor)}… ${n.toLocaleString()} probes`, frac);
+        donorBusy(donor, frac, n);
         fill.style.width = frac == null ? "100%" : `${(frac * 100).toFixed(1)}%`;
         setExprStatus([`Reading ${exprFile.name}… ${n.toLocaleString()} probes`]);
       });
@@ -1813,10 +1820,34 @@ function showLoadedStatus() {
 // "ZNF*" (what Enter on a partial name becomes) means every gene whose symbol starts with
 // ZNF: their probes, sorted by gene symbol and then probe name, capped at MAX_GROUP_PROBES
 const MAX_GROUP_PROBES = 600;
+// Allen symbols starting with the prefix, plus Allen genes whose current official (HGNC)
+// symbol starts with it (found on Enter, see hgncPrefixMatches), sorted by current name
+const shownName = sym => expr.currentName?.get(sym) ?? sym;
 const symbolsStarting = prefix => {
   const p = prefix.toUpperCase();
-  return [...expr.bySymbol.keys()].filter(sym => sym.toUpperCase().startsWith(p)).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  const set = new Set([...expr.bySymbol.keys()].filter(sym => sym.toUpperCase().startsWith(p)));
+  for (const sym of expr.hgncPrefix?.get(p) ?? []) set.add(sym);
+  return [...set].sort((a, b) => shownName(a).localeCompare(shownName(b), undefined, { numeric: true }));
 };
+// Approved HGNC symbols starting with the prefix, mapped to the Allen symbol of the same gene
+// (by Entrez id, else by previous/alias symbols); remembers each gene's current name
+async function hgncPrefixMatches(prefix) {
+  const P = prefix.toUpperCase(), out = [];
+  let table;
+  try { table = await loadHgnc(); } catch { return out; }
+  const allenUpper = new Map([...expr.bySymbol.keys()].map(k => [k.toUpperCase(), k]));
+  expr.currentName ??= new Map();
+  for (const [key, g] of table.genes) {
+    if (!key.startsWith(P)) continue;
+    let sym = g.entrez && expr.symbolByEntrez?.get(g.entrez);
+    if (!sym) for (const name of [g.sym, ...g.synonyms]) { sym = allenUpper.get(name.toUpperCase()); if (sym) break; }
+    if (!sym) continue;
+    if (sym !== g.sym) expr.currentName.set(sym, g.sym);
+    out.push(sym);
+  }
+  (expr.hgncPrefix ??= new Map()).set(P, out);
+  return out;
+}
 function symbolOf(id) {
   if (!expr.symbolOf) { expr.symbolOf = new Map(); for (const [sym, ids] of expr.bySymbol) for (const i of ids) expr.symbolOf.set(i, sym); }
   return expr.symbolOf.get(id);
@@ -1958,15 +1989,27 @@ searchBox.addEventListener("keydown", e => {
     const q = searchBox.value.trim().toLowerCase();
     const exact = searchIndex.find(entry => entry.keys.includes(q));
     if (exact) pickSuggestion(exact);
-    else if (q && !q.endsWith("*") && !symbolsStarting(q).length) {
-      // Not in the Allen annotation: the gene may have been renamed since (e.g. RBFOX1 was A2BP1)
-      resolveAlias(searchBox.value.trim()).then(sym => {
+    else if (q && !q.endsWith("*")) {
+      // Partial or renamed names: match Allen symbols and current official (HGNC) symbols
+      // starting with the text, e.g. rbfox -> RBFOX1/2/3 (Allen: A2BP1, RBM9, HRNBP3)
+      const raw = searchBox.value.trim(), P = raw.toUpperCase();
+      hgncPrefixMatches(raw).then(() => {
+        const all = symbolsStarting(raw);
+        if (all.length > 1) { searchBox.value = `${P}*`; hideSuggestions(); onGeneChosen(); return; }
+        if (all.length === 1) {
+          const sym = all[0];
+          searchBox.value = sym; hideSuggestions(); onGeneChosen();
+          if (shownName(sym) !== sym) { expr.alias = shownName(sym); syncGeneBox(); showAliasTip(); setScaleNote(`${expr.alias} is ${sym} in the Allen probe annotation.`); }
+          return;
+        }
+        return resolveAlias(raw).then(sym => {
         if (sym) {
           searchBox.value = sym; hideSuggestions(); onGeneChosen();
           expr.alias = searchBox.dataset.asked; syncGeneBox(); showAliasTip();
           setScaleNote(`${expr.alias} is ${sym} in the Allen probe annotation.`);
         }
         else showSuggestions(PARTIAL_LIMIT);
+        });
       });
     }
     else if (q && (q.endsWith("*") ? q.length > 1 : symbolsStarting(q).length)) {
@@ -2409,11 +2452,14 @@ async function loadSavedDonors(ask = true) {
   if (!(await dirPermission(dataDir, ask))) { setExprStatus([`Allow access to ${dataDir.name}/ to load the saved donors.`]); return; }
   const saved = await savedDonors();
   if (!saved.size) { setExprStatus([`No unzipped donors found in ${dataDir.name}/ yet.`]); return; }
-  for (const [d, files] of saved) {
-    if (expr.byDonor.has(d)) continue;
-    $e("expr-donor").value = d;
-    await loadExpressionFiles(files, d);
-  }
+  const todo = [...saved].filter(([d]) => !expr.byDonor.has(d));
+  try {
+    for (const [i, [d, files]] of todo.entries()) {
+      loadBatch = todo.length > 1 ? { i, n: todo.length } : null;
+      $e("expr-donor").value = d;
+      await loadExpressionFiles(files, d);
+    }
+  } finally { loadBatch = null; setBusy(null); }
 }
 
 $e("dl-open").addEventListener("click", openDownloadDialog);
@@ -2668,6 +2714,7 @@ function cellValue(s, probeId) {
 
 function renderRibbon() {
   const active = expr.byDonor.size > 0;   // shown once a donor is loaded, so its gene box can be used
+  if (active && $e("ribbon").hidden && !document.body.classList.contains("phone")) requestAnimationFrame(() => searchBox.focus({ preventScroll: true }));
   $e("ribbon").hidden = !active;
   document.body.classList.toggle("has-ribbon", active);
   if (!active) layoutStage();
@@ -2684,7 +2731,7 @@ function renderRibbon() {
   $e("ribbon-names").replaceChildren(...ribbon.rows.map(r => {
     const row = Object.assign(document.createElement("div"), { className: `rname${r.chosen && ribbon.multiGene ? " chosen" : ""}` });
     const rv = expr.corr?.r.get(r.id);
-    if (ribbon.multiGene) row.append(Object.assign(document.createElement("span"), { className: "rgene", textContent: `${rv != null ? `${rv.toFixed(2)} ` : ""}${symbolOf(r.id) ?? ""}` }));
+    if (ribbon.multiGene) row.append(Object.assign(document.createElement("span"), { className: "rgene", textContent: `${rv != null ? `${rv.toFixed(2)} ` : ""}${shownName(symbolOf(r.id) ?? "")}` }));
     return row;
   }));
   // Probe list in the panel over the 3D view: tap a probe to add it to (or drop it from) the
