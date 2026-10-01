@@ -575,8 +575,8 @@
     <span class="label">Long genes</span>
     <label class="label" for="long-n">Number of longest protein-coding genes</label>
     <input type="text" id="long-n" value="1000" inputmode="numeric" autocomplete="off">
-    <button class="text-button" id="long-run" type="button">Show longest genes, clustered</button>
-    <span class="hint" id="long-note">Lengths: GRCh38 gene spans from NCBI RefSeq, protein-coding genes as approved by HGNC. Rows are ordered by the similarity of their brain-wide regional z-scores; scroll the ribbon to the bottom for the next 100.</span>
+    <button class="text-button" id="long-run" type="button">Show longest genes</button>
+    <span class="hint" id="long-note">Lengths: GRCh38 gene spans from NCBI RefSeq, protein-coding genes as approved by HGNC. Rows are sorted by length, longest first.</span>
   </div>
 
   <div class="group">
@@ -2914,7 +2914,9 @@ function drawRibbon() {
   if (!ribbon.built || $e("ribbon").hidden) return;
   fitRowHeight();
   // Canvases wider than ~32k device pixels fail, so high zoom lowers the resolution instead
-  const dpr = Math.min(devicePixelRatio || 1, 2, 32000 / Math.max(1, ribbon.width)), h = Math.max(0, ribbon.rows.length * (ROW_H + ROW_GAP) - ROW_GAP);
+  const h = Math.max(0, ribbon.rows.length * (ROW_H + ROW_GAP) - ROW_GAP);
+  // (and so do very tall ones: thousands of rows lower it too)
+  const dpr = Math.min(devicePixelRatio || 1, 2, 32000 / Math.max(1, ribbon.width), 32000 / Math.max(1, h));
   ribbonCanvas.width = Math.ceil(ribbon.width * dpr); ribbonCanvas.height = Math.ceil(h * dpr);
   ribbonCanvas.style.width = `${ribbon.width}px`; ribbonCanvas.style.height = `${h}px`;
   const ctx = ribbonCtx;
@@ -2963,16 +2965,6 @@ function markPickedRegion() {
 ribbonCanvas.parentElement.addEventListener("wheel", e => {
   if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
   e.preventDefault();
-  // Long-gene pages: the wheel scrolls the rows (and turns pages at either end); Ctrl+wheel or a pinch zooms
-  const L = expr.long, scroll = ribbonCanvas.parentElement;
-  if (L && expr.corr?.long && !e.ctrlKey) {
-    if (performance.now() < (L.lock ?? 0)) return;
-    const atBottom = scroll.scrollTop + scroll.clientHeight >= scroll.scrollHeight - 1;
-    if (e.deltaY > 0 && atBottom && (L.page + 1) * LONG_PAGE < L.all.length) showLongPage(L.page + 1);
-    else if (e.deltaY < 0 && scroll.scrollTop <= 1 && L.page > 0) showLongPage(L.page - 1, true);
-    else scroll.scrollTop += e.deltaY;
-    return;
-  }
   setRibbonZoom(ribbon.zoom * Math.exp(-e.deltaY * 0.0015), ribbonLocal(e.clientX, e.clientY, ribbonCanvas.parentElement).x);
 }, { passive: false });
 ribbonCanvas.addEventListener("dblclick", () => setRibbonZoom(1));
@@ -3301,13 +3293,8 @@ $e("diff-run").addEventListener("click", findDifferential);
 
 // ---------------------------------------------------------------- long genes
 // The N longest protein-coding genes (assets/gene_lengths.tsv.gz: HGNC-approved genes with a
-// protein product, ranked by the GRCh38 span of their RefSeq NM_ transcripts). Every probe of
-// those genes is a row; each probe gets a brain-wide profile, its mean z-score (z within each
-// donor) in every ribbon structure, and rows are ordered by average-linkage clustering of the
-// profiles (distance 1 - Pearson r), so probes with similar regional patterns sit together.
-// The ribbon holds LONG_PAGE rows at a time: scrolling to the bottom brings the next page,
-// scrolling back to the top the previous one.
-const LONG_PAGE = 100, LONG_MAX_PROBES = 6000;
+// protein product, ranked by the GRCh38 span of their RefSeq NM_ transcripts), longest first.
+// Every probe of those genes is a row, all at once.
 let geneLengths = null;
 async function loadGeneLengths() {
   if (geneLengths) return geneLengths;
@@ -3327,132 +3314,39 @@ function allenSymbolFor(g, allenUpper) {
   for (const a of hgnc?.genes.get(g.sym.toUpperCase())?.synonyms ?? []) { const x = allenUpper.get(a.toUpperCase()); if (x) return x; }
   return null;
 }
-// Average-linkage hierarchical clustering (nearest-neighbour chain) of unit vectors; returns the leaf order
-async function clusterOrder(vecs, dim, progress) {
-  const n = vecs.length;
-  if (n < 3) return [...Array(n).keys()];
-  const D = new Float32Array(n * n);
-  for (let i = 0; i < n; i++) {
-    const a = vecs[i];
-    for (let j = i + 1; j < n; j++) {
-      const b = vecs[j];
-      let r = 0;
-      for (let k = 0; k < dim; k++) r += a[k] * b[k];
-      D[i * n + j] = D[j * n + i] = 1 - r;
-    }
-    if (i % 200 === 199) { progress(0.5 * i / n); await new Promise(res => setTimeout(res, 0)); }
-  }
-  const size = new Int32Array(n).fill(1), alive = new Uint8Array(n).fill(1), members = [...Array(n)].map((_, i) => [i]);
-  const chain = [];
-  let left = n, merges = 0;
-  while (left > 1) {
-    if (!chain.length) chain.push(alive.indexOf(1));
-    for (;;) {
-      const a = chain.at(-1), prev = chain.length > 1 ? chain.at(-2) : -1;
-      let best = -1, bd = Infinity;
-      for (let j = 0; j < n; j++) {
-        if (!alive[j] || j === a) continue;
-        const d = D[a * n + j];
-        if (d < bd || (d === bd && j === prev)) { bd = d; best = j; }
-      }
-      if (best === prev) break;
-      chain.push(best);
-    }
-    const b = chain.pop(), a = chain.pop();
-    // Merge b into a (Lance–Williams, average linkage)
-    const sa = size[a], sb = size[b];
-    for (let j = 0; j < n; j++) {
-      if (!alive[j] || j === a || j === b) continue;
-      const d = (sa * D[a * n + j] + sb * D[b * n + j]) / (sa + sb);
-      D[a * n + j] = D[j * n + a] = d;
-    }
-    alive[b] = 0; size[a] = sa + sb; members[a] = members[a].concat(members[b]); members[b] = null;
-    left--;
-    if (++merges % 200 === 0) { progress(0.5 + 0.5 * merges / n); await new Promise(res => setTimeout(res, 0)); }
-  }
-  return members[alive.indexOf(1)];
-}
 async function showLongGenes() {
   const note = $e("long-note");
   if (!expr.byDonor.size) { note.textContent = "Load donor data first."; return; }
   const N = Math.round(+$e("long-n").value);
-  if (!(N >= 2)) { note.textContent = "Enter how many genes, e.g. 1000."; return; }
-  setBusy("Long genes: reading gene lengths…");
+  if (!(N >= 1)) { note.textContent = "Enter how many genes, e.g. 1000."; return; }
+  setBusy("Long genes…");
   try {
     let table;
     try { table = await loadGeneLengths(); await loadHgnc().catch(() => null); }
     catch { note.textContent = "Could not read the gene length table."; return; }
     const allenUpper = new Map([...expr.bySymbol.keys()].map(k => [k.toUpperCase(), k]));
-    const top = table.slice(0, N);
     const ids = [], lenOf = new Map();
     let found = 0;
-    for (const g of top) {
+    for (const g of table.slice(0, N)) {
       const sym = allenSymbolFor(g, allenUpper);
-      if (!sym) continue;
-      const probes = (expr.bySymbol.get(sym) ?? []).filter(hasProbe);
+      const probes = sym ? (expr.bySymbol.get(sym) ?? []).filter(hasProbe) : [];
       if (!probes.length) continue;
       found++;
-      for (const id of probes) { ids.push(id); lenOf.set(id, g.len); }
+      for (const id of probes) { ids.push(id); lenOf.set(id, g.len / 1e6); }
     }
-    if (ids.length > LONG_MAX_PROBES) ids.length = LONG_MAX_PROBES;
-    // Brain-wide regional profile of each probe: mean z per structure over all loaded donors
-    const regions = [...new Set(samples.map(s => (s.region ??= regionKey(s))))], ri = new Map(regions.map((r, i) => [r, i]));
-    const dim = regions.length;
-    const donorCols = donorClouds.filter(c => expr.byDonor.has(c.userData.donor))
-      .map(c => ({ rows: expr.byDonor.get(c.userData.donor), reg: Int32Array.from(c.userData.items, s => ri.get(s.region ??= regionKey(s)) ?? -1) }));
-    const vecs = [];
-    setBusy("Long genes: regional profiles…", 0);
-    for (const [k, id] of ids.entries()) {
-      const sum = new Float64Array(dim), cnt = new Float64Array(dim);
-      for (const d of donorCols) {
-        const x = d.rows.get(id);
-        if (!x) continue;
-        const { mean, sd } = meanSd(x);
-        if (!(sd > 0)) continue;
-        for (let i = 0; i < x.length; i++) { const r = d.reg[i]; if (r >= 0) { sum[r] += (x[i] - mean) / sd; cnt[r]++; } }
-      }
-      const v = new Float32Array(dim);
-      let m = 0, q = 0;
-      for (let r = 0; r < dim; r++) { v[r] = cnt[r] ? sum[r] / cnt[r] : 0; m += v[r]; }
-      m /= dim;
-      for (let r = 0; r < dim; r++) { v[r] -= m; q += v[r] * v[r]; }
-      q = Math.sqrt(q) || 1;
-      for (let r = 0; r < dim; r++) v[r] /= q;
-      vecs.push(v);
-      if (k % 500 === 499) { setBusy("Long genes: regional profiles…", k / ids.length); await new Promise(res => setTimeout(res, 0)); }
-    }
-    const order = await clusterOrder(vecs, dim, f => setBusy("Long genes: clustering…", f));
-    const all = order.map(i => ids[i]);
-    expr.long = { all, page: 0, n: N, found, lenOf };
-    showLongPage(0);
+    if (!ids.length) { note.textContent = "None of these genes has probes in the loaded data."; return; }
+    // Row labels: the gene's length in Mb before its symbol
+    expr.corr = { query: `Longest ${N} genes`, ids, r: lenOf };
+    searchBox.value = expr.corr.query;
+    showProbeBox(expr.corr.query, ids);
+    autoZ(ids.slice(0, 2000));
+    applyColouring();
+    const msg = `Longest ${N} protein-coding genes, longest first: ${found} with Allen probes, ${ids.length} probes (one row each). Row labels give the gene length in Mb.`;
+    note.textContent = msg; setScaleNote(msg);
     setPanelOpen(false);
     if (document.body.classList.contains("ribbon-min")) setRibbonMin(false);
   } finally { setBusy(null); }
 }
-function showLongPage(page, atEnd = false) {
-  const L = expr.long;
-  if (!L) return;
-  L.page = page;
-  const ids = L.all.slice(page * LONG_PAGE, (page + 1) * LONG_PAGE);
-  const from = page * LONG_PAGE + 1, to = page * LONG_PAGE + ids.length;
-  expr.corr = { query: `Longest ${L.n} genes ${from}–${to}`, ids, r: new Map(), long: true };
-  searchBox.value = expr.corr.query;
-  showProbeBox(expr.corr.query, ids);
-  if (page === 0) autoZ(L.all.slice(0, 2000));
-  applyColouring();
-  const msg = `Longest ${L.n} protein-coding genes (${L.found} in the Allen probes, ${L.all.length} probes), clustered by brain-wide regional z-scores. Rows ${from}–${to} of ${L.all.length}${to < L.all.length ? "; scroll to the bottom for more" : ""}.`;
-  $e("long-note").textContent = msg; setScaleNote(msg);
-  const scroll = ribbonCanvas.parentElement;
-  L.lock = performance.now() + 400;
-  requestAnimationFrame(() => { scroll.scrollTop = atEnd ? Math.max(1, scroll.scrollHeight - scroll.clientHeight - 2) : (page ? 1 : 0); });
-}
-ribbonCanvas.parentElement.addEventListener("scroll", () => {
-  const L = expr.long, scroll = ribbonCanvas.parentElement;
-  if (!L || !expr.corr?.long || performance.now() < (L.lock ?? 0)) return;
-  const bottom = scroll.scrollTop + scroll.clientHeight >= scroll.scrollHeight - 1;
-  if (bottom && (L.page + 1) * LONG_PAGE < L.all.length) showLongPage(L.page + 1);
-  else if (scroll.scrollTop <= 0 && L.page > 0) showLongPage(L.page - 1, true);
-});
 $e("long-run").addEventListener("click", showLongGenes);
 $e("long-n").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); showLongGenes(); } });
 for (const id of ["diff-target", "diff-bg"]) {
