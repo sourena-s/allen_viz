@@ -527,6 +527,7 @@
       <label class="file-button" for="expr-files">Choose files…</label>
     </div>
     <input type="file" id="expr-files" multiple accept=".csv,.txt,.gz,.zip" hidden>
+    <button class="text-button" id="pack-btn" type="button" hidden>Pack loaded donors for fast loading</button>
     <div class="progress" id="expr-progress" hidden><div></div></div>
     <div id="expr-list" class="hint"></div>
     <div class="group" id="expr-gene-controls" hidden>
@@ -1849,9 +1850,11 @@ async function loadExpressionFilesNow(files, donor) {
 }
 
 function showLoadedStatus() {
+  $e("pack-btn").hidden = !(hasFsAccess && dataDir && expr.byDonor.size);
   setExprStatus([
     ...loadedDonors().map(d => `Donor ${donorShort(d)}: ${expr.byDonor.get(d).size.toLocaleString()} probes × ${donorClouds.find(c => c.userData.donor === d).userData.items.length} samples`),
     expr.bySymbol.size ? `${expr.bySymbol.size.toLocaleString()} gene symbols` : "No Probes.csv: type a probe_id",
+    ...(expr.packed?.size ? [`Fast-loaded from ${PACK_NAME}: ${[...expr.packed].map(donorShort).join(", ")}`] : []),
   ]);
 }
 
@@ -2507,8 +2510,10 @@ async function startDownloads() {
 async function loadSavedDonors(ask = true) {
   if (!dataDir) return;
   if (!(await dirPermission(dataDir, ask))) { setExprStatus([`Allow access to ${dataDir.name}/ to load the saved donors.`]); return; }
+  // A pack (see writePack) holds every packed donor in one binary file: much faster than the CSVs
+  try { await loadPack(); } catch (err) { console.error(err); setExprStatus([`${PACK_NAME}: ${err.message}. Reading the CSV files instead.`]); }
   const saved = await savedDonors();
-  if (!saved.size) { setExprStatus([`No unzipped donors found in ${dataDir.name}/ yet.`]); return; }
+  if (!saved.size && !expr.byDonor.size) { setExprStatus([`No unzipped donors found in ${dataDir.name}/ yet.`]); return; }
   const todo = [...saved].filter(([d]) => !expr.byDonor.has(d));
   try {
     for (const [i, [d, files]] of todo.entries()) {
@@ -2518,6 +2523,126 @@ async function loadSavedDonors(ask = true) {
     }
   } finally { loadBatch = null; setBusy(null); }
 }
+
+// ---------------------------------------------------------------- binary pack
+// allen_pack.bin in the data folder: "AHBAPK01", a uint32 header length, a JSON header (probe
+// ids, names, symbols, Entrez ids, the Allen ontology, and per donor its sample count and
+// byte offset from the data start), padding to 8 bytes, then each donor's matrix, probe by probe, as uint16:
+// value = PACK_LO + q * PACK_STEP (log2 expression to within 0.00025), 65535 = no value.
+// Every probe of a donor gets a row; a probe the donor lacks is all 65535 and is left out on
+// loading. On load each donor becomes one Float32Array with a view per probe.
+const PACK_NAME = "allen_pack.bin", PACK_MAGIC = "AHBAPK01", PACK_LO = -4, PACK_STEP = 0.0005, PACK_NONE = 65535;
+async function writePack() {
+  if (!dataDir || !(await dirPermission(dataDir, true))) { setExprStatus(["Choose a data folder first (Download donor data…)."]); return; }
+  const donorList = loadedDonors();
+  if (!donorList.length) return;
+  const probes = [...new Set(donorList.flatMap(d => [...expr.byDonor.get(d).keys()]))];
+  const entrezOf = new Map([...(expr.symbolByEntrez ?? [])].map(([e, sym]) => [sym, e]));
+  const header = {
+    version: 1, lo: PACK_LO, step: PACK_STEP, probes,
+    names: probes.map(id => expr.probeName.get(id) ?? id),
+    symbols: probes.map(id => symbolOf(id) ?? ""),
+    entrez: [...(expr.symbolByEntrez ?? [])],
+    ontology: ontologyText,
+    donors: [],
+  };
+  let offset = 0;
+  for (const d of donorList) {
+    const n = donorClouds.find(c => c.userData.donor === d).userData.items.length;
+    header.donors.push({ donor: d, samples: n, offset, bytes: probes.length * n * 2 });
+    offset += probes.length * n * 2;
+  }
+  const json = new TextEncoder().encode(JSON.stringify(header));
+  const pre = new Uint8Array(Math.ceil((12 + json.length) / 8) * 8);
+  pre.set(new TextEncoder().encode(PACK_MAGIC), 0);
+  new DataView(pre.buffer).setUint32(8, json.length, true);
+  pre.set(json, 12);
+  const tmp = `${PACK_NAME}.part`;
+  const handle = await dataDir.getFileHandle(tmp, { create: true });
+  const out = await handle.createWritable(), total = offset;
+  try {
+    setBusy("Packing donors…", 0);
+    await out.write(pre);
+    const CHUNK = 2000;
+    let done = 0;
+    for (const dd of header.donors) {
+      const rows = expr.byDonor.get(dd.donor), n = dd.samples;
+      for (let p0 = 0; p0 < probes.length; p0 += CHUNK) {
+        const ids = probes.slice(p0, p0 + CHUNK), q = new Uint16Array(ids.length * n);
+        ids.forEach((id, k) => {
+          const v = rows.get(id), base = k * n;
+          if (!v) { q.fill(PACK_NONE, base, base + n); return; }
+          for (let i = 0; i < n; i++) {
+            const x = v[i];
+            q[base + i] = Number.isFinite(x) ? Math.max(0, Math.min(PACK_NONE - 1, Math.round((x - PACK_LO) / PACK_STEP))) : PACK_NONE;
+          }
+        });
+        await out.write(q);
+        done += q.byteLength;
+        setBusy(`Packing donors… ${Math.round(done / 1e6)} of ${Math.round(total / 1e6)} MB`, done / total);
+      }
+    }
+    await out.close();
+  } catch (err) { await out.abort?.(); throw err; }
+  finally { setBusy(null); }
+  // Replace any older pack only once the new one is complete
+  await dataDir.removeEntry(PACK_NAME).catch(() => {});
+  if (handle.move) await handle.move(PACK_NAME);
+  else {   // no move(): copy the finished file under the final name
+    const fin = await (await dataDir.getFileHandle(PACK_NAME, { create: true })).createWritable();
+    await (await handle.getFile()).stream().pipeTo(fin);
+    await dataDir.removeEntry(tmp);
+  }
+  setExprStatus([`Packed ${header.donors.length} donor${header.donors.length > 1 ? "s" : ""} (${Math.round((pre.length + total) / 1e6)} MB) into ${dataDir.name}/${PACK_NAME}. Next visits load it instead of the CSV files.`]);
+}
+async function loadPack() {
+  let file;
+  try { file = await (await dataDir.getFileHandle(PACK_NAME)).getFile(); } catch { return false; }
+  const head = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+  if (new TextDecoder().decode(head.subarray(0, 8)) !== PACK_MAGIC) throw new Error("not a pack file");
+  const len = new DataView(head.buffer).getUint32(8, true);
+  const header = JSON.parse(new TextDecoder().decode(await file.slice(12, 12 + len).arrayBuffer()));
+  const dataStart = Math.ceil((12 + len) / 8) * 8;
+  const todo = header.donors.filter(dd => !expr.byDonor.has(dd.donor) && donorClouds.some(c => c.userData.donor === dd.donor));
+  if (!todo.length) return false;
+  // Probe table (as readProbesFile builds it)
+  const probeName = new Map(), bySymbol = new Map();
+  header.probes.forEach((id, i) => {
+    probeName.set(id, header.names[i]);
+    const sym = header.symbols[i];
+    if (sym) (bySymbol.get(sym) ?? bySymbol.set(sym, []).get(sym)).push(id);
+  });
+  Object.assign(expr, { probeName, bySymbol, symbolByEntrez: new Map(header.entrez), symbolOf: null });
+  if (header.ontology && !ontology) setOntology(header.ontology);
+  const P = header.probes.length;
+  try {
+    for (const [k, dd] of todo.entries()) {
+      const n = dd.samples, cloud = donorClouds.find(c => c.userData.donor === dd.donor);
+      if (n !== cloud.userData.items.length) throw new Error(`donor ${donorShort(dd.donor)} has ${cloud.userData.items.length} samples, the pack ${n}`);
+      setBusy(`Loading dataset (packed)… ${k + 1} of ${todo.length}`, k / todo.length);
+      const q = new Uint16Array(await file.slice(dataStart + dd.offset, dataStart + dd.offset + dd.bytes).arrayBuffer());
+      const all = new Float32Array(P * n), rows = new Map();
+      for (let p = 0; p < P; p++) {
+        const base = p * n;
+        if (q[base] === PACK_NONE && q.subarray(base, base + n).every(v => v === PACK_NONE)) continue;
+        for (let i = 0; i < n; i++) { const v = q[base + i]; all[base + i] = v === PACK_NONE ? NaN : header.lo + v * header.step; }
+        rows.set(header.probes[p], all.subarray(base, base + n));
+        if (p % 5000 === 4999) { setBusy(`Loading dataset (packed)… ${k + 1} of ${todo.length}`, (k + p / P) / todo.length); await new Promise(r => setTimeout(r, 0)); }
+      }
+      expr.byDonor.set(dd.donor, rows);
+      (expr.packed ??= new Set()).add(dd.donor);
+    }
+  } finally { setBusy(null); }
+  ribbon.probeStats.clear();
+  showLoadedStatus();
+  $e("gene-input").placeholder = "Gene";
+  buildSearchIndex();
+  $e("expr-gene-controls").hidden = false;
+  renderRibbon();
+  if (colouringActive() || boxQuery()) onGeneChosen();
+  return true;
+}
+$e("pack-btn").addEventListener("click", () => writePack().catch(err => { console.error(err); setExprStatus([`Packing failed: ${err.message}`]); }));
 
 $e("dl-open").addEventListener("click", openDownloadDialog);
 $e("legal-open").addEventListener("click", () => $e("legal-dialog").showModal());
@@ -3192,7 +3317,9 @@ $e("corr-btn").addEventListener("click", findCorrelated);
 // the ribbon's own divisions, subgroups and structures stand in.
 const DIFF_TOP = 25;
 let ontology = null;   // id -> { id, acronym, name, path: [ancestor ids..., id] }
+let ontologyText = null;
 function setOntology(text) {
+  ontologyText = text;
   const [headerLine, ...lines] = text.split(/\r?\n/).filter(l => l.trim());
   const header = parseCsvLine(headerLine).map(h => h.trim().toLowerCase());
   const col = n => header.indexOf(n);
