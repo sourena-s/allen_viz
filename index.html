@@ -239,6 +239,7 @@
   .rb-btn svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
   #ribbon-orient .restore, #ribbon-orient[aria-pressed=true] .max { display: none; }
   #ribbon-orient[aria-pressed=true] .restore { display: inline; }
+  #ribbon-upright[aria-pressed=true] { background: rgba(255, 255, 255, 0.22); }
   /* Panel sections: small caps label above each control, hairlines between sections */
   /* Surface toggles in the square's bottom-right corner, styled like the view buttons */
   .mesh-corner {
@@ -592,6 +593,8 @@
     <label class="zsym" title="Colour range: z from minus to plus this value">z
       <input type="range" id="z-sym" min="0.5" max="6" step="0.1" value="2" aria-label="Colour range, z"><span id="z-sym-val" class="rm-value">±2.0</span></label>
     <div class="rb-tools">
+      <button class="rb-btn" id="ribbon-upright" type="button" aria-pressed="false" aria-label="Maximise the ribbon upright (whole screen)" title="Whole screen, upright">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M8 7l4-4 4 4M8 17l4 4 4-4"/></svg></button>
       <button class="rb-btn" id="ribbon-orient" type="button" aria-pressed="false" aria-label="Maximise the ribbon">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path class="max" d="M14 4h6v6M10 20H4v-6M20 4l-6.5 6.5M4 20l6.5-6.5"/><path class="restore" d="M4 14h6v6M20 10h-6V4M14 10l6.5-6.5M10 14l-6.5 6.5"/></svg></button>
     </div>
@@ -2686,7 +2689,7 @@ function buildRibbon() {
         ribbon.groupOf.set(key, `${div.division} · ${g.name}`);
         const list = byRegion.get(key).sort((a, b) =>
           donorOrder.indexOf(a.donor) - donorOrder.indexOf(b.donor) || a.mni[0] - b.mni[0] || b.mni[1] - a.mni[1]);
-        // With "Donors" on, each donor's run within the region gets a gap and an outline
+        // With "Donors" on, each donor's run within the region gets a gap
         let runStart = ribbon.items.length;
         list.forEach((s, i) => {
           if (ribbon.donorGroups && i && s.donor !== list[i - 1].donor) {
@@ -2980,14 +2983,6 @@ function drawRibbon() {
     ctx.strokeStyle = colour; ctx.lineWidth = 1.5;
     ctx.strokeRect(col.x - 1, ribbon.y0 + 0.75, col.w + 2, h - 1.5);
   };
-  // Donor groups: a dark outline around each donor's samples within a region
-  if (ribbon.donorGroups) {
-    ctx.strokeStyle = "#0b0d10"; ctx.lineWidth = 1;
-    for (const r of ribbon.runs) {
-      const x0 = ribbon.xs[r.from], x1 = ribbon.xs[r.to];
-      if (x1 - x0 >= 2) ctx.strokeRect(x0 + 0.5, ribbon.y0 + 0.5, x1 - x0 - 1, h - 1);
-    }
-  }
   // Probes in the brain average: yellow outline around their rows (unless every row is in it)
   if (ribbon.rows.some(r => !r.chosen)) {
     ctx.strokeStyle = "#ffe600"; ctx.lineWidth = 1.5;   // bright yellow row outline
@@ -3074,10 +3069,13 @@ ribbonCanvas.addEventListener("dblclick", () => setRibbonZoom(1));
 // Landscape: the ribbon fills the whole screen; on a phone held upright it is also turned
 // 90° so its long axis runs down the long side of the screen. Portrait: the docked strip.
 function applyRibbonOrientation() {
-  const full = document.body.classList.contains("ribbon-full");
-  document.body.classList.toggle("ribbon-rot", full && innerHeight > innerWidth);
-  $e("ribbon-orient").setAttribute("aria-label", full ? "Restore the ribbon" : "Maximise the ribbon");
-  $e("ribbon-orient").setAttribute("aria-pressed", full);
+  const full = document.body.classList.contains("ribbon-full"), upright = full && document.body.classList.contains("ribbon-upright");
+  if (!full) document.body.classList.remove("ribbon-upright");
+  // Upright: the whole screen as it is held, never turned
+  document.body.classList.toggle("ribbon-rot", full && !upright && innerHeight > innerWidth);
+  $e("ribbon-orient").setAttribute("aria-label", full && !upright ? "Restore the ribbon" : "Maximise the ribbon");
+  $e("ribbon-orient").setAttribute("aria-pressed", full && !upright);
+  $e("ribbon-upright").setAttribute("aria-pressed", upright);
   if (ribbon.built && !$e("ribbon").hidden) { layoutRibbon(); drawRibbon(); }
   layoutStage();
 }
@@ -3086,7 +3084,9 @@ function applyRibbonOrientation() {
 // with CSS instead. The keyboard is closed before switching so it leaves no gap behind.
 $e("ribbon-orient").addEventListener("click", async () => {
   document.activeElement?.blur();
-  const full = !document.body.classList.contains("ribbon-full");
+  // From the upright view this switches to landscape rather than closing
+  const full = !document.body.classList.contains("ribbon-full") || document.body.classList.contains("ribbon-upright");
+  document.body.classList.remove("ribbon-upright");
   ribbonTip(null);
   if (document.body.classList.contains("phone")) {
     if (full) {
@@ -3102,9 +3102,19 @@ $e("ribbon-orient").addEventListener("click", async () => {
   document.body.classList.toggle("ribbon-full", full);
   applyRibbonOrientation();
 });
+// Upright whole-screen ribbon: the same full view without turning; tap again to restore
+$e("ribbon-upright").addEventListener("click", () => {
+  document.activeElement?.blur();
+  ribbonTip(null);
+  const on = !document.body.classList.contains("ribbon-upright");
+  if (document.fullscreenElement) { try { screen.orientation.unlock(); } catch { /* none */ } document.exitFullscreen().catch(() => {}); }
+  document.body.classList.toggle("ribbon-upright", on);
+  document.body.classList.toggle("ribbon-full", on);
+  applyRibbonOrientation();
+});
 // Leaving full screen with the system back gesture also leaves landscape
 document.addEventListener("fullscreenchange", () => {
-  if (!document.fullscreenElement && document.body.classList.contains("ribbon-full") && document.body.classList.contains("phone")) {
+  if (!document.fullscreenElement && document.body.classList.contains("ribbon-full") && !document.body.classList.contains("ribbon-upright") && document.body.classList.contains("phone")) {
     try { screen.orientation.unlock(); } catch { /* none */ }
     document.body.classList.remove("ribbon-full");
     applyRibbonOrientation();
@@ -3115,7 +3125,7 @@ window.visualViewport?.addEventListener("resize", () => applyRibbonOrientation()
 addEventListener("resize", applyRibbonOrientation);
 function setRibbonMin(min) {
   document.body.classList.toggle("ribbon-min", min);
-  if (min) { document.body.classList.remove("ribbon-full", "ribbon-rot"); applyRibbonOrientation(); ribbonTip(null); }
+  if (min) { document.body.classList.remove("ribbon-full", "ribbon-rot", "ribbon-upright"); applyRibbonOrientation(); ribbonTip(null); }
   $e("ribbon-bar").hidden = !min;
   if (!min) { layoutRibbon(); drawRibbon(); }
   layoutStage();
