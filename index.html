@@ -564,6 +564,17 @@
     </div>
   </div>
 
+  <div class="group" id="diff-group">
+    <span class="label">Differential expression</span>
+    <label class="label" for="diff-target">Target structure</label>
+    <input type="text" id="diff-target" list="diff-structures" placeholder="e.g. hippocampus or CA1" autocomplete="off" spellcheck="false">
+    <label class="label" for="diff-bg">Background</label>
+    <input type="text" id="diff-bg" list="diff-structures" placeholder="e.g. temporal lobe, cerebellum, brain" autocomplete="off" spellcheck="false">
+    <datalist id="diff-structures"></datalist>
+    <button class="text-button" id="diff-run" type="button">Find genes higher in target</button>
+    <span class="hint" id="diff-note">Load donor data first. Structures follow the Allen Human Brain Atlas ontology.</span>
+  </div>
+
   <div class="group">
     <span class="hint" id="controls-hint">Drag to rotate · middle- or right-drag to pan · scroll to zoom</span>
     <button class="text-button" id="legal-open" type="button">Data sources &amp; disclaimer</button>
@@ -863,7 +874,7 @@ function parseSamples(text) {
     const r = Object.fromEntries(header.map((h, i) => [h, cols[i]]));
     const x = +r.mni_x, y = +r.mni_y, z = +r.mni_z;
     if ([x, y, z].some(Number.isNaN)) continue;
-    samples.push({ donor: r.donor_id, slab: r.slab_type, acronym: r.structure_acronym, name: r.structure_name, mni: [x, y, z] });
+    samples.push({ sid: +r.structure_id, donor: r.donor_id, slab: r.slab_type, acronym: r.structure_acronym, name: r.structure_name, mni: [x, y, z] });
   }
   return samples;
 }
@@ -1788,6 +1799,8 @@ async function loadExpressionFilesNow(files, donor) {
     try { files = await zipEntries(zip); }
     catch (err) { setExprStatus([`${zip.name}: ${err.message}`]); return; }
   }
+  const ontFile = [...files].find(f => /^ontology/i.test(f.name));
+  if (ontFile && !ontology) { try { setOntology(await ontFile.text()); } catch { /* fall back to the ribbon layout */ } }
   const cloud = donorClouds.find(c => c.userData.donor === donor);
   const exprFile = [...files].find(f => /microarrayexpression/i.test(f.name));
   const probesFile = [...files].find(f => /^probes/i.test(f.name));
@@ -2334,7 +2347,7 @@ async function savedDonors() {
     try {
       const sub = await dataDir.getDirectoryHandle(d);
       const files = [];
-      for await (const h of sub.values()) if (h.kind === "file" && /^(microarrayexpression|probes).*\.csv$/i.test(h.name)) files.push(await h.getFile());
+      for await (const h of sub.values()) if (h.kind === "file" && /^(microarrayexpression|probes|ontology).*\.csv$/i.test(h.name)) files.push(await h.getFile());
       if (files.some(f => /^microarrayexpression/i.test(f.name))) found.set(d, files);
     } catch { /* no subfolder yet */ }
   }
@@ -2537,8 +2550,8 @@ const REGION_LAYOUT = [
     { name: "Occipital", short: "Occ", keys: ["Cun", "LiG", "SOG", "IOG", "OP"] },
     { name: "Limbic", keys: ["CgGf", "CgGp", "CgGr", "SCG", "PTG", "Pir"] },
   ] },
-  { division: "Hippocampus", wide: true, groups: [["CA1", "CA1"], ["CA2", "CA2"], ["CA3", "CA3"], ["CA4", "CA4"], ["DG", "DG"], ["S", "Sub"]].map(([k, n]) => ({ name: n, keys: [k] }))
-    .concat({ name: "Parahippocampal gyrus", short: "PHG", keys: ["PHG"] }) },
+  { division: "Hippocampus", wide: true, groups: [["CA1", "CA1"], ["CA2", "CA2"], ["CA3", "CA3"], ["CA4", "CA4"], ["DG", "DG"], ["S", "Sub"]].map(([k, n]) => ({ name: n, keys: [k] })) },
+  { division: "Parahippocampal", short: "PHG", wide: true, groups: [{ name: "Parahippocampal gyrus", short: "PHG", keys: ["PHG"] }] },
   { division: "Amygdala", wide: true, groups: [["LA", "La"], ["BLA", "BL"], ["BMA", "BM"], ["CeA", "Ce"], ["COMA", "CoM"], ["ATZ", "AHi"]].map(([k, n]) => ({ name: n, keys: [k] })) },
   { division: "Basal ganglia", groups: [
     { name: "Striatum", short: "Str", keys: ["HCd", "BCd", "TCd", "Pu", "Acb", "OlfT"] },
@@ -2586,7 +2599,7 @@ function regionName(s) {
 // "Fit" or a double-click returns to the full view.
 const THICK = 4;                                            // hippocampus/amygdala width, in thin-column units
 // Underline colour of each top-level division (cortex, hippocampus, ...), in layout order
-const DIVISION_COLORS = ["#f28e00", "#0a84ff", "#e6194b", "#22a83a", "#9b3fe6", "#00a3a3", "#d9a400", "#b35900", "#5f6b7a"];   // vivid, distinct on white
+const DIVISION_COLORS = ["#f28e00", "#0a84ff", "#d6249f", "#e6194b", "#22a83a", "#9b3fe6", "#00a3a3", "#d9a400", "#b35900", "#5f6b7a"];   // vivid, distinct on white
 const GAP_DONOR = 3;                                        // px between donors' runs when grouped
 const GAP_REGION = 0.6, GAP_GROUP = 3, GAP_DIVISION = 8;    // px between structures / subgroups / divisions
 // Row height: 16 px docked; full screen, rows grow to share the height (up to 72 px)
@@ -3202,6 +3215,134 @@ async function findCorrelated() {
   } finally { setBusy(null); }
 }
 $e("corr-btn").addEventListener("click", findCorrelated);
+
+// ---------------------------------------------------------------- differential expression
+// Target vs background structure: for every probe, the mean z-score (z within each donor) of
+// the target's samples minus that of the background's (target samples left out of it). Genes
+// are ranked by their best probe; the top DIFF_TOP fill the ribbon, labelled with the difference.
+// Structures come from the Allen ontology (Ontology.csv in each donor's download): every
+// structure with samples below it, from "brain" down to e.g. "CA1 field". Before it is read,
+// the ribbon's own divisions, subgroups and structures stand in.
+const DIFF_TOP = 25;
+let ontology = null;   // id -> { id, acronym, name, path: [ancestor ids..., id] }
+function setOntology(text) {
+  const [headerLine, ...lines] = text.split(/\r?\n/).filter(l => l.trim());
+  const header = parseCsvLine(headerLine).map(h => h.trim().toLowerCase());
+  const col = n => header.indexOf(n);
+  const [idC, acrC, nameC, pathC] = [col("id"), col("acronym"), col("name"), col("structure_id_path")];
+  if (idC < 0 || pathC < 0) return;
+  const map = new Map();
+  for (const line of lines) {
+    const c = parseCsvLine(line);
+    const id = +c[idC];
+    map.set(id, { id, acronym: c[acrC], name: c[nameC], path: c[pathC].split("/").filter(Boolean).map(Number) });
+  }
+  ontology = map;
+  diffStructures = null;
+  fillDiffList();
+}
+let diffStructures = null;   // [{ label, keys (lower case), test(sample) }]
+function structureList() {
+  if (diffStructures) return diffStructures;
+  const list = [];
+  if (ontology) {
+    const members = new Map();   // ontology id -> number of samples under it
+    for (const s of samples) for (const a of ontology.get(s.sid)?.path ?? []) members.set(a, (members.get(a) ?? 0) + 1);
+    const nodes = [...members.keys()].map(id => ontology.get(id)).filter(Boolean)
+      .sort((a, b) => a.path.length - b.path.length || a.name.localeCompare(b.name));
+    for (const n of nodes) list.push({ label: `${n.name} (${n.acronym})`, keys: [n.name.toLowerCase(), n.acronym.toLowerCase()], n: members.get(n.id),
+      test: s => !!ontology.get(s.sid)?.path.includes(n.id) });
+  } else {
+    if (!ribbon.built) for (const s of samples) s.region ??= regionKey(s);
+    list.push({ label: "Whole brain", keys: ["whole brain", "brain", "all"], test: () => true });
+    for (const d of REGION_LAYOUT) {
+      const dk = new Set(d.groups.flatMap(g => g.keys));
+      list.push({ label: d.division, keys: [d.division.toLowerCase()], test: s => dk.has(s.region) });
+      for (const g of d.groups) {
+        const gk = new Set(g.keys);
+        if (d.groups.length > 1) list.push({ label: `${d.division} · ${g.name}`, keys: [g.name.toLowerCase(), `${d.division} · ${g.name}`.toLowerCase()], test: s => gk.has(s.region) });
+        if (g.keys.length > 1) for (const k of g.keys) {
+          const name = samples.find(s => s.region === k) ? regionName(samples.find(s => s.region === k)) : null;
+          if (name) list.push({ label: `${name} (${k})`, keys: [name.toLowerCase(), k.toLowerCase()], test: s => s.region === k });
+        }
+      }
+    }
+  }
+  return (diffStructures = list);
+}
+function fillDiffList() {
+  $e("diff-structures").replaceChildren(...structureList().map(x => Object.assign(document.createElement("option"), { value: x.label })));
+}
+function findStructure(text) {
+  const t = text.trim().toLowerCase();
+  if (!t) return null;
+  const list = structureList();
+  return list.find(x => x.label.toLowerCase() === t) ?? list.find(x => x.keys.includes(t))
+    ?? list.find(x => x.keys.some(k => k.startsWith(t))) ?? list.find(x => x.label.toLowerCase().includes(t)) ?? null;
+}
+async function findDifferential() {
+  const note = $e("diff-note");
+  if (!expr.byDonor.size) { note.textContent = "Load donor data first."; return; }
+  const T = findStructure($e("diff-target").value), B = findStructure($e("diff-bg").value);
+  if (!T || !B) { note.textContent = `No structure matches ${!T ? "the target" : "the background"}; pick one from the list.`; return; }
+  // Per loaded donor: matrix columns of target and background samples
+  const sets = [];
+  let nT = 0, nB = 0;
+  for (const c of donorClouds) {
+    const rows = expr.byDonor.get(c.userData.donor);
+    if (!rows) continue;
+    const t = [], b = [];
+    c.userData.items.forEach((s, j) => { if (T.test(s)) t.push(j); else if (B.test(s)) b.push(j); });
+    if (t.length || b.length) sets.push({ rows, t, b });
+    nT += t.length; nB += b.length;
+  }
+  if (!nT || !nB) { note.textContent = `No loaded samples in ${!nT ? T.label : `${B.label} outside ${T.label}`}.`; return; }
+  setBusy("Comparing structures…");
+  await new Promise(r => setTimeout(r, 30));
+  try {
+    const ids = [...new Set(sets.flatMap(d => [...d.rows.keys()]))];
+    const diff = new Map();
+    for (let k = 0; k < ids.length; k++) {
+      const id = ids[k];
+      let sT = 0, sB = 0, cT = 0, cB = 0;
+      for (const d of sets) {
+        const x = d.rows.get(id);
+        if (!x) continue;
+        let sx = 0, sxx = 0;
+        for (let i = 0; i < x.length; i++) { sx += x[i]; sxx += x[i] * x[i]; }
+        const mean = sx / x.length, sd = Math.sqrt(Math.max(0, sxx / x.length - mean * mean));
+        if (!(sd > 0)) continue;
+        for (const j of d.t) sT += (x[j] - mean) / sd;
+        for (const j of d.b) sB += (x[j] - mean) / sd;
+        cT += d.t.length; cB += d.b.length;
+      }
+      if (cT && cB) diff.set(id, sT / cT - sB / cB);
+      if (k % 4000 === 3999) { setBusy("Comparing structures…", k / ids.length); await new Promise(res => setTimeout(res, 0)); }
+    }
+    // Best probe per gene, highest difference first
+    const best = new Map();
+    for (const [id, v] of diff) {
+      const g = symbolOf(id) ?? id;
+      if (!best.has(g) || v > diff.get(best.get(g))) best.set(g, id);
+    }
+    const top = [...best.values()].sort((a, b) => diff.get(b) - diff.get(a)).slice(0, DIFF_TOP);
+    if (!top.length) { note.textContent = "No probes to compare."; return; }
+    const short = x => x.label.replace(/ \([^)]*\)$/, "");
+    expr.corr = { query: `${short(T)} vs ${short(B)}`, ids: top, r: diff };
+    searchBox.value = expr.corr.query;
+    showProbeBox(expr.corr.query, expr.corr.ids);
+    expr.chosen = new Set([top[0]]);
+    autoZ(expr.corr.ids);
+    applyColouring();
+    const msg = `${top.length} genes most raised in ${short(T)} (${nT} samples) relative to ${short(B)} (${nB} samples); ribbon numbers are the difference in mean z-score.`;
+    note.textContent = msg; setScaleNote(msg);
+  } finally { setBusy(null); }
+}
+$e("diff-run").addEventListener("click", findDifferential);
+for (const id of ["diff-target", "diff-bg"]) {
+  $e(id).addEventListener("focus", () => { if (!$e("diff-structures").options.length) fillDiffList(); });
+  $e(id).addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); findDifferential(); } });
+}
 // Tap a division or subdivision label to highlight (or un-highlight) its samples in 3D
 $e("ribbon-axis").addEventListener("click", e => {
   const key = e.target.closest("[data-key]")?.dataset.key;
