@@ -334,17 +334,16 @@
   #ribbon-tip .meta { font: 11px var(--mono); color: var(--muted); margin-top: 2px; }
   body.phone.panel-open #ribbon { display: none; }
 
-  /* Donor data download dialog */
-  #dl-dialog {
-    width: min(420px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); box-sizing: border-box; padding: 0;
-    border-radius: 16px; color: var(--ink); background: var(--sheet); overflow-y: auto;
-  }
-  #dl-dialog::backdrop { background: rgba(20, 28, 38, 0.3); }
   #legal-dialog {
     width: min(560px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); box-sizing: border-box; padding: 0;
     border-radius: 4px; color: var(--ink); background: var(--sheet); overflow-y: auto;
   }
   #legal-dialog::backdrop { background: rgba(20, 28, 38, 0.3); }
+  .dl-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .dl-actions .text-button { padding: 7px 16px; }
+  .dl-actions .primary { background: var(--frost); color: #1d2126; border-color: transparent; }
+  .dl-actions .primary:hover { background: #fff; }
+  body.phone .dl-actions .text-button { padding: 12px 16px; }
   .legal { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 18px 20px; font-size: 12.5px; line-height: 1.5; }
   .legal h2 { margin: 0; font-size: 15px; font-weight: 600; }
   .legal h3 { margin: 6px 0 0; font-size: 11px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
@@ -352,23 +351,7 @@
   .legal .cite { padding-left: 10px; border-left: 2px solid var(--edge); color: var(--muted); }
   .legal a { color: inherit; }
   #legal-open { margin-top: 10px; }
-  #dl-dialog form { display: flex; flex-direction: column; gap: 14px; margin: 0; padding: 18px; }
-  #dl-dialog h2 { margin: 0; font-size: 15px; font-weight: 600; }
-  #dl-dialog .row .count { margin-left: auto; }
-  .dl-folder { display: flex; align-items: center; gap: 8px; }
-  .dl-folder code { flex: 1; min-width: 0; font: 12px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .dl-folder .text-button { flex: none; padding: 6px 12px; }
-  .dl-actions { display: flex; gap: 8px; justify-content: flex-end; }
-  .dl-actions .text-button { padding: 7px 16px; }
-  .dl-actions .primary { background: var(--frost); color: #1d2126; border-color: transparent; }
-  .dl-actions .primary:hover { background: #fff; }
-  .dl-actions .primary:disabled { opacity: .4; cursor: default; }
-  #dl-log { display: flex; flex-direction: column; gap: 2px; }
   .expr-buttons { display: flex; flex-direction: column; gap: 6px; }
-  body.phone #dl-dialog { width: 100vw; max-width: none; max-height: 88dvh; margin: auto 0 0; border-radius: 22px 22px 0 0; }
-  body.phone #dl-dialog form { padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px)); }
-  body.phone #dl-dialog h2 { font-size: 18px; }
-  body.phone .dl-folder .text-button, body.phone .dl-actions .text-button { padding: 12px 16px; }
 
   /* Cut sliders on the square's edges: left = coronal (y), right = axial (z), bottom =
      sagittal (x). Dragging one turns its cut on (and the others off); a tap toggles it. */
@@ -644,30 +627,6 @@
     <h3>Disclaimer</h3>
     <p>This website is provided for research and educational purposes only, without warranty of any kind. It is not intended for clinical or diagnostic use.</p>
     <div class="dl-actions"><button class="text-button primary" value="close">Close</button></div>
-  </form>
-</dialog>
-<dialog id="dl-dialog" class="glass" aria-labelledby="dl-title">
-  <form method="dialog">
-    <div>
-      <h2 id="dl-title">Download donor data</h2>
-      <p class="sub">Normalized microarray data from <a href="https://human.brain-map.org/static/download" target="_blank" rel="noopener" style="color:inherit">human.brain-map.org</a>, about 0.5–1 GB per donor.</p>
-    </div>
-    <div class="group">
-      <span class="label">Donors</span>
-      <div id="dl-donors"></div>
-    </div>
-    <div class="group" id="dl-folder-group">
-      <span class="label">Save and unzip into</span>
-      <div class="dl-folder"><code id="dl-folder">No folder chosen</code><button class="text-button" id="dl-pick" type="button">Choose folder…</button></div>
-      <span class="hint">Each donor goes into its own subfolder. The folder is remembered in this browser for later visits.</span>
-    </div>
-    <span class="hint" id="dl-nofs" hidden>This browser can't save into a folder (that needs Chrome or Edge on a computer). The zips download normally instead: then use <b>Choose files…</b> and pick a donor's .zip.</span>
-    <div class="progress" id="dl-progress" hidden><div></div></div>
-    <div id="dl-log" class="hint"></div>
-    <div class="dl-actions">
-      <button class="text-button" value="cancel" id="dl-close">Close</button>
-      <button class="text-button primary" type="button" id="dl-start" disabled>Download</button>
-    </div>
   </form>
 </dialog>
 
@@ -2339,11 +2298,9 @@ function rememberDir(handle) {
 }
 function showDataDir() {
   const name = dataDir?.name ?? readCookie(DIR_COOKIE);
-  $e("dl-folder").textContent = name ? `${name}/` : "No folder chosen";
-  $e("dl-pick").textContent = name ? "Change…" : "Choose folder…";
   $e("dl-load").hidden = !dataDir;
   if (dataDir) $e("dl-load").textContent = `Load saved donors from ${dataDir.name}/`;
-  updateDownloadButton();
+  $e("dl-open").textContent = name ? `Download donor data into ${name}/` : "Download donor data…";
 }
 async function dirPermission(handle, ask) {
   const opts = { mode: "readwrite" };
@@ -2380,65 +2337,6 @@ async function findZips() {
   }
   return found;
 }
-let foundZips = new Map();
-const dlLog = lines => $e("dl-log").replaceChildren(...lines.map(t => Object.assign(document.createElement("span"), { textContent: t })));
-const chosenDownloads = () => [...$e("dl-donors").querySelectorAll("input.dl-donor:checked")].map(b => b.value);
-const unzipOnly = d => foundZips.has(d) && !!$e(`dl-unzip-${d}`)?.checked;
-function updateDownloadButton() {
-  const list = chosenDownloads(), nz = list.filter(unzipOnly).length, nd = list.length - nz;
-  $e("dl-start").disabled = !list.length || (hasFsAccess && !dataDir);
-  const plural = n => `${n} donor${n > 1 ? "s" : ""}`;
-  $e("dl-start").textContent = !list.length ? "Download"
-    : [nd && `Download ${plural(nd)}`, nz && `${nd ? "unzip" : "Unzip"} ${plural(nz)}`].filter(Boolean).join(", ");
-}
-
-// Donor rows: a switch to include the donor and, where its zip is already in the folder,
-// an "unzip only" switch (on by default) that skips the download
-async function buildDownloadRows() {
-  if (dataDir) dlLog([`Looking in ${dataDir.name}/ for saved donors and zips…`]);
-  const saved = await savedDonors().catch(() => new Map());
-  foundZips = await findZips().catch(() => new Map());
-  $e("dl-donors").replaceChildren(...donors().map(d => {
-    const row = document.createElement("div");
-    row.className = "row";
-    const box = Object.assign(document.createElement("input"), { type: "checkbox", className: "dl-donor", id: `dl-${d}`, value: d, checked: !saved.has(d) && !expr.byDonor.has(d) });
-    const label = Object.assign(document.createElement("label"), { htmlFor: box.id, textContent: `Donor ${donorLabel(d)}` });
-    box.addEventListener("change", updateDownloadButton);
-    row.append(box, label);
-    const zip = foundZips.get(d);
-    if (zip) {
-      const unzip = Object.assign(document.createElement("input"), { type: "checkbox", id: `dl-unzip-${d}`, checked: true });
-      unzip.title = `${zip.dir === dataDir ? "" : `${d}/`}${zip.name} is already in the folder: unzip it instead of downloading`;
-      const ul = Object.assign(document.createElement("label"), { htmlFor: unzip.id, className: "count", textContent: "unzip only", title: unzip.title });
-      ul.style.flex = "none";
-      unzip.addEventListener("change", updateDownloadButton);
-      row.append(unzip, ul);
-    } else {
-      row.append(Object.assign(document.createElement("span"), { className: "count", textContent: saved.has(d) ? "saved" : expr.byDonor.has(d) ? "loaded" : "" }));
-    }
-    return row;
-  }));
-  dlLog(foundZips.size ? [`Found ${foundZips.size} donor zip${foundZips.size > 1 ? "s" : ""} in the folder: these can be unzipped without downloading.`] : []);
-  updateDownloadButton();
-}
-
-async function openDownloadDialog() {
-  await buildDownloadRows();
-  $e("dl-folder-group").hidden = !hasFsAccess;
-  $e("dl-nofs").hidden = hasFsAccess;
-  dlLog([]);
-  showDataDir();
-  $e("dl-dialog").showModal();
-}
-
-async function pickDataDir() {
-  try {
-    const handle = await showDirectoryPicker({ id: "allen-data", mode: "readwrite", startIn: dataDir ?? "downloads" });
-    rememberDir(handle);
-    await buildDownloadRows();   // look for saved donors and zips in the new folder
-  } catch (err) { if (err.name !== "AbortError") dlLog([err.message]); }
-}
-
 // Stream one donor's zip into <folder>/<donor>/, unzip it there and delete the zip
 async function downloadDonor(d, onProgress) {
   const zipName = `${d}.zip`;
@@ -2465,45 +2363,57 @@ async function unzipDonor(d, zip, onProgress) {
   await zip.dir.removeEntry(zip.name);
 }
 
-async function startDownloads() {
-  const list = chosenDownloads();
-  if (!list.length) return;
-  if (!hasFsAccess) {   // plain browser downloads
-    for (const d of list) Object.assign(document.createElement("a"), { href: donorUrl(d), download: "", target: "_blank", rel: "noopener" }).click();
-    dlLog([`Started ${list.length} download${list.length > 1 ? "s" : ""}. When done, use Choose files… with a donor's .zip (select that donor first).`]);
+// One button downloads every donor not yet in the folder: it asks for a folder the first
+// time (remembered for later visits), unzips zips already there instead of downloading them,
+// shows one progress bar for the whole batch, loads the donors, and packs them (writePack) so
+// later visits load the single binary file instead of the CSVs.
+async function downloadAll() {
+  if (!hasFsAccess) {   // no folder access (e.g. phones, Firefox, Safari): plain browser downloads
+    for (const d of donors()) Object.assign(document.createElement("a"), { href: donorUrl(d), download: "", target: "_blank", rel: "noopener" }).click();
+    setExprStatus(["Started the downloads. When they finish, use Choose files… with each donor's .zip (select that donor first)."]);
     return;
   }
-  if (!(await dirPermission(dataDir, true))) { dlLog([`No permission to write to ${dataDir.name}/.`]); return; }
-  const nz = list.filter(unzipOnly).length, nd = list.length - nz;
-  const what = [nd && `download and unzip ${nd} donor${nd > 1 ? "s" : ""} (about 0.5–1 GB each)`, nz && `unzip ${nz} zip${nz > 1 ? "s" : ""} already in the folder (then delete ${nz > 1 ? "them" : "it"})`].filter(Boolean).join(" and ");
-  if (!confirm(`In “${dataDir.name}/”: ${what}?\n\nEach donor gets its own subfolder, e.g. ${dataDir.name}/${list[0]}/`)) return;
-  const bar = $e("dl-progress"), fill = bar.firstElementChild, done = [];
-  $e("dl-start").disabled = true;
-  bar.hidden = false;
-  for (const [i, d] of list.entries()) {
-    const head = `Donor ${donorLabel(d)} (${i + 1} of ${list.length})`;
-    try {
-      const progress = (what, got, total) => {
-        fill.style.width = total ? `${(got / total * 100).toFixed(1)}%` : "100%";
-        dlLog([...done, `${head}: ${what}${got ? ` ${(got / 1e6).toFixed(0)}${total ? ` of ${(total / 1e6).toFixed(0)}` : ""} MB` : "…"}`]);
-      };
-      if (unzipOnly(d)) await unzipDonor(d, foundZips.get(d), progress);
-      else await downloadDonor(d, progress);
-      done.push(`Donor ${donorLabel(d)}: saved to ${dataDir.name}/${d}/`);
-    } catch (err) {
-      console.error(err);
-      // A TypeError from fetch means the server refused a cross-site download (CORS) or the
-      // network failed: fall back to a normal download the user unzips themselves
-      if (err instanceof TypeError) {
-        Object.assign(document.createElement("a"), { href: donorUrl(d), target: "_blank", rel: "noopener" }).click();
-        done.push(`Donor ${donorLabel(d)}: the Allen server blocked a direct download, so it opened as a normal download. Unzip it into ${dataDir.name}/${d}/, or load the .zip with Choose files…`);
-      } else done.push(`Donor ${donorLabel(d)}: failed (${err.message})`);
+  try {
+    if (!dataDir || !(await dirPermission(dataDir, true))) {
+      rememberDir(await showDirectoryPicker({ id: "allen-data", mode: "readwrite", startIn: "downloads" }));
+      if (!(await dirPermission(dataDir, true))) return;
     }
-    dlLog(done);
+  } catch (err) { if (err.name !== "AbortError") setExprStatus([err.message]); return; }
+  const saved = await savedDonors(), zips = await findZips();
+  const list = donors().filter(d => !saved.has(d));
+  if (list.length) {
+    const nz = list.filter(d => zips.has(d)).length, nd = list.length - nz;
+    const what = [nd && `download and unzip ${nd} donor${nd > 1 ? "s" : ""} (about 0.5–1 GB each)`, nz && `unzip ${nz} zip${nz > 1 ? "s" : ""} already there`].filter(Boolean).join(" and ");
+    if (!confirm(`Into “${dataDir.name}/”: ${what}? Each donor gets its own subfolder.`)) return;
+    const bar = $e("expr-progress"), fill = bar.firstElementChild, notes = [];
+    bar.hidden = false;
+    try {
+      for (const [i, d] of list.entries()) {
+        const progress = (what, got, total) => {
+          const f = (i + (total ? got / total : 0)) / list.length;
+          fill.style.width = `${(f * 100).toFixed(1)}%`;
+          const mb = got ? ` ${(got / 1e6).toFixed(0)}${total ? ` of ${(total / 1e6).toFixed(0)}` : ""} MB` : "";
+          setBusy(`${what === "Downloading" ? "Downloading" : "Unzipping"} donor ${i + 1} of ${list.length}…${mb}`, f);
+          setExprStatus([...notes, `Donor ${donorLabel(d)}: ${what}${mb || "…"}`]);
+        };
+        try {
+          if (zips.has(d)) await unzipDonor(d, zips.get(d), progress);
+          else await downloadDonor(d, progress);
+        } catch (err) {
+          console.error(err);
+          // A TypeError from fetch: the server refused a cross-site download (CORS) or the
+          // network failed; fall back to a normal download the user unzips themselves
+          if (err instanceof TypeError) {
+            Object.assign(document.createElement("a"), { href: donorUrl(d), target: "_blank", rel: "noopener" }).click();
+            notes.push(`Donor ${donorLabel(d)}: direct download blocked, opened as a normal download. Unzip it into ${dataDir.name}/${d}/.`);
+          } else notes.push(`Donor ${donorLabel(d)}: failed (${err.message})`);
+        }
+      }
+    } finally { bar.hidden = true; setBusy(null); }
+    if (notes.length) setExprStatus(notes);
   }
-  bar.hidden = true;
-  updateDownloadButton();
   await loadSavedDonors(false);
+  await packIfNeeded();
 }
 
 // Load every donor already unzipped in the saved folder
@@ -2522,6 +2432,7 @@ async function loadSavedDonors(ask = true) {
       await loadExpressionFiles(files, d);
     }
   } finally { loadBatch = null; setBusy(null); }
+  if (todo.length) await packIfNeeded();   // next time: one fast binary file instead of the CSVs
 }
 
 // ---------------------------------------------------------------- binary pack
@@ -2557,8 +2468,8 @@ async function writePack() {
   pre.set(new TextEncoder().encode(PACK_MAGIC), 0);
   new DataView(pre.buffer).setUint32(8, json.length, true);
   pre.set(json, 12);
-  const tmp = `${PACK_NAME}.part`;
-  const handle = await dataDir.getFileHandle(tmp, { create: true });
+  // createWritable writes to a temporary file that replaces the old pack only on close()
+  const handle = await dataDir.getFileHandle(PACK_NAME, { create: true });
   const out = await handle.createWritable(), total = offset;
   try {
     setBusy("Packing donors…", 0);
@@ -2585,15 +2496,16 @@ async function writePack() {
     await out.close();
   } catch (err) { await out.abort?.(); throw err; }
   finally { setBusy(null); }
-  // Replace any older pack only once the new one is complete
-  await dataDir.removeEntry(PACK_NAME).catch(() => {});
-  if (handle.move) await handle.move(PACK_NAME);
-  else {   // no move(): copy the finished file under the final name
-    const fin = await (await dataDir.getFileHandle(PACK_NAME, { create: true })).createWritable();
-    await (await handle.getFile()).stream().pipeTo(fin);
-    await dataDir.removeEntry(tmp);
-  }
+  expr.packed = new Set(donorList);
+  await dataDir.removeEntry(`${PACK_NAME}.part`).catch(() => {});   // left by an earlier version
   setExprStatus([`Packed ${header.donors.length} donor${header.donors.length > 1 ? "s" : ""} (${Math.round((pre.length + total) / 1e6)} MB) into ${dataDir.name}/${PACK_NAME}. Next visits load it instead of the CSV files.`]);
+}
+// After loading from CSV: pack every loaded donor when the pack lacks any of them
+async function packIfNeeded() {
+  if (!hasFsAccess || !dataDir || !expr.byDonor.size) return;
+  if (loadedDonors().every(d => expr.packed?.has(d))) return;
+  if (!(await dirPermission(dataDir, false))) return;
+  await writePack().catch(err => { console.error(err); setExprStatus([`Packing failed: ${err.message}`]); });
 }
 async function loadPack() {
   let file;
@@ -2644,13 +2556,10 @@ async function loadPack() {
 }
 $e("pack-btn").addEventListener("click", () => writePack().catch(err => { console.error(err); setExprStatus([`Packing failed: ${err.message}`]); }));
 
-$e("dl-open").addEventListener("click", openDownloadDialog);
+$e("dl-open").addEventListener("click", () => downloadAll().catch(err => { console.error(err); setExprStatus([err.message]); }));
 $e("legal-open").addEventListener("click", () => $e("legal-dialog").showModal());
 $e("legal-dialog").addEventListener("click", e => { if (e.target === $e("legal-dialog")) $e("legal-dialog").close(); });   // tap outside
-$e("dl-pick").addEventListener("click", pickDataDir);
-$e("dl-start").addEventListener("click", startDownloads);
 $e("dl-load").addEventListener("click", () => loadSavedDonors(true));
-$e("dl-dialog").addEventListener("click", e => { if (e.target === $e("dl-dialog")) $e("dl-dialog").close(); });   // tap outside
 // On page load: a folder remembered from an earlier visit is loaded straight away when the
 // browser still grants access; otherwise a small button over the 3D view asks for it
 // (browsers need a tap before they reopen a folder)
