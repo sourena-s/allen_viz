@@ -576,6 +576,7 @@
     <label class="label" for="long-n">Number of longest protein-coding genes</label>
     <input type="text" id="long-n" value="1000" inputmode="numeric" autocomplete="off">
     <button class="text-button" id="long-run" type="button">Show longest genes</button>
+    <button class="text-button" id="long-hipp" type="button" disabled>Sort by hippocampal z-score</button>
     <span class="hint" id="long-note">Lengths: GRCh38 gene spans from NCBI RefSeq, protein-coding genes as approved by HGNC. Rows are sorted by length, longest first.</span>
   </div>
 
@@ -3336,7 +3337,8 @@ async function showLongGenes() {
     }
     if (!ids.length) { note.textContent = "None of these genes has probes in the loaded data."; return; }
     // Row labels: the gene's length in Mb before its symbol
-    expr.corr = { query: `Longest ${N} genes`, ids, r: lenOf };
+    expr.corr = { query: `Longest ${N} genes`, ids, r: lenOf, long: { N, found, ids } };
+    $e("long-hipp").disabled = false;
     searchBox.value = expr.corr.query;
     showProbeBox(expr.corr.query, ids);
     autoZ(ids.slice(0, 2000));
@@ -3348,6 +3350,43 @@ async function showLongGenes() {
   } finally { setBusy(null); }
 }
 $e("long-run").addEventListener("click", showLongGenes);
+// Re-sort the long-gene rows by their mean z-score (z within each donor) over the hippocampal
+// samples (CA1-4, dentate gyrus, subiculum) of the loaded donors, highest first
+function sortLongByHippocampus() {
+  const L = expr.corr?.long ?? sortLongByHippocampus.last;
+  if (!L) return;
+  sortLongByHippocampus.last = L;
+  const hippKeys = new Set(REGION_LAYOUT.find(d => d.division === "Hippocampus").groups.flatMap(g => g.keys));
+  const sets = donorClouds.filter(c => expr.byDonor.has(c.userData.donor)).map(c => ({
+    rows: expr.byDonor.get(c.userData.donor),
+    cols: c.userData.items.flatMap((s, j) => hippKeys.has(s.region ??= regionKey(s)) ? [j] : []),
+  })).filter(d => d.cols.length);
+  if (!sets.length) { $e("long-note").textContent = "No hippocampal samples in the loaded donors."; return; }
+  const z = new Map();
+  for (const id of L.ids) {
+    let sum = 0, n = 0;
+    for (const d of sets) {
+      const x = d.rows.get(id);
+      if (!x) continue;
+      const { mean, sd } = meanSd(x);
+      if (!(sd > 0)) continue;
+      for (const j of d.cols) { sum += (x[j] - mean) / sd; n++; }
+    }
+    z.set(id, n ? sum / n : -Infinity);
+  }
+  const ids = [...L.ids].sort((a, b) => z.get(b) - z.get(a));
+  for (const [id, v] of z) if (v === -Infinity) z.delete(id);
+  // Row labels: the probe's mean hippocampal z-score before the gene symbol
+  expr.corr = { query: `Longest ${L.N} genes · hippocampus`, ids, r: z, long: L };
+  searchBox.value = expr.corr.query;
+  showProbeBox(expr.corr.query, ids);
+  applyColouring();
+  const msg = `Longest ${L.N} protein-coding genes (${ids.length} probes), sorted by mean hippocampal z-score, highest first. Row labels give that z-score.`;
+  $e("long-note").textContent = msg; setScaleNote(msg);
+  setPanelOpen(false);
+  if (document.body.classList.contains("ribbon-min")) setRibbonMin(false);
+}
+$e("long-hipp").addEventListener("click", sortLongByHippocampus);
 $e("long-n").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); showLongGenes(); } });
 for (const id of ["diff-target", "diff-bg"]) {
   $e(id).addEventListener("focus", () => { if (!$e("diff-structures").options.length) fillDiffList(); });
