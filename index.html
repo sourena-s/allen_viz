@@ -180,6 +180,16 @@
     -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
   }
   #probe-tip[hidden] { display: none; }
+  .rgene { cursor: pointer; }
+  .rgene:hover { color: var(--ink); text-decoration: underline; }
+  #gene-menu {
+    position: fixed; z-index: 9; display: flex; flex-direction: column; min-width: 150px; padding: 4px; border-radius: 6px;
+    background: rgba(62, 68, 77, 0.92); border: 1px solid var(--edge); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  }
+  #gene-menu[hidden] { display: none; }
+  #gene-menu .gm-title { font: 10.5px var(--mono); color: var(--muted); padding: 3px 8px 5px; }
+  #gene-menu a { font: 12px var(--mono); color: var(--ink); text-decoration: none; padding: 6px 8px; border-radius: 4px; }
+  #gene-menu a:hover { background: rgba(255, 255, 255, 0.12); }
   .piano { position: absolute; inset: 0; z-index: 3; background: #2a2e34; transition: opacity .4s; }
   .piano.gone { opacity: 0; }
   .piano .key { position: absolute; top: 0; box-sizing: border-box; transition: background .06s; }
@@ -2747,7 +2757,8 @@ function renderRibbon() {
   $e("ribbon-names").replaceChildren(...ribbon.rows.map(r => {
     const row = Object.assign(document.createElement("div"), { className: `rname${r.chosen && ribbon.multiGene ? " chosen" : ""}` });
     const rv = expr.corr?.r.get(r.id);
-    if (ribbon.multiGene) row.append(Object.assign(document.createElement("span"), { className: "rgene", textContent: `${rv != null ? `${rv.toFixed(2)} ` : ""}${shownName(symbolOf(r.id) ?? "")}` }));
+    if (ribbon.multiGene) row.append(Object.assign(document.createElement("span"), { className: "rgene", title: "GeneCards / Protein Atlas", textContent: `${rv != null ? `${rv.toFixed(2)} ` : ""}${shownName(symbolOf(r.id) ?? "")}` }));
+    if (row.lastChild?.className === "rgene") row.lastChild.dataset.symbol = symbolOf(r.id) ?? "";
     return row;
   }));
   // Probe list in the panel over the 3D view: tap a probe to add it to (or drop it from) the
@@ -2755,6 +2766,29 @@ function renderRibbon() {
   drawRibbon();
   layoutStage();   // the square view shrinks or grows with the ribbon's height
 }
+
+// Clicking a gene name in the ribbon offers it on GeneCards or the Human Protein Atlas
+const geneMenu = Object.assign(document.createElement("div"), { id: "gene-menu", hidden: true });
+document.body.append(geneMenu);
+function openGeneMenu(symbol, anchor) {
+  const q = encodeURIComponent(symbol);
+  const link = (text, href) => Object.assign(document.createElement("a"), { textContent: text, href, target: "_blank", rel: "noopener" });
+  geneMenu.replaceChildren(
+    Object.assign(document.createElement("div"), { className: "gm-title", textContent: symbol }),
+    link("Open in GeneCards", `https://www.genecards.org/cgi-bin/carddisp.pl?gene=${q}`),
+    link("Open in Protein Atlas", `https://www.proteinatlas.org/search/${q}`));
+  geneMenu.hidden = false;
+  const a = anchor.getBoundingClientRect();
+  geneMenu.style.left = `${Math.min(a.left, innerWidth - geneMenu.offsetWidth - 8)}px`;
+  geneMenu.style.top = `${Math.min(a.bottom + 4, innerHeight - geneMenu.offsetHeight - 8)}px`;
+}
+document.addEventListener("pointerdown", e => { if (!geneMenu.hidden && !geneMenu.contains(e.target) && !e.target.closest?.(".rgene")) geneMenu.hidden = true; });
+geneMenu.addEventListener("click", e => { if (e.target.closest("a")) geneMenu.hidden = true; });
+addEventListener("keydown", e => { if (e.key === "Escape") geneMenu.hidden = true; });
+$e("ribbon-names").addEventListener("click", e => {
+  const g = e.target.closest(".rgene");
+  if (g?.dataset.symbol) { e.stopPropagation(); openGeneMenu(g.dataset.symbol, g); }
+});
 
 // The probe name of the last clicked row (toggle or cell) is shown beside the gene name
 const probeTip = Object.assign(document.createElement("div"), { id: "probe-tip", hidden: true });
