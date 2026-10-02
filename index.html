@@ -675,7 +675,7 @@
   <div id="sc-tip" hidden></div>
   <form method="dialog" class="sc-form">
     <div class="sc-head"><h2 id="sc-title" hidden></h2>
-      <div class="row sc-toggle sc-detail-row"><input type="checkbox" id="sc-detail"><label for="sc-detail">Detailed (Siletti clusters)</label><input type="checkbox" id="sc-coexp"><label for="sc-coexp" title="The 100 genes whose mean expression across the hippocampal formation, dentate, parahippocampal and amygdala cell groups (clusters in the detailed view, dissection x supercluster in the brief) correlates best with this gene (r after the name)">co-expressed</label></div>
+      <div class="row sc-toggle sc-detail-row"><input type="checkbox" id="sc-detail" autocomplete="off"><label for="sc-detail">Detailed (Siletti clusters)</label><input type="checkbox" id="sc-coexp" autocomplete="off"><label for="sc-coexp" title="The 100 genes whose mean expression across the hippocampal formation, dentate, parahippocampal and amygdala cell groups (clusters in the detailed view, dissection x supercluster in the brief) correlates best with this gene (r after the name)">co-expressed</label></div>
 
       <button class="rb-btn sc-zb" type="button" id="sc-zoom-out" aria-label="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
       <button class="rb-btn sc-zb" type="button" id="sc-zoom-in" aria-label="Zoom in"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button>
@@ -2087,7 +2087,10 @@ searchBox.addEventListener("focus", () => {
   // The keyboard cannot turn with a CSS-rotated ribbon: go back to portrait to type
   if (document.body.classList.contains("ribbon-rot")) { document.body.classList.remove("ribbon-full"); applyRibbonOrientation(); }
   if (searchBox.value.trim().length >= MIN_SUGGEST) showSuggestions(SUGGEST_LIMIT);
+  setTimeout(() => searchBox.select(), 0);
 });
+// A click (or tap) in the gene box always selects all its text, so typing replaces it
+searchBox.addEventListener("click", () => setTimeout(() => searchBox.select(), 0));
 searchBox.addEventListener("blur", () => { hideSuggestions(); syncGeneBox(); });
 searchBox.addEventListener("keydown", e => {
   if (e.key === "ArrowDown") { e.preventDefault(); if (suggestList.hidden) showSuggestions(SUGGEST_LIMIT); moveActive(1); }
@@ -4026,7 +4029,8 @@ $e("sc-dialog").addEventListener("close", () => ($e("sc-tip").hidden = true));
 $e("sc-zoom-out").addEventListener("click", () => setScZoom(scView.zoom / 1.25));
 $e("sc-detail").addEventListener("change", () => showCellTypes());
 $e("sc-coexp").addEventListener("change", () => showCellTypes());
-$e("cells-btn").addEventListener("click", showCellTypes);
+// Each opening of the cells window starts fresh: brief view, no co-expression
+$e("cells-btn").addEventListener("click", () => { $e("sc-detail").checked = false; $e("sc-coexp").checked = false; showCellTypes(); });
 $e("sc-dialog").addEventListener("click", e => { if (e.target === $e("sc-dialog")) $e("sc-dialog").close(); });
 
 // ---------------------------------------------------------------- differential expression
