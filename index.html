@@ -3026,6 +3026,20 @@ function drawCells(ctx, dpr) {
   ctx.restore();
 }
 
+// One outline around the union of a row band and a column band, a "plus" shape, with no lines
+// crossing where they meet. Grid [X0, X1] × [Y0, Y1], column band [cx0, cx1], row band
+// [ry0, ry1]. Returns the outline as points; openLeft leaves out the row's left end.
+function plusPoints(X0, X1, Y0, Y1, cx0, cx1, ry0, ry1) {
+  return [[X0, ry1], [X0, ry0], [cx0, ry0], [cx0, Y0], [cx1, Y0], [cx1, ry0], [X1, ry0], [X1, ry1], [cx1, ry1], [cx1, Y1], [cx0, Y1], [cx0, ry1]];
+}
+function strokePlus(ctx, pts, openLeft) {
+  ctx.beginPath();
+  // Start at the row's top-left corner so that an open left end is simply the closing edge left out
+  const order = openLeft ? [...pts.slice(1), pts[0]] : pts;
+  order.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+  if (!openLeft) ctx.closePath();
+  ctx.stroke();
+}
 function drawRibbon() {
   if (!ribbon.built || $e("ribbon").hidden) return;
   fitRowHeight();
@@ -3055,8 +3069,14 @@ function drawRibbon() {
     ctx.strokeStyle = colour; ctx.lineWidth = 1.5;
     ctx.strokeRect(col.x - 1, ribbon.y0 + 0.75, col.w + 2, h - 1.5);
   };
-  // Probes in the brain average: yellow outline around their rows (unless every row is in it)
-  if (ribbon.rows.some(r => !r.chosen)) {
+  // A selected sample with a single highlighted row: one plus-shaped outline joining its column
+  // to that row (the outlines do not cross where they meet)
+  const selCol = ribbon.cols.find(c => c.s === selected), chosenRows = ribbon.rows.map((r, i) => (r.chosen ? i : -1)).filter(i => i >= 0);
+  if (selCol && chosenRows.length === 1) {
+    const i = chosenRows[0], RH = ROW_H + ROW_GAP;
+    ctx.strokeStyle = "#ffe600"; ctx.lineWidth = 1.5;
+    strokePlus(ctx, plusPoints(0.75, ribbon.width - 0.75, ribbon.y0 + 0.75, ribbon.y0 + h - 0.75, selCol.x - 1, selCol.x + selCol.w + 1, i * RH + 0.75, i * RH + ROW_H - 0.75), ribbon.multiGene);
+  } else if (ribbon.rows.some(r => !r.chosen)) {   // probes in the brain average: yellow outline around their rows
     ctx.strokeStyle = "#ffe600"; ctx.lineWidth = 1.5;   // bright yellow row outline
     ribbon.rows.forEach((r, i) => {
       if (!r.chosen) return;
@@ -3405,7 +3425,7 @@ function drawGrid(spec) {
   for (const c of cells) {
     const cx = xs[c.ci] + cw / 2, cy = top + c.li * rh + rh / 2;
     svg.append(svgEl("rect", { x: xs[c.ci] + 0.5, y: cy - rh / 2 + 0.5, width: cw - 1, height: rh - 1, fill: "rgba(255,255,255,0.05)" }));
-    const s = c.size > 0 ? Math.max(2, Math.sqrt(c.size) * side) : 0;
+    const s = c.size > 0 ? Math.max(2, c.size * side) : 0;
     if (!s) continue;
     const sq = svgEl("rect", { x: cx - s / 2, y: cy - s / 2, width: s, height: s, fill: c.fill, rx: 1 });
     if (c.tip) sq.append(svgEl("title", {}, c.tip));
@@ -3419,10 +3439,9 @@ function drawGrid(spec) {
     for (const t of [...rowText, ...colText]) t?.classList.remove("hl");
     scView.sel = li == null ? null : { li, ci };
     if (li == null) return;
-    // Outlines stay within the heatmap grid: the row across the columns, the column down the rows
-    const y0 = top + li * rh, x0 = xs[0], gridH = lines.length * rh;
-    selG.append(svgEl("rect", { x: x0 + 0.5, y: y0 + 0.5, width: x - x0 - 1, height: rh - 1, fill: "none", stroke: "#ffe600", "stroke-width": 1.5 }));
-    selG.append(svgEl("rect", { x: xs[ci] + 0.5, y: top + 0.5, width: cw - 1, height: gridH - 1, fill: "none", stroke: "#ffe600", "stroke-width": 1.5 }));
+    // One plus-shaped outline within the heatmap grid: the row across, the column down
+    const y0 = top + li * rh, pts = plusPoints(xs[0] + 0.5, x - 0.5, top + 0.5, top + lines.length * rh - 0.5, xs[ci] + 0.5, xs[ci] + cw - 0.5, y0 + 0.5, y0 + rh - 0.5);
+    selG.append(svgEl("polygon", { points: pts.map(p => p.join(",")).join(" "), fill: "none", stroke: "#ffe600", "stroke-width": 1.5, "stroke-linejoin": "miter" }));
     rowText[li]?.classList.add("hl"); colText[ci]?.classList.add("hl");
   };
   svg.addEventListener("click", e => {
@@ -3439,7 +3458,7 @@ function drawGrid(spec) {
 
 function drawRegionHeatmap(data, g) {
   const nG = data.groups.length, row = data.body.subarray(g.i * nG * 2, (g.i + 1) * nG * 2), gmax = data.max[g.i];
-  $e("sc-sub").textContent = `Colour: mean expression of ${g.name}, log1p(counts per 10k), up to ${gmax.toFixed(2)}; square size: share of nuclei expressing it${g.name !== g.allen ? ` (Allen symbol ${g.allen})` : ""}. (X) excitatory, (B) inhibitory. Click a square to mark its row and column.`;
+  $e("sc-sub").textContent = `Colour: mean expression of ${g.name}, log1p(counts per 10k), up to ${gmax.toFixed(2)}${g.name !== g.allen ? ` (Allen symbol ${g.allen})` : ""}. Square size: number of nuclei of that cell type in that dissection (the same for every gene). (X) excitatory, (B) inhibitory. Click a square to mark its row and column.`;
   const cell = new Map(data.groups.map(([d, c, n], k) => [`${d}|${c}`, { n, k }]));
   const usedCols = data.superclusters.map((_, c) => c).filter(c => data.labels.some((_, d) => cell.has(`${d}|${c}`)));
   const lines = [], cells = [];
@@ -3450,7 +3469,7 @@ function drawRegionHeatmap(data, g) {
       const v = cell.get(`${d}|${c}`);
       if (!v) return;
       const frac = row[nG + v.k] / 255, mean = row[v.k] / 255 * gmax;
-      cells.push({ li, ci, size: frac, fill: scColour(row[v.k]), tip: `${data.sections[d]} · ${label}\n${data.superclusters[c]}: ${(frac * 100).toFixed(0)}% of ${v.n.toLocaleString()} nuclei, mean ${mean.toFixed(2)}` });
+      cells.push({ li, ci, size: nucleiSize(v.n), fill: scColour(row[v.k]), tip: `${data.sections[d]} · ${label}\n${data.superclusters[c]}: ${(frac * 100).toFixed(0)}% of ${v.n.toLocaleString()} nuclei, mean ${mean.toFixed(2)}` });
     });
   });
   drawGrid({ cols: usedCols.map(c => ({ label: withTag(data.superclusters[c], scTag(data.superclusters[c])) })), lines, cells, labelW: 150, cw: 22, rh: 20, top: 200 });
@@ -3464,7 +3483,7 @@ function drawRegionHeatmap(data, g) {
 const CA_ORDER = [[0, 5, 9], [6, 1], [2, 7, 10], [8, 3], [4], [11, 12, 13], [14, 15, 16, 17, 18, 19, 20]];
 function drawClusterHeatmap(data, g) {
   const nC = data.clusters.length, row = data.body.subarray(g.i * nC * 2, (g.i + 1) * nC * 2), gmax = data.max[g.i];
-  $e("sc-sub").textContent = `Siletti clusters in these dissections. Last column: ${g.name}, colour = mean, log1p(counts per 10k), up to ${gmax.toFixed(2)}; size = share of nuclei expressing it. Dissection columns: where the cluster's nuclei were dissected (size = share of the cluster), coloured by the cluster's mean expression. (X) excitatory, (B) inhibitory. Click the column labels to order by ${scView.caOrder ? "head, body and tail" : "CA field"}.`;
+  $e("sc-sub").textContent = `Siletti clusters in these dissections. Colour: the cluster's mean expression of ${g.name}, log1p(counts per 10k), up to ${gmax.toFixed(2)}; square size: number of the cluster's nuclei in each dissection (last column: the whole cluster). Rows sorted by the share of nuclei expressing ${g.name} (right). (X) excitatory, (B) inhibitory. Click the column labels to order by ${scView.caOrder ? "head, body and tail" : "CA field"}.`;
   const part = d => data.sections[d].replace("Hippocampus · ", "").replace("Parahippocampal gyrus", "PHG");
   let order, gaps;
   if (scView.caOrder) {
@@ -3485,9 +3504,9 @@ function drawClusterHeatmap(data, g) {
     order.forEach((d, ci) => {
       const w = c.where[d];
       // Colour: the cluster's mean expression of the gene; size: share of its nuclei from there
-      if (w) cells.push({ li, ci, size: w / wmax, fill: scColour(row[k]), tip: `${c.name}: ${Math.round(w / 2.55)}% of its nuclei from ${data.sections[d]} · ${data.labels[d]}\n${g.name}: mean ${mean.toFixed(2)}, ${(frac * 100).toFixed(0)}% expressing (whole cluster)` });
+      if (w) cells.push({ li, ci, size: nucleiSize(w / 255 * c.n), fill: scColour(row[k]), tip: `${c.name}: ${Math.round(w / 2.55)}% of its nuclei from ${data.sections[d]} · ${data.labels[d]}\n${g.name}: mean ${mean.toFixed(2)}, ${(frac * 100).toFixed(0)}% expressing (whole cluster)` });
     });
-    cells.push({ li, ci: geneCol, size: frac, fill: scColour(row[k]),
+    cells.push({ li, ci: geneCol, size: nucleiSize(c.n), fill: scColour(row[k]),
       tip: `${c.name} (${c.sc}${c.nt ? `, ${c.nt}` : ""}${c.mtg ? `, like cortical ${c.mtg}` : ""})\nMarkers: ${c.markers.join(", ") || "–"}\n${g.name}: ${(frac * 100).toFixed(0)}% of ${c.n.toLocaleString()} nuclei, mean ${mean.toFixed(2)}` });
   }
   drawGrid({ cols, lines, cells, labelW: 470, cw: 14, rh: 17, top: 205,
@@ -3495,12 +3514,14 @@ function drawClusterHeatmap(data, g) {
     colTitle: "Click to switch between head/body/tail order and CA-field order" });
   scLegend(gmax);
 }
+// Square side from a number of nuclei, on a log scale: 10 nuclei barely visible, 30,000 full
+const nucleiSize = n => Math.max(0, Math.min(1, Math.log10(Math.max(1, n) / 10) / Math.log10(3000)));
 function scLegend(gmax) {
-  const leg = svgEl("svg", { width: 220, height: 22 });
-  [0.1, 0.4, 0.8].forEach((f, k) => { const s = Math.max(2, Math.sqrt(f) * 16); leg.append(svgEl("rect", { x: 12 + k * 70 - s / 2, y: 11 - s / 2, width: s, height: s, fill: "#ccc" }), svgEl("text", { x: 24 + k * 70, y: 15, style: "fill: var(--muted)" }, `${f * 100}%`)); });
+  const leg = svgEl("svg", { width: 300, height: 22 });
+  [30, 300, 3000, 30000].forEach((n, k) => { const s = Math.max(2, nucleiSize(n) * 16); leg.append(svgEl("rect", { x: 12 + k * 70 - s / 2, y: 11 - s / 2, width: s, height: s, fill: "#ccc" }), svgEl("text", { x: 23 + k * 70, y: 15, style: "fill: var(--muted)" }, n.toLocaleString())); });
   const ramp = svgEl("svg", { width: 160, height: 14 });
   for (let i = 0; i < 32; i++) ramp.append(svgEl("rect", { x: i * 5, y: 2, width: 5, height: 10, fill: scColour(i / 31 * 255) }));
-  $e("sc-legend").replaceChildren(leg, Object.assign(document.createElement("span"), { textContent: "0" }), ramp, Object.assign(document.createElement("span"), { textContent: `${gmax.toFixed(2)} mean` }));
+  $e("sc-legend").replaceChildren(Object.assign(document.createElement("span"), { textContent: "nuclei" }), leg, Object.assign(document.createElement("span"), { textContent: "0" }), ramp, Object.assign(document.createElement("span"), { textContent: `${gmax.toFixed(2)} mean` }));
 }
 // Zoom: pinch with two fingers, Ctrl+wheel (or a trackpad pinch), or the − / + buttons; the
 // point under the fingers or cursor stays put
