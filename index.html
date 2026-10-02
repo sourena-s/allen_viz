@@ -1927,6 +1927,20 @@ const symbolsStarting = prefix => {
   for (const sym of expr.hgncPrefix?.get(p) ?? []) set.add(sym);
   return [...set].sort((a, b) => shownName(a).localeCompare(shownName(b), undefined, { numeric: true }));
 };
+// The current (approved HGNC) symbol of an Allen gene symbol, e.g. HRNBP3 -> RBFOX3 (NeuN):
+// by Entrez id, else the symbol itself if approved, else the gene listing it as a previous/alias symbol
+async function currentSymbol(sym) {
+  if (expr.currentName?.has(sym)) return expr.currentName.get(sym);
+  let table;
+  try { table = await loadHgnc(); } catch { return sym; }
+  if (!expr.entrezBySymbol) { expr.entrezBySymbol = new Map(); for (const [e, s] of expr.symbolByEntrez ?? []) expr.entrezBySymbol.set(s, String(e)); }
+  const ent = expr.entrezBySymbol.get(sym);
+  let cur = ent && [...table.genes.values()].find(g => g.entrez === ent)?.sym;
+  if (!cur) cur = table.genes.get(sym.toUpperCase())?.sym ?? table.genes.get(table.bySynonym.get(sym.toUpperCase())?.[0])?.sym;
+  cur ??= sym;
+  if (cur !== sym) (expr.currentName ??= new Map()).set(sym, cur);
+  return cur;
+}
 // Approved HGNC symbols starting with the prefix, mapped to the Allen symbol of the same gene
 // (by Entrez id, else by previous/alias symbols); remembers each gene's current name
 async function hgncPrefixMatches(prefix) {
@@ -2965,7 +2979,7 @@ function renderRibbon() {
 const geneMenu = Object.assign(document.createElement("div"), { id: "gene-menu", hidden: true });
 document.body.append(geneMenu);
 function openGeneMenu(symbol, anchor) {
-  const q = encodeURIComponent(symbol);
+  const q = encodeURIComponent(shownName(symbol));
   const link = (text, href) => Object.assign(document.createElement("a"), { textContent: text, href, target: "_blank", rel: "noopener" });
   geneMenu.replaceChildren(
     Object.assign(document.createElement("div"), { className: "gm-title", textContent: symbol }),
@@ -3009,7 +3023,7 @@ function hpaImage(ensg) {
 async function showSubcellular(symbol) {
   const box = geneMenu.querySelector(".gm-hpa");
   let d;
-  try { d = await hpaSubcellular(symbol); }
+  try { d = await hpaSubcellular(await currentSymbol(symbol)); }
   catch { if (box?.isConnected) box.textContent = "Subcellular location: not available from this page (open the Protein Atlas link)."; return; }
   if (!box?.isConnected) return;
   if (!d || !d.main.length) { box.textContent = "Subcellular location: no data in the Protein Atlas."; return; }
@@ -3037,7 +3051,7 @@ async function openSubcellularGrid() {
   const found = new Map(); let failed = 0;
   await pool(syms, 6, async sym => {
     if (!live()) return;
-    try { const d = await hpaSubcellular(sym); if (d) found.set(sym, d); } catch { failed++; }
+    try { const d = await hpaSubcellular(await currentSymbol(sym)); if (d) found.set(sym, d); } catch { failed++; }
     bar.value++;
   });
   if (!live()) return;
@@ -3047,9 +3061,9 @@ async function openSubcellularGrid() {
   note.textContent = `${nuc.length} of ${syms.length} genes in a nuclear compartment; retrieving images…`;
   const figs = new Map(nuc.map(sym => {
     const d = found.get(sym), fig = document.createElement("figure");
-    const a = Object.assign(document.createElement("a"), { href: `https://www.proteinatlas.org/${d.ensg}-${sym}/subcellular`, target: "_blank", rel: "noopener", className: "ph", textContent: "image…" });
+    const a = Object.assign(document.createElement("a"), { href: `https://www.proteinatlas.org/${d.ensg}-${shownName(sym)}/subcellular`, target: "_blank", rel: "noopener", className: "ph", textContent: "image…" });
     const cap = document.createElement("figcaption");
-    cap.append(Object.assign(document.createElement("b"), { textContent: sym }), Object.assign(document.createElement("div"), { textContent: hpaWhere(d) }));
+    cap.append(Object.assign(document.createElement("b"), { textContent: shownName(sym) }), Object.assign(document.createElement("div"), { textContent: hpaWhere(d) }));
     fig.append(a, cap);
     return [sym, { fig, a }];
   }));
@@ -3495,7 +3509,7 @@ function scGeneFor(data) {
   const id = chosenProbes()[0];
   const sym = id ? symbolOf(id) : null;
   if (!sym) return null;
-  const tries = [shownName(sym), sym, ...(hgnc?.genes.get(shownName(sym).toUpperCase())?.synonyms ?? [])];
+  const tries = [shownName(sym), expr.currentName?.get(sym) ?? sym, sym, ...(hgnc?.genes.get(shownName(sym).toUpperCase())?.synonyms ?? [])];
   for (const t of tries) { const i = data.geneIndex.get(t.toUpperCase()); if (i !== undefined) return { i, name: data.genes[i], allen: sym }; }
   for (const [k, list] of hgnc?.bySynonym ?? []) if (k === sym.toUpperCase()) for (const a of list) { const i = data.geneIndex.get(a); if (i !== undefined) return { i, name: data.genes[i], allen: sym }; }
   return { i: -1, name: shownName(sym), allen: sym };
@@ -3533,6 +3547,8 @@ async function showCellTypes() {
     await loadHgnc().catch(() => null);
   } catch (err) { setBusy(null); setExprStatus([`Single-nucleus data: ${err.message}`]); return; }
   setBusy(null);
+  const id0 = chosenProbes()[0];
+  if (id0 && symbolOf(id0)) await currentSymbol(symbolOf(id0));   // search by the gene's current symbol first
   const gR = scGeneFor(region), gC = scGeneFor(clusters);
   if (!gR) return;
   const g = gC?.i >= 0 ? gC : gR;
