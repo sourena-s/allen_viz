@@ -3603,8 +3603,8 @@ function markerField(c) {
 // Co-expression: Pearson r between the gene's mean expression per unit and every other gene's,
 // over the units of the hippocampal formation (incl. dentate), parahippocampal gyrus and amygdala
 // with at least 50 nuclei (the bed nucleus, BNST, left out). Units: the Siletti clusters (detailed
-// view) or the dissection x supercluster groups (brief view). Means are stored per gene as bytes
-// of its maximum; r does not depend on that scale. Unnamed (Ensembl-only) genes and genes in
+// view) or the dissection x supercluster groups (brief view). Means: linear (counts per 10k, no
+// log), stored per gene as bytes of its maximum; r does not depend on that scale. Unnamed (Ensembl-only) genes and genes in
 // fewer than 10% of the nuclei of every unit are skipped.
 const CO_TOP = 100;
 function coUnits(data, detailed) {
@@ -3620,19 +3620,22 @@ function coExpressed(data, gi, detailed, top = CO_TOP) {
   if (coExpressed.key === key) return coExpressed.out;
   const nU = detailed ? data.clusters.length : data.groups.length, ks = coUnits(data, detailed);
   const m = ks.length, body = data.body;
+  // Values: the linear means (counts per 10k) where the file has them, else the log means
+  const V = data.lin ?? body, at = data.lin ? (i, k) => i * nU + k : (i, k) => i * nU * 2 + k;
   const done = list => (coExpressed.key = key, coExpressed.out = { ks, list });
   let sx = 0, sxx = 0;
-  for (const k of ks) { const v = body[gi * nU * 2 + k]; sx += v; sxx += v * v; }
+  for (const k of ks) { const v = V[at(gi, k)]; sx += v; sxx += v * v; }
   const sd0 = Math.sqrt(Math.max(0, sxx / m - (sx / m) ** 2));
   if (!sd0) return done([]);
-  const ax = new Float32Array(m); ks.forEach((k, j) => (ax[j] = (body[gi * nU * 2 + k] - sx / m) / sd0));
+  const ax = new Float32Array(m); ks.forEach((k, j) => (ax[j] = (V[at(gi, k)] - sx / m) / sd0));
   const best = [];
   for (let i = 0; i < data.genes.length; i++) {
     if (i === gi || data.genes[i].startsWith("ENSG")) continue;   // named genes only
     const off = i * nU * 2; let sx = 0, sxx = 0, sxy = 0, fmax = 0;
     for (const k of ks) if (body[off + nU + k] > fmax) fmax = body[off + nU + k];
     if (fmax < 26) continue;   // detected (any count) in at least 10% of the nuclei of some unit
-    for (let j = 0; j < m; j++) { const v = body[off + ks[j]]; sx += v; sxx += v * v; sxy += v * ax[j]; }
+    const vo = at(i, 0);
+    for (let j = 0; j < m; j++) { const v = V[vo + ks[j]]; sx += v; sxx += v * v; sxy += v * ax[j]; }
     const sd = Math.sqrt(Math.max(0, sxx / m - (sx / m) ** 2));
     if (!sd) continue;
     const rr = sxy / m / sd;
