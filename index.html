@@ -194,7 +194,11 @@
   #gene-menu a:hover { background: rgba(255, 255, 255, 0.12); }
   #gene-menu .gm-hpa { max-width: 240px; padding: 6px 8px 4px; font: 11px var(--sans); color: var(--ink); border-top: 1px solid var(--edge); margin-top: 4px; }
   #sub-dialog { width: min(1200px, calc(100vw - 16px)); height: calc(100dvh - 16px); max-height: none; }
-  #sub-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; overflow: auto; max-height: calc(100dvh - 90px); }
+  #sub-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; overflow: auto; max-height: calc(100dvh - 130px); }
+  #sub-progress { width: 100%; height: 8px; }
+  #sub-progress[hidden] { display: none; }
+  #sub-note { font-size: 11.5px; color: var(--muted); }
+  #sub-grid a.ph { text-decoration: none; }
   #sub-grid figure { margin: 0; font-size: 11px; }
   #sub-grid figcaption { padding: 3px 0; }
   #sub-grid figcaption b { font-size: 12px; }
@@ -690,6 +694,7 @@
 <dialog id="sub-dialog" class="sc-like" aria-labelledby="sub-title">
   <form method="dialog" class="sc-form">
     <div class="sc-head"><h2 id="sub-title">Subcellular location</h2><button class="corr-btn" value="close">close</button></div>
+    <progress id="sub-progress" value="0" max="1"></progress><div id="sub-note" class="sub"></div>
     <div id="sub-grid"></div>
   </form>
 </dialog>
@@ -2977,25 +2982,29 @@ function openGeneMenu(symbol, anchor) {
 // API gives the gene's Ensembl id and main locations, the gene's XML record an immunofluorescence
 // image. Both need the Protein Atlas to allow other sites to read them; otherwise only the links show.
 const hpaCache = new Map();
-async function hpaSubcellular(symbol) {
-  if (hpaCache.has(symbol)) return hpaCache.get(symbol);
-  const job = (async () => {
-    const timeout = ms => new Promise((_, no) => setTimeout(() => no(new Error("timeout")), ms));
-    const get = url => Promise.race([fetch(url), timeout(8000)]).then(r => { if (!r.ok) throw new Error(r.status); return r; });
-    const hits = await (await get(`https://www.proteinatlas.org/api/search_download.php?search=${encodeURIComponent(symbol)}&format=json&columns=g,eg,scml,scal,relce&compress=no`)).json();
+const hpaImgCache = new Map();
+const hpaGet = url => Promise.race([fetch(url), new Promise((_, no) => setTimeout(() => no(new Error("timeout")), 8000))])
+  .then(r => { if (!r.ok) throw new Error(r.status); return r; });
+function hpaCached(cache, key, make) {
+  if (cache.has(key)) return cache.get(key);
+  const job = make(); cache.set(key, job); job.catch(() => cache.delete(key)); return job;
+}
+// Text only: Ensembl id, main and additional subcellular locations, reliability
+function hpaSubcellular(symbol) {
+  return hpaCached(hpaCache, symbol, async () => {
+    const hits = await (await hpaGet(`https://www.proteinatlas.org/api/search_download.php?search=${encodeURIComponent(symbol)}&format=json&columns=g,eg,scml,scal,relce&compress=no`)).json();
     const hit = hits.find(h => (h.Gene ?? "").toUpperCase() === symbol.toUpperCase()) ?? hits[0];
     if (!hit) return null;
-    const out = { ensg: hit.Ensembl, main: hit["Subcellular main location"] ?? [], extra: hit["Subcellular additional location"] ?? [], reliability: hit["Reliability (IF)"] ?? "" };
-    try {   // first subcellular immunofluorescence image of the gene's record
-      const xml = await (await get(`https://www.proteinatlas.org/${out.ensg}.xml`)).text();
-      const sub = xml.slice(xml.indexOf('<cellExpression') >= 0 ? xml.indexOf('<cellExpression') : 0);
-      out.image = (sub.match(/<imageUrl>(https?:[^<]*_blue_red_green[^<]*)<\/imageUrl>/) ?? sub.match(/<imageUrl>(https?:[^<]*)<\/imageUrl>/))?.[1];
-    } catch { /* locations only */ }
-    return out;
-  })();
-  hpaCache.set(symbol, job);
-  job.catch(() => hpaCache.delete(symbol));
-  return job;
+    return { ensg: hit.Ensembl, main: hit["Subcellular main location"] ?? [], extra: hit["Subcellular additional location"] ?? [], reliability: hit["Reliability (IF)"] ?? "" };
+  });
+}
+// First subcellular immunofluorescence image of a gene's record
+function hpaImage(ensg) {
+  return hpaCached(hpaImgCache, ensg, async () => {
+    const xml = await (await hpaGet(`https://www.proteinatlas.org/${ensg}.xml`)).text();
+    const sub = xml.slice(Math.max(0, xml.indexOf("<cellExpression")));
+    return (sub.match(/<imageUrl>(https?:[^<]*_blue_red_green[^<]*)<\/imageUrl>/) ?? sub.match(/<imageUrl>(https?:[^<]*)<\/imageUrl>/))?.[1] ?? null;
+  });
 }
 async function showSubcellular(symbol) {
   const box = geneMenu.querySelector(".gm-hpa");
@@ -3009,38 +3018,61 @@ async function showSubcellular(symbol) {
 }
 function hpaWhere(d) { return `${d.main.join(", ")}${d.extra.length ? ` (also ${d.extra.join(", ")})` : ""}${d.reliability ? ` · ${d.reliability}` : ""}`; }
 
-// "S": every gene in the ribbon, its Protein Atlas immunofluorescence image in a grid
+// "S": subcellular text for every gene in the ribbon, then images of those located in a nucl* compartment
+async function pool(items, n, fn) {
+  let next = 0;
+  await Promise.all(Array.from({ length: n }, async () => { while (next < items.length) await fn(items[next++]); }));
+}
 async function openSubcellularGrid() {
   const syms = [...new Set((ribbon.rows ?? []).map(r => symbolOf(r.id)).filter(Boolean))];
-  const grid = $e("sub-grid");
-  $e("sub-title").textContent = `Subcellular location · ${syms.length} gene${syms.length === 1 ? "" : "s"} (Human Protein Atlas)`;
-  const cells = syms.map(sym => {
-    const ph = Object.assign(document.createElement("div"), { className: "ph", textContent: "looking up…" });
-    const cap = document.createElement("figcaption");
-    cap.append(Object.assign(document.createElement("b"), { textContent: sym }));
-    const fig = document.createElement("figure"); fig.append(ph, cap);
-    return { sym, fig, ph, cap };
+  const dlg = $e("sub-dialog"), grid = $e("sub-grid"), bar = $e("sub-progress"), note = $e("sub-note");
+  const run = (openSubcellularGrid.run ?? 0) + 1; openSubcellularGrid.run = run;
+  const live = () => dlg.open && openSubcellularGrid.run === run;
+  grid.replaceChildren();
+  $e("sub-title").textContent = "Nuclear subcellular location · Human Protein Atlas";
+  bar.hidden = false; bar.max = Math.max(1, syms.length); bar.value = 0;
+  note.textContent = `Looking up the locations of ${syms.length} genes…`;
+  if (!dlg.open) dlg.showModal();
+  // 1: locations (text) of every gene
+  const found = new Map(); let failed = 0;
+  await pool(syms, 6, async sym => {
+    if (!live()) return;
+    try { const d = await hpaSubcellular(sym); if (d) found.set(sym, d); } catch { failed++; }
+    bar.value++;
   });
-  grid.replaceChildren(...cells.map(c => c.fig));
-  if (!$e("sub-dialog").open) $e("sub-dialog").showModal();
-  let next = 0;
-  const worker = async () => {
-    while (next < cells.length && $e("sub-dialog").open) {
-      const c = cells[next++];
-      let d;
-      try { d = await hpaSubcellular(c.sym); } catch { c.ph.textContent = "not available from this page"; continue; }
-      if (!d || !d.main.length) { c.ph.textContent = "no data"; continue; }
-      c.cap.append(Object.assign(document.createElement("div"), { textContent: hpaWhere(d) }));
-      if (!d.image) { c.ph.textContent = "no image"; continue; }
-      const a = Object.assign(document.createElement("a"), { href: `https://www.proteinatlas.org/search/${encodeURIComponent(c.sym)}`, target: "_blank", rel: "noopener" });
-      const img = Object.assign(document.createElement("img"), { src: d.image, alt: `${c.sym} immunofluorescence`, loading: "lazy" });
-      img.addEventListener("error", () => { a.replaceWith(c.ph); c.ph.textContent = "image failed"; });
-      a.append(img); c.ph.replaceWith(a);
-    }
-  };
-  await Promise.all(Array.from({ length: 4 }, worker));
+  if (!live()) return;
+  const nuc = syms.filter(sym => { const d = found.get(sym); return d && [...d.main, ...d.extra].some(l => /nucl/i.test(l)); });
+  // 2: images of the nucl* genes
+  bar.max = Math.max(1, nuc.length); bar.value = 0;
+  note.textContent = `${nuc.length} of ${syms.length} genes in a nuclear compartment; retrieving images…`;
+  const figs = new Map(nuc.map(sym => {
+    const d = found.get(sym), fig = document.createElement("figure");
+    const a = Object.assign(document.createElement("a"), { href: `https://www.proteinatlas.org/${d.ensg}-${sym}/subcellular`, target: "_blank", rel: "noopener", className: "ph", textContent: "image…" });
+    const cap = document.createElement("figcaption");
+    cap.append(Object.assign(document.createElement("b"), { textContent: sym }), Object.assign(document.createElement("div"), { textContent: hpaWhere(d) }));
+    fig.append(a, cap);
+    return [sym, { fig, a }];
+  }));
+  grid.replaceChildren(...nuc.map(sym => figs.get(sym).fig));
+  await pool(nuc, 4, async sym => {
+    if (!live()) return;
+    const { a } = figs.get(sym);
+    try {
+      const src = await hpaImage(found.get(sym).ensg);
+      if (src) {
+        const img = Object.assign(document.createElement("img"), { src, alt: `${sym} immunofluorescence`, loading: "lazy" });
+        img.addEventListener("error", () => { img.remove(); a.textContent = "image failed"; });
+        a.className = ""; a.replaceChildren(img);
+      } else a.textContent = "no image";
+    } catch { a.textContent = "image not available"; }
+    bar.value++;
+  });
+  if (!live()) return;
+  bar.hidden = true;
+  note.textContent = `${nuc.length} of ${syms.length} ribbon genes have a nuclear (nucl*) location${failed ? `; ${failed} could not be looked up` : ""}. Click an image for the gene's Protein Atlas page.`;
 }
 $e("sub-btn").addEventListener("click", openSubcellularGrid);
+
 $e("sub-dialog").addEventListener("click", e => { if (e.target === $e("sub-dialog")) $e("sub-dialog").close(); });
 document.addEventListener("pointerdown", e => { if (!geneMenu.hidden && !geneMenu.contains(e.target) && !e.target.closest?.(".rgene")) geneMenu.hidden = true; });
 geneMenu.addEventListener("click", e => { if (e.target.closest("a")) geneMenu.hidden = true; });
