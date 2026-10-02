@@ -192,6 +192,9 @@
   #gene-menu .gm-title { font: 10.5px var(--mono); color: var(--muted); padding: 3px 8px 5px; }
   #gene-menu a { font: 12px var(--mono); color: var(--ink); text-decoration: none; padding: 6px 8px; border-radius: 4px; }
   #gene-menu a:hover { background: rgba(255, 255, 255, 0.12); }
+  #gene-menu .gm-hpa { max-width: 240px; padding: 6px 8px 4px; font: 11px var(--sans); color: var(--ink); border-top: 1px solid var(--edge); margin-top: 4px; }
+  #gene-menu .gm-hpa img { display: block; width: 200px; height: auto; border-radius: 3px; margin-bottom: 5px; }
+  #gene-menu .gm-credit { color: var(--muted); font-size: 10px; margin-top: 3px; }
   #alias-tip {
     position: fixed; z-index: 8; pointer-events: none; font: 11.5px var(--sans); color: var(--ink);
     padding: 4px 9px; border-radius: 6px; background: rgba(46, 51, 58, 0.95); border: 1px solid var(--edge); white-space: nowrap;
@@ -1932,7 +1935,7 @@ function symbolOf(id) {
 }
 function probesFor(query) {
   const q = query.trim();
-  if (expr.corr && q === expr.corr.query) return expr.corr.ids;
+  if (expr.corr && (!q || q === expr.corr.query)) return expr.corr.ids;   // corr / differential / long-gene lists
   if (q.length > 1 && q.endsWith("*")) {
     const byName = (a, b) => (expr.probeName.get(a) ?? a).localeCompare(expr.probeName.get(b) ?? b, undefined, { numeric: true });
     return symbolsStarting(q.slice(0, -1)).flatMap(sym => expr.bySymbol.get(sym).filter(hasProbe).sort(byName)).slice(0, MAX_GROUP_PROBES);
@@ -2924,7 +2927,7 @@ function renderRibbon() {
   ribbon.rows = colouringActive() ? ribbonRows() : [];
   ribbon.multiGene = !!expr.corr || new Set(ribbon.rows.map(r => symbolOf(r.id))).size > 1;
   $e("ribbon-names").classList.toggle("multi", ribbon.multiGene);
-  if (document.activeElement !== searchBox && expr.gene) searchBox.value = expr.gene;
+  if (document.activeElement !== searchBox && expr.gene && !expr.corr?.keep) searchBox.value = expr.gene;
   syncGeneBox();
   showRibbonProbe(ribbon.rows.find(r => r.id === ribbon.shownProbe));
   // Row names double as the probe selector for the brain colours
@@ -2950,11 +2953,53 @@ function openGeneMenu(symbol, anchor) {
   geneMenu.replaceChildren(
     Object.assign(document.createElement("div"), { className: "gm-title", textContent: symbol }),
     link("Open in GeneCards", `https://www.genecards.org/cgi-bin/carddisp.pl?gene=${q}`),
-    link("Open in Protein Atlas", `https://www.proteinatlas.org/search/${q}`));
+    link("Open in Protein Atlas", `https://www.proteinatlas.org/search/${q}`),
+    Object.assign(document.createElement("div"), { className: "gm-hpa", textContent: "Subcellular location: looking up…" }));
   geneMenu.hidden = false;
+  showSubcellular(symbol);
   const a = anchor.getBoundingClientRect();
   geneMenu.style.left = `${Math.min(a.left, innerWidth - geneMenu.offsetWidth - 8)}px`;
   geneMenu.style.top = `${Math.min(a.bottom + 4, innerHeight - geneMenu.offsetHeight - 8)}px`;
+}
+// Subcellular location from the Human Protein Atlas, looked up when the menu opens: its search
+// API gives the gene's Ensembl id and main locations, the gene's XML record an immunofluorescence
+// image. Both need the Protein Atlas to allow other sites to read them; otherwise only the links show.
+const hpaCache = new Map();
+async function hpaSubcellular(symbol) {
+  if (hpaCache.has(symbol)) return hpaCache.get(symbol);
+  const job = (async () => {
+    const timeout = ms => new Promise((_, no) => setTimeout(() => no(new Error("timeout")), ms));
+    const get = url => Promise.race([fetch(url), timeout(8000)]).then(r => { if (!r.ok) throw new Error(r.status); return r; });
+    const hits = await (await get(`https://www.proteinatlas.org/api/search_download.php?search=${encodeURIComponent(symbol)}&format=json&columns=g,eg,scml,scal,relce&compress=no`)).json();
+    const hit = hits.find(h => (h.Gene ?? "").toUpperCase() === symbol.toUpperCase()) ?? hits[0];
+    if (!hit) return null;
+    const out = { ensg: hit.Ensembl, main: hit["Subcellular main location"] ?? [], extra: hit["Subcellular additional location"] ?? [], reliability: hit["Reliability (IF)"] ?? "" };
+    try {   // first subcellular immunofluorescence image of the gene's record
+      const xml = await (await get(`https://www.proteinatlas.org/${out.ensg}.xml`)).text();
+      const sub = xml.slice(xml.indexOf('<cellExpression') >= 0 ? xml.indexOf('<cellExpression') : 0);
+      out.image = (sub.match(/<imageUrl>(https?:[^<]*_blue_red_green[^<]*)<\/imageUrl>/) ?? sub.match(/<imageUrl>(https?:[^<]*)<\/imageUrl>/))?.[1];
+    } catch { /* locations only */ }
+    return out;
+  })();
+  hpaCache.set(symbol, job);
+  job.catch(() => hpaCache.delete(symbol));
+  return job;
+}
+async function showSubcellular(symbol) {
+  const box = geneMenu.querySelector(".gm-hpa");
+  let d;
+  try { d = await hpaSubcellular(symbol); }
+  catch { if (box?.isConnected) box.textContent = "Subcellular location: not available from this page (open the Protein Atlas link)."; return; }
+  if (!box?.isConnected) return;
+  if (!d || !d.main.length) { box.textContent = "Subcellular location: no data in the Protein Atlas."; return; }
+  box.replaceChildren();
+  if (d.image) {
+    const img = Object.assign(document.createElement("img"), { src: d.image, alt: `${symbol} immunofluorescence`, loading: "lazy" });
+    img.addEventListener("error", () => img.remove());
+    box.append(img);
+  }
+  box.append(Object.assign(document.createElement("div"), { textContent: `${d.main.join(", ")}${d.extra.length ? ` (also ${d.extra.join(", ")})` : ""}${d.reliability ? ` · ${d.reliability}` : ""}` }),
+    Object.assign(document.createElement("div"), { className: "gm-credit", textContent: "Human Protein Atlas (proteinatlas.org), CC BY-SA 4.0" }));
 }
 document.addEventListener("pointerdown", e => { if (!geneMenu.hidden && !geneMenu.contains(e.target) && !e.target.closest?.(".rgene")) geneMenu.hidden = true; });
 geneMenu.addEventListener("click", e => { if (e.target.closest("a")) geneMenu.hidden = true; });
@@ -3251,7 +3296,7 @@ function setRibbonMin(min) {
 }
 // The gene box shows the Allen symbol; a name found through an alias is noted in its tooltip
 function syncGeneBox() {
-  if (document.activeElement === searchBox || !expr.gene) return;
+  if (document.activeElement === searchBox || !expr.gene || expr.corr?.keep) return;   // corr / differential lists leave the box empty
   searchBox.value = expr.gene;
 }
 // While the box is active, a gene found through an alias shows what was searched
@@ -3294,7 +3339,7 @@ $e("ribbon-bar").addEventListener("click", () => setRibbonMin(false));
 // Pearson's correlation over all samples of the loaded donors, each probe z-scored within
 // each donor (so donor offsets do not count). With the seed z-scored, a probe's
 // contribution per donor is sum(x * zSeed) / sd(x), accumulated in one pass over its values.
-const CORR_TOP = 20;   // rows listed after the seed
+const CORR_TOP = 100, LIST_PAGE = 20;   // ranked probes kept; rows shown at first and added per scroll to the bottom
 function updateCorrButton() {
   updateCellsButton();
   $e("corr-btn").disabled = !(ribbon.userPicked && chosenProbes().length === 1 && expr.byDonor.size);
@@ -3336,13 +3381,13 @@ async function findCorrelated() {
     }
     const others = [...r.keys()].filter(id => id !== seed).sort((a, b) => r.get(b) - r.get(a)).slice(0, CORR_TOP);
     const name = symbolOf(seed) ?? expr.probeName.get(seed) ?? seed;
-    expr.corr = { query: name, ids: [seed, ...others], r };
-    searchBox.value = expr.corr.query;
+    expr.corr = { query: name, all: [seed, ...others], ids: [seed, ...others.slice(0, LIST_PAGE)], r, keep: true };
+    searchBox.value = "";
     showProbeBox(expr.corr.query, expr.corr.ids);
     expr.chosen = new Set([seed]);
     autoZ(expr.corr.ids);
     applyColouring();
-    setScaleNote(`The ${others.length} probes most correlated with ${expr.probeName.get(seed) ?? seed} across ${n} samples (r ${r.get(others.at(-1))?.toFixed(2) ?? "–"} to ${r.get(others[0])?.toFixed(2) ?? "–"}).`);
+    setScaleNote(`The ${others.length} probes most correlated (first ${LIST_PAGE} shown; scroll the ribbon to the bottom for more) with ${expr.probeName.get(seed) ?? seed} across ${n} samples (r ${r.get(others.at(-1))?.toFixed(2) ?? "–"} to ${r.get(others[0])?.toFixed(2) ?? "–"}).`);
   } finally { setBusy(null); }
 }
 $e("corr-btn").addEventListener("click", findCorrelated);
@@ -3812,7 +3857,7 @@ $e("sc-dialog").addEventListener("click", e => { if (e.target === $e("sc-dialog"
 // Structures come from the Allen ontology (Ontology.csv in each donor's download): every
 // structure with samples below it, from "brain" down to e.g. "CA1 field". Before it is read,
 // the ribbon's own divisions, subgroups and structures stand in.
-const DIFF_TOP = 25;
+const DIFF_TOP = 100;   // kept; LIST_PAGE shown at first
 let ontology = null;   // id -> { id, acronym, name, path: [ancestor ids..., id] }
 let ontologyText = null;
 function setOntology(text) {
@@ -3919,13 +3964,13 @@ async function findDifferential() {
     const top = [...best.values()].sort((a, b) => diff.get(b) - diff.get(a)).slice(0, DIFF_TOP);
     if (!top.length) { note.textContent = "No probes to compare."; return; }
     const short = x => x.label.replace(/ \([^)]*\)$/, "");
-    expr.corr = { query: `${short(T)} vs ${short(B)}`, ids: top, r: diff };
-    searchBox.value = expr.corr.query;
+    expr.corr = { query: `${short(T)} vs ${short(B)}`, all: top, ids: top.slice(0, LIST_PAGE), r: diff, keep: true };
+    searchBox.value = "";
     showProbeBox(expr.corr.query, expr.corr.ids);
     expr.chosen = new Set([top[0]]);
     autoZ(expr.corr.ids);
     applyColouring();
-    const msg = `${top.length} genes most raised in ${short(T)} (${nT} samples) relative to ${short(B)} (${nB} samples); ribbon numbers are the difference in mean z-score.`;
+    const msg = `${top.length} genes (first ${LIST_PAGE} shown; scroll the ribbon to the bottom for more) most raised in ${short(T)} (${nT} samples) relative to ${short(B)} (${nB} samples); ribbon numbers are the difference in mean z-score.`;
     note.textContent = msg; setScaleNote(msg);
     setPanelOpen(false);   // show the result: controls away, ribbon open
     if (document.body.classList.contains("ribbon-min")) setRibbonMin(false);
@@ -4042,6 +4087,12 @@ new ResizeObserver(() => {
 }).observe(ribbonCanvas.parentElement);
 ribbonCanvas.parentElement.addEventListener("scroll", () => {
   const scroll = ribbonCanvas.parentElement;
+  // corr / differential lists: the next rows once the bottom is reached
+  const L = expr.corr;
+  if (L?.all && L.ids.length < L.all.length && scroll.scrollTop + scroll.clientHeight >= scroll.scrollHeight - 2) {
+    L.ids = L.all.slice(0, L.ids.length + LIST_PAGE);
+    renderRibbon();
+  }
   $e("ribbon-names").scrollTop = scroll.scrollTop;
   // Rows scrolled into view are drawn as they arrive (once per frame)
   if (Math.min(scroll.scrollTop, Math.max(0, scroll.scrollHeight)) !== ribbon.y0 && !drawRibbon.frame)
