@@ -3746,6 +3746,8 @@ async function renderCellTypes() {
   for (const r of rows) if (r.n) { r.secI = r.dis ? 1 : 0; secMax[r.secI] = Math.max(secMax[r.secI] ?? 1e-6, r.lin); secLo[r.secI] = Math.min(secLo[r.secI] ?? Infinity, r.lin); secMaxN[r.secI] = Math.max(secMaxN[r.secI] ?? 1, r.n); }
   // Colour: linear mean stretched from the group's lowest to its highest row
   const stretch = (v, [lo, hi]) => Math.round(hi > lo ? (v - lo) / (hi - lo) * 255 : 255);
+  // Square area proportional to the stretched value (side by its square root), a small floor to stay visible
+  const sqSize = q => 0.15 + 0.8 * Math.sqrt(q / 255);
   const top = Math.max(1e-6, ...secMax);
   const probe = chosenProbes()[0], probeLabel = probe ? (expr.probeName.get(probe) ?? probe) : "";
 
@@ -3774,7 +3776,7 @@ async function renderCellTypes() {
     if (r.divider) { lines.push({ divider: true }); continue; }
     if (r.sec) { lines.push({ sec: r.sec, secColor: r.color }); continue; }
     const li = lines.push({ label: r.label, sub: r.sub, bar: r.bar }) - 1;
-    cells.push({ li, ci: 0, size: 0.85, fill: scColour(stretch(r.lin, [secLo[r.secI], secMax[r.secI]])), tip: `${r.tip}\n${scView.g.name}: ${(r.frac * 100).toFixed(0)}% of ${r.n.toLocaleString()} nuclei, ${r.lin.toFixed(2)} counts per 10k (log mean ${r.mean.toFixed(2)}); colour from ${secLo[r.secI].toFixed(2)} to ${secMax[r.secI].toFixed(2)}` });
+    cells.push({ li, ci: 0, size: sqSize(stretch(r.lin, [secLo[r.secI], secMax[r.secI]])), fill: scColour(stretch(r.lin, [secLo[r.secI], secMax[r.secI]])), tip: `${r.tip}\n${scView.g.name}: ${(r.frac * 100).toFixed(0)}% of ${r.n.toLocaleString()} nuclei, ${r.lin.toFixed(2)} counts per 10k (log mean ${r.mean.toFixed(2)}); colour from ${secLo[r.secI].toFixed(2)} to ${secMax[r.secI].toFixed(2)}` });
     // Allen: one rectangle per row group, on the group's first row, its samples as stripes
     if (r.grp && r.grp !== lastGrp) {
       lastGrp = r.grp;
@@ -3792,16 +3794,16 @@ async function renderCellTypes() {
     const cv = coRows[rows.indexOf(r)];
     if (cv) co.list.forEach(({ i, r: rr }, j) => {
       const v = cv[j]; if (!v) return;
-      cells.push({ li, ci: coCi + j, size: 0.85, fill: scColour(stretch(v.lin, coRange[j])),
+      cells.push({ li, ci: coCi + j, size: sqSize(stretch(v.lin, coRange[j])), fill: scColour(stretch(v.lin, coRange[j])),
         tip: `${coData.genes[i]} (r = ${rr.toFixed(2)} with ${scView.g.name})\n${r.label}: ${v.lin.toFixed(2)} counts per 10k (log mean ${v.mean.toFixed(2)}), ${Math.round(v.frac * 100)}% of nuclei with any count` });
     });
   }
-  $e("sc-sub").textContent = `${detailed ? "Siletti clusters, grouped by subfield (canonical markers) or cell class, sorted by share expressing" : "Hippocampal subfields by canonical markers (CA1: FIBCD1/FNDC1; CA2: PCP4; DG: PROX1), other cell classes per region"}, then each dissection (all its nuclei; dissections mix neighbouring fields). The subiculum has no cluster or canonical marker of its own in these data (its nuclei fall into CA1-type clusters), so it appears only as a dissection row. Colour: mean expression of ${scView.g.name} in counts per 10k (linear, no log), from dark (lowest row) to bright yellow (highest row), stretched separately for the by-markers rows and the by-dissection rows; co-expressed columns each over their own range; all squares the same size. Bars: nuclei (grey, linear) and those expressing the gene (green).${detailed ? " Allen: the probe highlighted in the ribbon, every sample of the Allen structures matching each subfield, class or dissection (the ribbon turned on its side, its colours), from your loaded donors." : " Allen: mean z of the probe highlighted in the ribbon in each marker subfield's Allen structures, in the ribbon's colours."}${detailed ? " Hover a cluster for where it was dissected." : ""} (Ex) excitatory, (In) inhibitory.`;
+  $e("sc-sub").textContent = `${detailed ? "Siletti clusters, grouped by subfield (canonical markers) or cell class, sorted by share expressing" : "Hippocampal subfields by canonical markers (CA1: FIBCD1/FNDC1; CA2: PCP4; DG: PROX1), other cell classes per region"}, then each dissection (all its nuclei; dissections mix neighbouring fields). The subiculum has no cluster or canonical marker of its own in these data (its nuclei fall into CA1-type clusters), so it appears only as a dissection row. Colour: mean expression of ${scView.g.name} in counts per 10k (linear, no log), from pale (lowest row) to red (highest row), square area likewise, stretched separately for the by-markers rows and the by-dissection rows; co-expressed columns each over their own range. Bars: nuclei (grey, linear) and those expressing the gene (green).${detailed ? " Allen: the probe highlighted in the ribbon, every sample of the Allen structures matching each subfield, class or dissection (the ribbon turned on its side, its colours), from your loaded donors." : " Allen: mean z of the probe highlighted in the ribbon in each marker subfield's Allen structures, in the ribbon's colours."}${detailed ? " Hover a cluster for where it was dissected." : ""} (Ex) excitatory, (In) inhibitory.`;
   drawGrid({ cols: [{ label: `${scView.g.name} snRNA-seq expression (Siletti, mean counts per 10k)` }, { label: `${scView.g.name} (Allen expression z-score)`, gap: 6 }, { label: "Nuclei count (% expressing)", w: 190, gap: 10, plain: true },
       ...(detailed ? [{ label: "Markers ([canonical] then cluster-specific)", w: 360, gap: 8, plain: true }] : []),
       ...(co ? co.list.map(({ i, r: rr }, j) => ({ label: `${coData.genes[i]} ${rr.toFixed(2)}`, vert: true, gap: j ? 0 : 8 })) : [])],
     lines, cells, labelW: Math.max(150, ...lines.filter(l => l.label).map(l => 18 + l.label.length * 6.4 + (l.sub ? 6 + l.sub.length * 5.6 : 0))), cw: 22, rh: detailed ? 17 : 20, flatLabels: true });
-  $e("sc-legend").replaceChildren();   // square size carries nothing (the bars give the nuclei count)
+  $e("sc-legend").replaceChildren();   // colour and square area both give the expression (stated in the caption)
 }
 // Allen structures matching each Siletti dissection (Allen has no separate entorhinal cortex: PHG)
 const ALLEN_OF_DISSECTION = [["DG", "CA4"], ["CA2", "CA3"], ["CA1", "CA2", "CA3"], ["CA1"], ["S"], ["DG", "CA4"], ["CA3"], ["CA1", "CA2", "CA3"], ["CA1", "CA2"], ["CA4", "DG"], ["CA1", "CA2", "CA3"],
@@ -3836,12 +3838,7 @@ function data_label(d) {
   const r = scView.region, sec = r.sections[d];
   return sec.startsWith("Hippocampus") ? `${r.labels[d]} · ${sec.replace("Hippocampus · ", "")}` : r.labels[d];
 }
-// Viridis-like ramp (perceptually even, dark to bright), q 0..255
-const SC_RAMP = [[68, 1, 84], [59, 82, 139], [33, 145, 140], [94, 201, 98], [253, 231, 37]];
-const scColour = q => {
-  const t = Math.max(0, Math.min(1, q / 255)) * (SC_RAMP.length - 1), i = Math.min(SC_RAMP.length - 2, Math.floor(t)), f = t - i;
-  return `rgb(${SC_RAMP[i].map((c, j) => Math.round(c + (SC_RAMP[i + 1][j] - c) * f)).join(",")})`;
-};
+const scColour = q => { const t = q / 255; return `rgb(${Math.round(255 - t * 75)},${Math.round(240 - t * 215)},${Math.round(200 - t * 170)})`; };
 const svgEl = (tag, attrs, text) => {
   const e = document.createElementNS("http://www.w3.org/2000/svg", tag);
   for (const k in attrs) e.setAttribute(k, attrs[k]);
