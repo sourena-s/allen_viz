@@ -372,7 +372,8 @@
   #sc-tip[hidden] { display: none; }
   #sc-dialog.max { width: 100vw; max-width: none; height: 100dvh; max-height: none; margin: 0; border-radius: 0; }
   #sc-dialog.max #sc-plot { max-height: calc(100dvh - 170px); }
-  .sc-legend { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; font-size: 11px; color: var(--muted); }
+  .sc-legend { display: flex; gap: 28px; align-items: center; flex-wrap: wrap; font-size: 11px; color: var(--muted); }
+  .sc-leg { display: inline-flex; align-items: center; gap: 6px; }
   .sc-legend svg { vertical-align: middle; }
   .sc-cite { font-size: 11px; }
   .dl-actions { display: flex; gap: 8px; justify-content: flex-end; }
@@ -3421,6 +3422,7 @@ async function showCellTypes() {
     $e("sc-plot").replaceChildren(); $e("sc-legend").replaceChildren();
   } else await renderCellTypes();
   if (!$e("sc-dialog").open) $e("sc-dialog").showModal();
+  trimScPlot();
 }
 // Subfields defined by markers: a hippocampal neuron cluster's subfield from the canonical
 // markers most of its nuclei express (c.canon), not from where it was dissected. Clusters whose
@@ -3569,7 +3571,7 @@ async function renderCellTypes() {
     if (detailed && r.markers) cells.push({ li, ci: 3, label: r.markers });
   }
   $e("sc-sub").textContent = `${detailed ? "Siletti clusters, grouped by subfield (canonical markers) or cell class, sorted by share expressing" : "Hippocampal subfields by canonical markers (CA1: FIBCD1/FNDC1; CA2: PCP4; DG: PROX1), other cell classes per region"}, then each dissection (all its nuclei; dissections mix neighbouring fields). The subiculum has no cluster or canonical marker of its own in these data (its nuclei fall into CA1-type clusters), so it appears only as a dissection row. Colour: mean expression of ${scView.g.name}, log1p(counts per 10k), scaled separately for the by-markers rows and the by-dissection rows (each to its own maximum; bars likewise); size: nuclei. Bars: nuclei (grey, linear) and those expressing the gene (green).${detailed ? " Allen: the probe highlighted in the ribbon, every sample of the Allen structures matching each subfield, class or dissection (the ribbon turned on its side, its colours), from your loaded donors." : " Allen: mean z of the probe highlighted in the ribbon in each marker subfield's Allen structures, in the ribbon's colours."}${detailed ? " Hover a cluster for where it was dissected." : ""} (Ex) excitatory, (In) inhibitory.`;
-  drawGrid({ cols: [{ label: `${scView.g.name} (Siletti snRNA-seq: mean of log1p counts per 10k per nucleus)` }, { label: `${scView.g.name} (Allen expression z-score)`, gap: 6 }, { label: "Nuclei count (% expressing)", w: 190, gap: 10, plain: true },
+  drawGrid({ cols: [{ label: `${scView.g.name} (Siletti snRNA-seq: mean log(1 + count per 10k))` }, { label: `${scView.g.name} (Allen expression z-score)`, gap: 6 }, { label: "Nuclei count (% expressing)", w: 190, gap: 10, plain: true },
       ...(detailed ? [{ label: "Markers ([canonical] then cluster-specific)", w: 360, gap: 8, plain: true }] : [])],
     lines, cells, labelW: Math.max(150, ...lines.filter(l => l.label).map(l => 18 + l.label.length * 6.4 + (l.sub ? 6 + l.sub.length * 5.6 : 0))), cw: 22, rh: detailed ? 17 : 20, flatLabels: true });
   scLegend(top);
@@ -3728,6 +3730,7 @@ function drawGrid(spec) {
   svg.addEventListener("pointerleave", () => (tip.hidden = true));
   $e("sc-plot").replaceChildren(svg);
   scView.svgSize = [W, H];
+  trimScPlot();
 }
 
 // CA-field order, CA1 first: CA1 (head), CA1-2 (body), CA1-3 (head, body, tail), CA2-3 (head),
@@ -3736,11 +3739,26 @@ const CA_ORDER = [[3], [8], [2, 7, 10], [1], [6], [0, 5, 9], [4], [11, 12, 13], 
 // Square side from a number of nuclei, on a log scale: 10 nuclei barely visible, 30,000 full
 const nucleiSize = n => Math.max(0, Math.min(1, Math.log10(Math.max(1, n) / 10) / Math.log10(3000)));
 function scLegend(gmax) {
-  const leg = svgEl("svg", { width: 300, height: 22 });
-  [30, 300, 3000, 30000].forEach((n, k) => { const s = Math.max(2, nucleiSize(n) * 16); leg.append(svgEl("rect", { x: 12 + k * 70 - s / 2, y: 11 - s / 2, width: s, height: s, fill: "#ccc" }), svgEl("text", { x: 23 + k * 70, y: 15, style: "fill: var(--muted)" }, n.toLocaleString())); });
+  const span = (text, cls) => Object.assign(document.createElement("span"), { textContent: text, className: cls ?? "" });
+  const leg = svgEl("svg", { width: 250, height: 22 });
+  [30, 300, 3000, 30000].forEach((n, k) => { const s = Math.max(2, nucleiSize(n) * 16); leg.append(svgEl("rect", { x: 10 + k * 60 - s / 2, y: 11 - s / 2, width: s, height: s, fill: "#ccc", stroke: "#000", "stroke-width": 0.8 }), svgEl("text", { x: 21 + k * 60, y: 15, style: "fill: var(--muted)" }, n.toLocaleString())); });
   const ramp = svgEl("svg", { width: 160, height: 14 });
   for (let i = 0; i < 32; i++) ramp.append(svgEl("rect", { x: i * 5, y: 2, width: 5, height: 10, fill: scColour(i / 31 * 255) }));
-  $e("sc-legend").replaceChildren(Object.assign(document.createElement("span"), { textContent: "nuclei" }), leg, Object.assign(document.createElement("span"), { textContent: "0" }), ramp, Object.assign(document.createElement("span"), { textContent: `${gmax.toFixed(2)} mean` }));
+  const sizes = Object.assign(document.createElement("span"), { className: "sc-leg" }); sizes.append(span("Nuclei count"), leg);
+  const colours = Object.assign(document.createElement("span"), { className: "sc-leg" });
+  colours.append(span("Mean log(1 + count per 10k)"), span("0"), ramp, span(`max (per group; up to ${gmax.toFixed(2)})`));
+  $e("sc-legend").replaceChildren(sizes, colours);
+}
+// Trim the plot to what was drawn, so there is no empty area to scroll into (it can only be
+// measured once the window is shown)
+function trimScPlot() {
+  const svg = $e("sc-plot").querySelector("svg");
+  if (!svg || !$e("sc-dialog").open) return;
+  const bb = svg.getBBox();
+  if (!(bb.width > 0)) return;
+  const W = Math.ceil(bb.x + bb.width + 6), H = scView.svgSize[1];
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("width", W * scView.zoom);
+  scView.svgSize = [W, H];
 }
 // Zoom: pinch with two fingers, Ctrl+wheel (or a trackpad pinch), or the − / + buttons; the
 // point under the fingers or cursor stays put
