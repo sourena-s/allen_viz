@@ -25,4 +25,10 @@ Requires `pip install cellxgene-census`; `cxopen.py` opens Census by its S3 path
    in the same supercluster; ribosomal and mitochondrial genes excluded). Needs HGNC's
    `gene_with_protein_product.txt` as `pc.txt`.
 
+7. `agg5.py`: the linear means, mean(counts / total counts * 1e4) with no log, per dissection and
+   supercluster and per cluster, from the same raw counts, nuclei and cell totals (about 15 minutes).
+   Run it before the packers: both append these as a third block (gene-major, one byte per group or
+   cluster, scaled to the gene's maximum `lmax` in the header) after the log means and fractions.
+   The page colours by the linear means and keeps the log means for co-expression.
+
 `scdefs.py` holds the dissection order and labels and the supercluster order used by both packers.

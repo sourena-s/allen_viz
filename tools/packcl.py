@@ -42,14 +42,20 @@ for i, c in enumerate(keep):
     canon = [m for m in CANON if m in gidx and Fr[i, gidx[m]] >= 0.5] if scs[i].startswith('Hippocampal') else []
     clusters.append(dict(id=int(c), name=str(a['Cluster name']), sc=str(a['Supercluster']), nt=str(a['Neurotransmitter auto-annotation']) if pd.notna(a['Neurotransmitter auto-annotation']) else "",
                          mtg=str(a['Transferred MTG Label']) if pd.notna(a['Transferred MTG Label']) else "", n=int(n[c]), markers=top, where=[int(round(x * 255)) for x in w], canon=canon))
+np.save('cl_sel.npy', sel)
 gmax = M.max(0); gmax[gmax == 0] = 1
 qm = np.round(M / gmax * 255).astype(np.uint8); qf = np.round(Fr * 255).astype(np.uint8)
 body = np.concatenate([qm.T, qf.T], axis=1)
+# Linear means (counts per 10k) from agg5, appended as a third block (gene-major, one byte per cluster)
+L = (np.load('agg5_LC.npy')[keep] / n[keep, None])[:, sel]
+lmax = L.max(0); lmax[lmax == 0] = 1
+ql = np.round(L / lmax * 255).astype(np.uint8)
 header = dict(version=1, source="Siletti et al. 2023 clusters (Human Brain Cell Atlas v1.0, CELLxGENE Census 2025-01-30), CC BY 4.0; nuclei of the hippocampal, parahippocampal and amygdala dissections only",
-  sections=[o[1] for o in ORDER], labels=[o[2] for o in ORDER], clusters=clusters, genes=list(gnames), max=[round(float(x), 4) for x in gmax])
+  sections=[o[1] for o in ORDER], labels=[o[2] for o in ORDER], clusters=clusters, genes=list(gnames), max=[round(float(x), 4) for x in gmax],
+  linear="mean counts per 10k per gene (no log), scaled to the gene's maximum (lmax); block after the means and fractions", lmax=[round(float(x), 4) for x in lmax])
 hj = json.dumps(header, separators=(',', ':')).encode()
 pad = (-(12 + len(hj))) % 8
-blob = b"SILCLUS1" + struct.pack('<I', len(hj)) + hj + b"\0" * pad + body.tobytes()
+blob = b"SILCLUS1" + struct.pack('<I', len(hj)) + hj + b"\0" * pad + body.tobytes() + np.ascontiguousarray(ql.T).tobytes()
 open('siletti_clusters.bin.gz', 'wb').write(gzip.compress(blob, 9))
 print(len(keep), 'clusters', len(sel), 'genes', len(blob) / 1e6, 'MB raw')
 for cdef in [c for c in clusters if c['sc'].startswith('Hippocampal CA1') or c['sc']=='Amygdala excitatory'][:14]: print(cdef['name'], cdef['n'], cdef['markers'], np.argmax(cdef['where']))
