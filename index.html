@@ -341,6 +341,22 @@
     border-radius: 4px; color: var(--ink); background: var(--sheet); overflow-y: auto;
   }
   #legal-dialog::backdrop { background: rgba(20, 28, 38, 0.3); }
+  #sc-dialog {
+    width: min(980px, calc(100vw - 16px)); max-height: calc(100dvh - 16px); box-sizing: border-box; padding: 0;
+    border-radius: 4px; color: var(--ink); background: var(--sheet); overflow: auto;
+  }
+  #sc-dialog::backdrop { background: rgba(20, 28, 38, 0.3); }
+  .sc-form { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 14px 16px; }
+  .sc-head { display: flex; align-items: center; gap: 10px; }
+  .sc-head h2 { margin: 0; font-size: 15px; font-weight: 600; flex: 1; }
+  #sc-plot { overflow-x: auto; }
+  #sc-plot svg { display: block; font: 10.5px var(--sans); }
+  #sc-plot text { fill: var(--ink); }
+  #sc-plot .sec { font-weight: 600; font-size: 11px; }
+  #sc-plot .col { fill: var(--muted); }
+  .sc-legend { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; font-size: 11px; color: var(--muted); }
+  .sc-legend svg { vertical-align: middle; }
+  .sc-cite { font-size: 11px; }
   .dl-actions { display: flex; gap: 8px; justify-content: flex-end; }
   .dl-actions .text-button { padding: 7px 16px; }
   .dl-actions .primary { background: var(--frost); color: #1d2126; border-color: transparent; }
@@ -593,7 +609,7 @@
 <section id="ribbon" class="glass" hidden aria-label="Expression z-score of every sample, one row per probe">
   <div class="ribbon-head">
     <input type="text" class="title gene-box" id="gene-input" role="combobox" aria-autocomplete="list" aria-expanded="false"
-           aria-controls="gene-suggestions" aria-label="Gene or probe" placeholder="Gene" autocomplete="off" spellcheck="false"><button type="button" class="corr-btn" id="corr-btn" disabled title="The 20 probes most correlated with the highlighted row">corr</button><span class="probe zval" id="ribbon-probe" hidden></span>
+           aria-controls="gene-suggestions" aria-label="Gene or probe" placeholder="Gene" autocomplete="off" spellcheck="false"><button type="button" class="corr-btn" id="corr-btn" disabled title="The 20 probes most correlated with the highlighted row">corr</button><button type="button" class="corr-btn" id="cells-btn" disabled title="Cell types expressing this gene in hippocampal and amygdala subregions (single-nucleus RNA-seq, Siletti et al. 2023)">cells</button><span class="probe zval" id="ribbon-probe" hidden></span>
     <label class="zsym" title="Colour range: z from minus to plus this value">z
       <input type="range" id="z-sym" min="0.5" max="6" step="0.1" value="2" aria-label="Colour range, z"><span id="z-sym-val" class="rm-value">±2.0</span></label>
     <div class="rb-tools">
@@ -619,12 +635,22 @@
 <div class="edge-rail v right" data-rail="axial" role="slider" tabindex="0" aria-label="Axial cut (z)" aria-orientation="vertical"><div class="rail-track"></div><div class="rail-thumb"><span></span></div></div>
 <div class="edge-rail h" data-rail="sagittal" role="slider" tabindex="0" aria-label="Sagittal cut (x)" aria-orientation="horizontal"><div class="rail-track"></div><div class="rail-thumb"><span></span></div></div>
 
+<dialog id="sc-dialog" class="glass" aria-labelledby="sc-title">
+  <form method="dialog" class="sc-form">
+    <div class="sc-head"><h2 id="sc-title">Cell types</h2><button class="text-button" value="close">Close</button></div>
+    <p class="sub" id="sc-sub"></p>
+    <div id="sc-plot"></div>
+    <div class="sc-legend" id="sc-legend"></div>
+    <p class="sub sc-cite">Single-nucleus RNA-seq of adult human brain: Siletti K. et al. (2023) Transcriptomic diversity of cell types across the adult human brain. <i>Science</i> 382, eadd7046 (CC BY 4.0), via CELLxGENE Census. Rows are dissections, columns Siletti's superclusters; groups under 30 nuclei are left out.</p>
+  </form>
+</dialog>
 <dialog id="legal-dialog" class="glass" aria-labelledby="legal-title">
   <form method="dialog" class="legal">
     <h2 id="legal-title">Data sources and attribution</h2>
     <p>Gene-expression data displayed on this website are from the Allen Human Brain Atlas, Allen Institute for Brain Science: microarray measurements of gene expression across the adult human brain.</p>
     <p class="cite">Hawrylycz MJ, Lein ES, Guillozet-Bongaarts AL, et al. (2012). An anatomically comprehensive atlas of the adult human transcriptome. <i>Nature</i>, 489, 391–399. <a href="https://doi.org/10.1038/nature11405" target="_blank" rel="noopener">doi:10.1038/nature11405</a></p>
     <p class="cite">© 2010 Allen Institute for Brain Science. Allen Human Brain Atlas. Available from: <a href="https://human.brain-map.org/" target="_blank" rel="noopener">human.brain-map.org</a></p>
+    <p class="cite">Single-nucleus cell types (the "cells" view): Siletti K, et al. Transcriptomic diversity of cell types across the adult human brain. <i>Science</i> 382, eadd7046 (2023). Data: Human Brain Cell Atlas v1.0 via CELLxGENE Census (release 2025-01-30), CC BY 4.0; aggregated here per dissection and supercluster.</p>
     <p>The original data are provided by the Allen Institute for Brain Science. This website does not own the underlying Allen Institute data and does not host or redistribute the expression files: they are downloaded from the Allen Institute by the visitor and processed only in the visitor's browser. Expression values shown here may have been processed, reformatted, aggregated or visualised.</p>
     <p>Use of Allen Institute content is subject to the Allen Institute <a href="https://alleninstitute.org/terms-of-use/" target="_blank" rel="noopener">Terms of Use</a> and <a href="https://alleninstitute.org/citation-policy/" target="_blank" rel="noopener">Citation Policy</a>. The Allen Institute and Allen Human Brain Atlas names, trademarks and logos remain the property of the Allen Institute or their respective owners. This website is not affiliated with or endorsed by the Allen Institute.</p>
     <h3>Other sources</h3>
@@ -2104,6 +2130,7 @@ const zScale = z => 2 ** rangePosition(z);
 function showProbeBox(query, ids) {
   expr.gene = query;
   expr.chosen = new Set(ids.slice(0, 1));   // one probe at a time: the first row to start
+  updateCellsButton();
 }
 const chosenProbes = () => [...(expr.chosen ?? [])];
 
@@ -3214,6 +3241,7 @@ $e("ribbon-bar").addEventListener("click", () => setRibbonMin(false));
 // contribution per donor is sum(x * zSeed) / sd(x), accumulated in one pass over its values.
 const CORR_TOP = 20;   // rows listed after the seed
 function updateCorrButton() {
+  updateCellsButton();
   $e("corr-btn").disabled = !(ribbon.userPicked && chosenProbes().length === 1 && expr.byDonor.size);
 }
 async function findCorrelated() {
@@ -3263,6 +3291,97 @@ async function findCorrelated() {
   } finally { setBusy(null); }
 }
 $e("corr-btn").addEventListener("click", findCorrelated);
+
+// ---------------------------------------------------------------- single-nucleus cell types
+// assets/siletti_hipamy.bin(.gz): Siletti et al. 2023 single-nucleus RNA-seq, aggregated per
+// dissection (hippocampal head/body/tail fields, parahippocampal and entorhinal cortex, amygdala
+// nuclei) and supercluster: for every gene its mean log1p(counts per 10k), stored as a byte
+// scaled to the gene's maximum, and the fraction of nuclei with any count. "SILETTI1", uint32
+// header length, JSON header, padding to 8 bytes, then per gene: one byte per group of means,
+// then one byte per group of fractions.
+let scData = null;
+async function loadSingleCell() {
+  if (scData) return scData;
+  let buf;
+  for (const name of ["assets/siletti_hipamy.bin.gz", "assets/siletti_hipamy.bin"]) {
+    const res = await fetch(name).catch(() => null);
+    if (res?.ok) { buf = new Uint8Array(await res.arrayBuffer()); break; }
+  }
+  if (!buf) throw new Error("single-cell table not found");
+  if (buf[0] === 0x1f && buf[1] === 0x8b) buf = new Uint8Array(await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer());
+  const len = new DataView(buf.buffer, buf.byteOffset).getUint32(8, true);
+  const header = JSON.parse(new TextDecoder().decode(buf.subarray(12, 12 + len)));
+  const start = Math.ceil((12 + len) / 8) * 8;
+  header.body = buf.subarray(start);
+  header.geneIndex = new Map(header.genes.map((g, i) => [g.toUpperCase(), i]));
+  return (scData = header);
+}
+// The gene of the highlighted row, as its current symbol where the Allen one is outdated
+function scGeneFor(data) {
+  const id = chosenProbes()[0];
+  const sym = id ? symbolOf(id) : null;
+  if (!sym) return null;
+  const tries = [shownName(sym), sym, ...(hgnc?.genes.get(shownName(sym).toUpperCase())?.synonyms ?? [])];
+  for (const t of tries) { const i = data.geneIndex.get(t.toUpperCase()); if (i !== undefined) return { i, name: data.genes[i], allen: sym }; }
+  for (const [k, list] of hgnc?.bySynonym ?? []) if (k === sym.toUpperCase()) for (const a of list) { const i = data.geneIndex.get(a); if (i !== undefined) return { i, name: data.genes[i], allen: sym }; }
+  return { i: -1, name: shownName(sym), allen: sym };
+}
+function updateCellsButton() { $e("cells-btn").disabled = !(chosenProbes().length && symbolOf(chosenProbes()[0])); }
+async function showCellTypes() {
+  setBusy("Loading single-nucleus data…");
+  let data;
+  try { data = await loadSingleCell(); await loadHgnc().catch(() => null); }
+  catch (err) { setBusy(null); setExprStatus([`Single-nucleus data: ${err.message}`]); return; }
+  setBusy(null);
+  const g = scGeneFor(data);
+  if (!g) return;
+  $e("sc-title").textContent = `${g.name} · cell types in hippocampus and amygdala`;
+  if (g.i < 0) {
+    $e("sc-sub").textContent = `${g.name} is not detected in this single-nucleus dataset.`;
+    $e("sc-plot").replaceChildren(); $e("sc-legend").replaceChildren();
+    $e("sc-dialog").showModal(); return;
+  }
+  const nG = data.groups.length, row = data.body.subarray(g.i * nG * 2, (g.i + 1) * nG * 2), gmax = data.max[g.i];
+  $e("sc-sub").textContent = `Dot size: fraction of nuclei expressing ${g.name}; colour: mean expression, log1p(counts per 10k), up to ${gmax.toFixed(2)}${g.name !== g.allen ? ` (Allen symbol ${g.allen})` : ""}.`;
+  // Columns: superclusters present; rows: dissections, in sections
+  const cols = data.superclusters, rows = data.labels;
+  const cell = new Map(data.groups.map(([d, c, n], k) => [`${d}|${c}`, { n, mean: row[k] / 255 * gmax, frac: row[nG + k] / 255, q: row[k] }]));
+  const usedCols = cols.map((_, c) => c).filter(c => rows.some((_, d) => cell.has(`${d}|${c}`)));
+  const CW = 26, RH = 20, LW = 150, TOP = 200, R = 9;
+  const ns = "http://www.w3.org/2000/svg", el = (tag, attrs, text) => { const e = document.createElementNS(ns, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (text != null) e.textContent = text; return e; };
+  // One row per dissection, with a section heading above each new section
+  const lines = [];
+  rows.forEach((label, d) => { if (!d || data.sections[d] !== data.sections[d - 1]) lines.push({ sec: data.sections[d] }); lines.push({ d, label }); });
+  const W = LW + usedCols.length * CW + 120, H = TOP + lines.length * RH + 6;
+  const svg = el("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}` });
+  usedCols.forEach((c, k) => {
+    const x = LW + k * CW + CW / 2;
+    svg.append(el("text", { class: "col", x, y: TOP - 6, transform: `rotate(-55 ${x} ${TOP - 6})` }, cols[c]));
+  });
+  const colour = q => { const t = q / 255; return `rgb(${Math.round(255 - t * 75)},${Math.round(240 - t * 215)},${Math.round(200 - t * 170)})`; };
+  lines.forEach((ln, k) => {
+    const y = TOP + k * RH + RH / 2;
+    if (ln.sec) { svg.append(el("text", { class: "sec", x: 2, y: y + 4 }, ln.sec)); return; }
+    svg.append(el("text", { x: 12, y: y + 4 }, ln.label));
+    usedCols.forEach((c, j) => {
+      const v = cell.get(`${ln.d}|${c}`), x = LW + j * CW + CW / 2;
+      if (!v) return;
+      const dot = el("circle", { cx: x, cy: y, r: Math.max(v.frac > 0 ? 1 : 0, Math.sqrt(v.frac) * R), fill: colour(v.q), stroke: "rgba(0,0,0,0.25)", "stroke-width": 0.5 });
+      dot.append(el("title", {}, `${data.sections[ln.d]} · ${ln.label}\n${cols[c]}: ${(v.frac * 100).toFixed(0)}% of ${v.n.toLocaleString()} nuclei, mean ${v.mean.toFixed(2)}`));
+      svg.append(dot);
+    });
+  });
+  $e("sc-plot").replaceChildren(svg);
+  // Legend: dot sizes and the colour ramp
+  const leg = el("svg", { width: 200, height: 22 });
+  [0.1, 0.4, 0.8].forEach((f, k) => { leg.append(el("circle", { cx: 12 + k * 60, cy: 11, r: Math.sqrt(f) * R, fill: "#ccc" })); leg.append(el("text", { x: 26 + k * 60, y: 15, style: "fill: var(--muted)" }, `${f * 100}%`)); });
+  const ramp = el("svg", { width: 160, height: 14 });
+  for (let i = 0; i < 32; i++) ramp.append(el("rect", { x: i * 5, y: 2, width: 5, height: 10, fill: colour(i / 31 * 255) }));
+  $e("sc-legend").replaceChildren(leg, Object.assign(document.createElement("span"), { textContent: "0" }), ramp, Object.assign(document.createElement("span"), { textContent: `${gmax.toFixed(2)} mean` }));
+  $e("sc-dialog").showModal();
+}
+$e("cells-btn").addEventListener("click", showCellTypes);
+$e("sc-dialog").addEventListener("click", e => { if (e.target === $e("sc-dialog")) $e("sc-dialog").close(); });
 
 // ---------------------------------------------------------------- differential expression
 // Target vs background structure: for every probe, the mean z-score (z within each donor) of
@@ -3563,6 +3682,7 @@ ribbonCanvas.addEventListener("click", e => {
     ribbon.userPicked = true; updateCorrButton();
     // Tapping a row makes its probe the one shown on the brain (one at a time)
     if (!expr.chosen?.has(row.id) || expr.chosen.size > 1) { expr.chosen = new Set([row.id]); applyColouring(); }
+    updateCellsButton();
   }
 });
 
