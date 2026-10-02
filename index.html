@@ -193,10 +193,13 @@
   #gene-menu a { font: 12px var(--mono); color: var(--ink); text-decoration: none; padding: 6px 8px; border-radius: 4px; }
   #gene-menu a:hover { background: rgba(255, 255, 255, 0.12); }
   #gene-menu .gm-hpa { max-width: 240px; padding: 6px 8px 4px; font: 11px var(--sans); color: var(--ink); border-top: 1px solid var(--edge); margin-top: 4px; }
-  #hpa-view { position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: var(--void); cursor: pointer; font: 12px var(--sans); color: var(--ink); text-align: center; padding: 16px; box-sizing: border-box; }
-  #hpa-view[hidden] { display: none; }
-  #hpa-view img { max-width: min(92%, 640px); max-height: 72%; object-fit: contain; border-radius: 4px; }
-  #hpa-view .gm-credit { color: var(--muted); font-size: 10px; }
+  #sub-dialog { width: min(1200px, calc(100vw - 16px)); height: calc(100dvh - 16px); max-height: none; }
+  #sub-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; overflow: auto; max-height: calc(100dvh - 90px); }
+  #sub-grid figure { margin: 0; font-size: 11px; }
+  #sub-grid figcaption { padding: 3px 0; }
+  #sub-grid figcaption b { font-size: 12px; }
+  #sub-grid .ph { aspect-ratio: 1; background: #22262b; border-radius: 3px; display: flex; align-items: center; justify-content: center; color: var(--muted); text-align: center; padding: 6px; box-sizing: border-box; }
+  #sub-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 3px; display: block; }
   #alias-tip {
     position: fixed; z-index: 8; pointer-events: none; font: 11.5px var(--sans); color: var(--ink);
     padding: 4px 9px; border-radius: 6px; background: rgba(46, 51, 58, 0.95); border: 1px solid var(--edge); white-space: nowrap;
@@ -347,11 +350,11 @@
     border-radius: 4px; color: var(--ink); background: var(--sheet); overflow-y: auto;
   }
   #legal-dialog::backdrop { background: rgba(20, 28, 38, 0.3); }
-  #sc-dialog {
+  #sc-dialog, #sub-dialog {
     width: min(980px, calc(100vw - 16px)); max-height: calc(100dvh - 16px); box-sizing: border-box; padding: 0;
     border-radius: 4px; color: var(--ink); background: #3a3f46; border: 1px solid #555; overflow: auto;
   }
-  #sc-dialog::backdrop { background: rgba(20, 28, 38, 0.3); }
+  #sub-dialog::backdrop, #sc-dialog::backdrop { background: rgba(20, 28, 38, 0.3); }
   .sc-form { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 14px 16px; }
   .sc-head { display: flex; align-items: center; gap: 10px; }
   .sc-head h2 { margin: 0; font-size: 15px; font-weight: 600; flex: 1; }
@@ -638,7 +641,7 @@
 <section id="ribbon" class="glass" hidden aria-label="Expression z-score of every sample, one row per probe">
   <div class="ribbon-head">
     <input type="text" class="title gene-box" id="gene-input" role="combobox" aria-autocomplete="list" aria-expanded="false"
-           aria-controls="gene-suggestions" aria-label="Gene or probe" placeholder="Gene" autocomplete="off" spellcheck="false"><button type="button" class="corr-btn" id="corr-btn" disabled title="The 20 probes most correlated with the highlighted row">corr</button><button type="button" class="corr-btn" id="cells-btn" disabled title="Cell types expressing this gene in hippocampal and amygdala subregions (single-nucleus RNA-seq, Siletti et al. 2023)">cells</button><span class="probe zval" id="ribbon-probe" hidden></span>
+           aria-controls="gene-suggestions" aria-label="Gene or probe" placeholder="Gene" autocomplete="off" spellcheck="false"><button type="button" class="corr-btn" id="corr-btn" disabled title="The 20 probes most correlated with the highlighted row">corr</button><button type="button" class="corr-btn" id="cells-btn" disabled title="Cell types expressing this gene in hippocampal and amygdala subregions (single-nucleus RNA-seq, Siletti et al. 2023)">cells</button><button type="button" class="corr-btn" id="sub-btn" title="Subcellular location images (Human Protein Atlas) of every gene in the ribbon">S</button><span class="probe zval" id="ribbon-probe" hidden></span>
     <label class="zsym" title="Colour range: z from minus to plus this value">z
       <input type="range" id="z-sym" min="0.5" max="6" step="0.1" value="2" aria-label="Colour range, z"><span id="z-sym-val" class="rm-value">±2.0</span></label>
     <div class="rb-tools">
@@ -684,6 +687,12 @@
     <p class="sub sc-cite">Single-nucleus RNA-seq of adult human brain: Siletti K. et al. (2023) Transcriptomic diversity of cell types across the adult human brain. <i>Science</i> 382, eadd7046 (CC BY 4.0), via CELLxGENE Census. Rows are dissections, columns Siletti's superclusters; groups under 30 nuclei are left out.</p>
   </form>
 </dialog>
+<dialog id="sub-dialog" class="sc-like" aria-labelledby="sub-title">
+  <form method="dialog" class="sc-form">
+    <div class="sc-head"><h2 id="sub-title">Subcellular location</h2><button class="corr-btn" value="close">close</button></div>
+    <div id="sub-grid"></div>
+  </form>
+</dialog>
 <dialog id="legal-dialog" class="glass" aria-labelledby="legal-title">
   <form method="dialog" class="legal">
     <h2 id="legal-title">Data sources and attribution</h2>
@@ -691,6 +700,7 @@
     <p class="cite">Hawrylycz MJ, Lein ES, Guillozet-Bongaarts AL, et al. (2012). An anatomically comprehensive atlas of the adult human transcriptome. <i>Nature</i>, 489, 391–399. <a href="https://doi.org/10.1038/nature11405" target="_blank" rel="noopener">doi:10.1038/nature11405</a></p>
     <p class="cite">© 2010 Allen Institute for Brain Science. Allen Human Brain Atlas. Available from: <a href="https://human.brain-map.org/" target="_blank" rel="noopener">human.brain-map.org</a></p>
     <p class="cite">Single-nucleus cell types (the "cells" view): Siletti K, et al. Transcriptomic diversity of cell types across the adult human brain. <i>Science</i> 382, eadd7046 (2023). Data: Human Brain Cell Atlas v1.0 via CELLxGENE Census (release 2025-01-30), CC BY 4.0; aggregated here per dissection and supercluster.</p>
+    <p class="cite">Subcellular location images and annotations (the gene menu and the "S" view) are retrieved live from the Human Protein Atlas, <a href="https://www.proteinatlas.org/" target="_blank" rel="noopener">proteinatlas.org</a> (Thul PJ, et al. A subcellular map of the human proteome. <i>Science</i> 356, eaal3321 (2017)), licensed CC BY-SA 4.0.</p>
     <p>The original data are provided by the Allen Institute for Brain Science. This website does not own the underlying Allen Institute data and does not host or redistribute the expression files: they are downloaded from the Allen Institute by the visitor and processed only in the visitor's browser. Expression values shown here may have been processed, reformatted, aggregated or visualised.</p>
     <p>Use of Allen Institute content is subject to the Allen Institute <a href="https://alleninstitute.org/terms-of-use/" target="_blank" rel="noopener">Terms of Use</a> and <a href="https://alleninstitute.org/citation-policy/" target="_blank" rel="noopener">Citation Policy</a>. The Allen Institute and Allen Human Brain Atlas names, trademarks and logos remain the property of the Allen Institute or their respective owners. This website is not affiliated with or endorsed by the Allen Institute.</p>
     <h3>Other sources</h3>
@@ -2995,19 +3005,43 @@ async function showSubcellular(symbol) {
   if (!box?.isConnected) return;
   if (!d || !d.main.length) { box.textContent = "Subcellular location: no data in the Protein Atlas."; return; }
   const where = `${d.main.join(", ")}${d.extra.length ? ` (also ${d.extra.join(", ")})` : ""}${d.reliability ? ` · ${d.reliability}` : ""}`;
-  box.textContent = `Subcellular location: ${where}${d.image ? " (image shown over the 3D view)" : ""}`;
-  if (!d.image) return;
-  // The immunofluorescence image covers the 3D viewport until it is clicked
-  const img = Object.assign(document.createElement("img"), { src: d.image, alt: `${symbol} immunofluorescence` });
-  img.addEventListener("error", () => img.remove());
-  hpaView.replaceChildren(img,
-    Object.assign(document.createElement("div"), { textContent: `${symbol}: ${where}` }),
-    Object.assign(document.createElement("div"), { className: "gm-credit", textContent: "Human Protein Atlas (proteinatlas.org), CC BY-SA 4.0 · click to return to the brain" }));
-  hpaView.hidden = false;
+  box.textContent = `Subcellular location: ${where}`;
 }
-const hpaView = Object.assign(document.createElement("div"), { id: "hpa-view", hidden: true });
-stage.append(hpaView);
-hpaView.addEventListener("click", () => (hpaView.hidden = true));
+function hpaWhere(d) { return `${d.main.join(", ")}${d.extra.length ? ` (also ${d.extra.join(", ")})` : ""}${d.reliability ? ` · ${d.reliability}` : ""}`; }
+
+// "S": every gene in the ribbon, its Protein Atlas immunofluorescence image in a grid
+async function openSubcellularGrid() {
+  const syms = [...new Set((ribbon.rows ?? []).map(r => symbolOf(r.id)).filter(Boolean))];
+  const grid = $e("sub-grid");
+  $e("sub-title").textContent = `Subcellular location · ${syms.length} gene${syms.length === 1 ? "" : "s"} (Human Protein Atlas)`;
+  const cells = syms.map(sym => {
+    const ph = Object.assign(document.createElement("div"), { className: "ph", textContent: "looking up…" });
+    const cap = document.createElement("figcaption");
+    cap.append(Object.assign(document.createElement("b"), { textContent: sym }));
+    const fig = document.createElement("figure"); fig.append(ph, cap);
+    return { sym, fig, ph, cap };
+  });
+  grid.replaceChildren(...cells.map(c => c.fig));
+  if (!$e("sub-dialog").open) $e("sub-dialog").showModal();
+  let next = 0;
+  const worker = async () => {
+    while (next < cells.length && $e("sub-dialog").open) {
+      const c = cells[next++];
+      let d;
+      try { d = await hpaSubcellular(c.sym); } catch { c.ph.textContent = "not available from this page"; continue; }
+      if (!d || !d.main.length) { c.ph.textContent = "no data"; continue; }
+      c.cap.append(Object.assign(document.createElement("div"), { textContent: hpaWhere(d) }));
+      if (!d.image) { c.ph.textContent = "no image"; continue; }
+      const a = Object.assign(document.createElement("a"), { href: `https://www.proteinatlas.org/search/${encodeURIComponent(c.sym)}`, target: "_blank", rel: "noopener" });
+      const img = Object.assign(document.createElement("img"), { src: d.image, alt: `${c.sym} immunofluorescence`, loading: "lazy" });
+      img.addEventListener("error", () => { a.replaceWith(c.ph); c.ph.textContent = "image failed"; });
+      a.append(img); c.ph.replaceWith(a);
+    }
+  };
+  await Promise.all(Array.from({ length: 4 }, worker));
+}
+$e("sub-btn").addEventListener("click", openSubcellularGrid);
+$e("sub-dialog").addEventListener("click", e => { if (e.target === $e("sub-dialog")) $e("sub-dialog").close(); });
 document.addEventListener("pointerdown", e => { if (!geneMenu.hidden && !geneMenu.contains(e.target) && !e.target.closest?.(".rgene")) geneMenu.hidden = true; });
 geneMenu.addEventListener("click", e => { if (e.target.closest("a")) geneMenu.hidden = true; });
 addEventListener("keydown", e => { if (e.key === "Escape") geneMenu.hidden = true; });
