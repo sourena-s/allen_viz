@@ -3456,8 +3456,8 @@ function drawRegionHeatmap(data, g) {
   scLegend(gmax);
 }
 
-// Detailed: one row per Siletti cluster, grouped by supercluster and sorted by the share of its
-// nuclei expressing the gene. Columns: the 21 dissections (grey squares: where the cluster's
+// Detailed: one row per Siletti cluster, sorted by the share of its nuclei expressing the gene
+// (its supercluster named beside it). Columns: the 21 dissections (grey squares: where the cluster's
 // nuclei were dissected, sized against its main dissection), then the gene. Clicking the column
 // labels switches between head/body/tail order and CA-field order (like fields side by side).
 const CA_ORDER = [[0, 5, 9], [6, 1], [2, 7, 10], [8, 3], [4], [11, 12, 13], [14, 15, 16, 17, 18, 19, 20]];
@@ -3474,25 +3474,21 @@ function drawClusterHeatmap(data, g) {
   const cols = order.map(d => ({ label: scView.caOrder ? `${data.labels[d]} · ${part(d)}` : `${part(d)} · ${data.labels[d]}`, gap: gaps.has(d) ? 6 : 0 }));
   cols.push({ label: g.name, gap: 12 });
   const geneCol = cols.length - 1;
-  const groups = new Map();
-  data.clusters.forEach((c, k) => (groups.get(c.sc) ?? groups.set(c.sc, []).get(c.sc)).push(k));
-  for (const ks of groups.values()) ks.sort((a, b) => row[nC + b] - row[nC + a] || row[b] - row[a]);
+  // All clusters in one list, highest share of nuclei expressing the gene first
+  const ks = data.clusters.map((_, k) => k).sort((a, b) => row[nC + b] - row[nC + a] || row[b] - row[a]);
   const lines = [], cells = [];
-  for (const [sc, ks] of groups) {
-    lines.push({ sec: withTag(sc, scTag(sc)) });
-    for (const k of ks) {
-      const c = data.clusters[k], frac = row[nC + k] / 255, mean = row[k] / 255 * gmax;
-      const li = lines.push({ label: withTag(c.name, ntTag(c.nt)), sub: c.markers.map(m => `${m}+`).join(" "), right: `${Math.round(frac * 100)}% · n ${c.n.toLocaleString()}` }) - 1;
-      const wmax = Math.max(...c.where);
-      order.forEach((d, ci) => {
-        const w = c.where[d];
-        if (w) cells.push({ li, ci, size: w / wmax, fill: `rgba(255,255,255,${(0.35 + 0.65 * w / wmax).toFixed(2)})`, tip: `${c.name}: ${Math.round(w / 2.55)}% of its nuclei from ${data.sections[d]} · ${data.labels[d]}` });
-      });
-      cells.push({ li, ci: geneCol, size: frac, fill: scColour(row[k]),
-        tip: `${c.name} (${c.sc}${c.nt ? `, ${c.nt}` : ""}${c.mtg ? `, like cortical ${c.mtg}` : ""})\nMarkers: ${c.markers.join(", ") || "–"}\n${g.name}: ${(frac * 100).toFixed(0)}% of ${c.n.toLocaleString()} nuclei, mean ${mean.toFixed(2)}` });
-    }
+  for (const k of ks) {
+    const c = data.clusters[k], frac = row[nC + k] / 255, mean = row[k] / 255 * gmax;
+    const li = lines.push({ label: withTag(c.name, ntTag(c.nt)), sub: `${c.sc} · ${c.markers.map(m => `${m}+`).join(" ")}`, right: `${Math.round(frac * 100)}% · n ${c.n.toLocaleString()}` }) - 1;
+    const wmax = Math.max(...c.where);
+    order.forEach((d, ci) => {
+      const w = c.where[d];
+      if (w) cells.push({ li, ci, size: w / wmax, fill: `rgba(255,255,255,${(0.35 + 0.65 * w / wmax).toFixed(2)})`, tip: `${c.name}: ${Math.round(w / 2.55)}% of its nuclei from ${data.sections[d]} · ${data.labels[d]}` });
+    });
+    cells.push({ li, ci: geneCol, size: frac, fill: scColour(row[k]),
+      tip: `${c.name} (${c.sc}${c.nt ? `, ${c.nt}` : ""}${c.mtg ? `, like cortical ${c.mtg}` : ""})\nMarkers: ${c.markers.join(", ") || "–"}\n${g.name}: ${(frac * 100).toFixed(0)}% of ${c.n.toLocaleString()} nuclei, mean ${mean.toFixed(2)}` });
   }
-  drawGrid({ cols, lines, cells, labelW: 340, cw: 14, rh: 17, top: 205,
+  drawGrid({ cols, lines, cells, labelW: 470, cw: 14, rh: 17, top: 205,
     onColLabels: () => { scView.caOrder = !scView.caOrder; scView.sel = null; renderCellTypes(); },
     colTitle: "Click to switch between head/body/tail order and CA-field order" });
   scLegend(gmax);
