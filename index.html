@@ -3416,8 +3416,7 @@ async function showCellTypes() {
   if (!gR) return;
   const g = gC?.i >= 0 ? gC : gR;
   $e("sc-title").textContent = "";   // the gene is named in the column labels
-  // The Allen colour range starts at the ribbon's
-  if (!scView.zr) setScZr(Math.max(Math.abs(zRange[0]), Math.abs(zRange[1])), false);
+  scView.zrManual = false;   // the Allen colour range follows the plotted values until the slider is moved
   Object.assign(scView, { region, clusters, gR, gC, g, detailed, sel: null, token: (scView.token ?? 0) + 1 });
   if (gR.i < 0 && !(gC?.i >= 0)) {
     $e("sc-sub").textContent = `${g.name} is not detected in this single-nucleus dataset.`;
@@ -3546,6 +3545,13 @@ async function renderCellTypes() {
   }
   // Two groups of rows, each with its own colour range and bar scale (its own maximum):
   // "by markers" (subfields, classes, clusters) and "by dissection"
+  // Allen colour range: the largest |z| among the Allen values shown (unless set with the slider)
+  if (!scView.zrManual) {
+    const shown = new Set(rows.map(r => r.grp).filter(Boolean));
+    const zs = [...groupAllen].filter(([k]) => shown.has(k)).flatMap(([, a]) => (detailed ? a.vals ?? [] : a.z != null ? [a.z] : []))
+      .concat(rows.filter(r => r.allen && !detailed).map(r => r.allen.z));
+    if (zs.length) setScZr(Math.max(...zs.map(Math.abs)), false);
+  }
   const secMax = [], secMaxN = [];
   for (const r of rows) if (r.n) { r.secI = r.dis ? 1 : 0; secMax[r.secI] = Math.max(secMax[r.secI] ?? 1e-6, r.mean); secMaxN[r.secI] = Math.max(secMaxN[r.secI] ?? 1, r.n); }
   const top = Math.max(1e-6, ...secMax);
@@ -3795,7 +3801,7 @@ function setScZr(v, redraw = true) {
   $e("sc-zr").value = scView.zr; $e("sc-zr-val").textContent = `±${scView.zr.toFixed(1)}`;
   if (redraw && scView.region) { if (setScZr.frame) return; setScZr.frame = requestAnimationFrame(() => { setScZr.frame = 0; renderCellTypes(); }); }
 }
-$e("sc-zr").addEventListener("input", e => setScZr(+e.target.value));
+$e("sc-zr").addEventListener("input", e => { scView.zrManual = true; setScZr(+e.target.value); });
 $e("sc-max").addEventListener("click", () => $e("sc-max").setAttribute("aria-pressed", $e("sc-dialog").classList.toggle("max")));
 $e("sc-dialog").addEventListener("close", () => ($e("sc-tip").hidden = true));
 $e("sc-zoom-out").addEventListener("click", () => setScZoom(scView.zoom / 1.25));
