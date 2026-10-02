@@ -3579,7 +3579,7 @@ async function renderCellTypes() {
     if (detailed && r.markers) cells.push({ li, ci: 3, label: r.markers });
   }
   $e("sc-sub").textContent = `${detailed ? "Siletti clusters, grouped by subfield (canonical markers) or cell class, sorted by share expressing" : "Hippocampal subfields by canonical markers (CA1: FIBCD1/FNDC1; CA2: PCP4; DG: PROX1), other cell classes per region"}, then each dissection (all its nuclei; dissections mix neighbouring fields). The subiculum has no cluster or canonical marker of its own in these data (its nuclei fall into CA1-type clusters), so it appears only as a dissection row. Colour: mean expression of ${scView.g.name}, log1p(counts per 10k), scaled separately for the by-markers rows and the by-dissection rows (each to its own maximum; bars likewise); all squares the same size. Bars: nuclei (grey, linear) and those expressing the gene (green).${detailed ? " Allen: the probe highlighted in the ribbon, every sample of the Allen structures matching each subfield, class or dissection (the ribbon turned on its side, its colours), from your loaded donors." : " Allen: mean z of the probe highlighted in the ribbon in each marker subfield's Allen structures, in the ribbon's colours."}${detailed ? " Hover a cluster for where it was dissected." : ""} (Ex) excitatory, (In) inhibitory.`;
-  drawGrid({ cols: [{ label: `${scView.g.name} (Siletti snRNA-seq: mean log(1 + count per 10k))` }, { label: `${scView.g.name} (Allen expression z-score)`, gap: 6 }, { label: "Nuclei count (% expressing)", w: 190, gap: 10, plain: true },
+  drawGrid({ cols: [{ label: `${scView.g.name} snRNA-seq expression (Siletti, mean log(1 + normalised count))` }, { label: `${scView.g.name} (Allen expression z-score)`, gap: 6 }, { label: "Nuclei count (% expressing)", w: 190, gap: 10, plain: true },
       ...(detailed ? [{ label: "Markers ([canonical] then cluster-specific)", w: 360, gap: 8, plain: true }] : [])],
     lines, cells, labelW: Math.max(150, ...lines.filter(l => l.label).map(l => 18 + l.label.length * 6.4 + (l.sub ? 6 + l.sub.length * 5.6 : 0))), cw: 22, rh: detailed ? 17 : 20, flatLabels: true });
   $e("sc-legend").replaceChildren();   // square size carries nothing (the bars give the nuclei count)
@@ -3721,7 +3721,8 @@ function drawGrid(spec) {
     if (scView.pinched) return;
     const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(svg.getScreenCTM().inverse());
     if (pt.y < top) return;
-    const li = Math.floor((pt.y - top) / rh), ci = xs.findIndex((x0, i) => pt.x >= x0 && pt.x < x0 + ws[i]);
+    // A click on the row labels selects the row too (as its first column)
+    const li = Math.floor((pt.y - top) / rh), ci = pt.x < xs[0] ? 0 : xs.findIndex((x0, i) => pt.x >= x0 && pt.x < x0 + ws[i]);
     if (li < 0 || li >= lines.length || lines[li].sec || ci < 0) { select(null); return; }
     if (scView.sel?.li === li && scView.sel?.ci === ci) select(null); else select(li, ci);
   });
