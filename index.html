@@ -675,7 +675,7 @@
   <div id="sc-tip" hidden></div>
   <form method="dialog" class="sc-form">
     <div class="sc-head"><h2 id="sc-title" hidden></h2>
-      <div class="row sc-toggle sc-detail-row"><input type="checkbox" id="sc-detail"><label for="sc-detail">Detailed (Siletti clusters)</label></div>
+      <div class="row sc-toggle sc-detail-row"><input type="checkbox" id="sc-detail"><label for="sc-detail">Detailed (Siletti clusters)</label><input type="checkbox" id="sc-coexp"><label for="sc-coexp" title="The 20 genes whose mean expression across the hippocampal, parahippocampal and amygdala clusters correlates best with this gene">co-expressed</label></div>
 
       <button class="rb-btn sc-zb" type="button" id="sc-zoom-out" aria-label="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
       <button class="rb-btn sc-zb" type="button" id="sc-zoom-in" aria-label="Zoom in"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button>
@@ -3597,6 +3597,45 @@ function markerField(c) {
 //          parahippocampal gyrus and amygdala, then one row per dissection (all its nuclei)
 //   Detailed: every Siletti cluster, grouped by marker subfield or class and sorted by share
 //          expressing, then the same dissection rows. A cluster's tooltip lists its dissections.
+// Co-expression in the detailed view: Pearson r between the gene's mean expression per cluster
+// and every other gene's, over clusters with at least 50 nuclei from the hippocampal formation,
+// parahippocampal gyrus and amygdala dissections (the bed nucleus, BNST, left out). Means are
+// stored per gene as bytes of its maximum; r does not depend on that scale. Unnamed (Ensembl-only)
+// genes and genes in fewer than 10% of the nuclei of every cluster are skipped.
+function coExpressed(clusters, gi, top = 20) {
+  const key = `${gi}`;
+  if (coExpressed.key === key) return coExpressed.out;
+  const nC = clusters.clusters.length, BNST = clusters.labels.indexOf("Bed nucleus (BNST)");
+  const ks = clusters.clusters.map((c, k) => {
+    const tot = c.where.reduce((a, v) => a + v, 0) || 1;
+    return c.n * (1 - (BNST >= 0 ? c.where[BNST] / tot : 0)) >= 50 ? k : -1;
+  }).filter(k => k >= 0);
+  const m = ks.length, body = clusters.body;
+  const stats = i => {
+    const off = i * nC * 2; let sx = 0, sxx = 0;
+    for (const k of ks) { const v = body[off + k]; sx += v; sxx += v * v; }
+    return { off, mean: sx / m, sd: Math.sqrt(Math.max(0, sxx / m - (sx / m) ** 2)) };
+  };
+  const a = stats(gi);
+  if (!a.sd) return (coExpressed.key = key, coExpressed.out = { ks, list: [] }).out;
+  const ax = new Float32Array(m); ks.forEach((k, j) => (ax[j] = (body[a.off + k] - a.mean) / a.sd));
+  const best = [];
+  for (let i = 0; i < clusters.genes.length; i++) {
+    if (i === gi || clusters.genes[i].startsWith("ENSG")) continue;   // named genes only
+    const off = i * nC * 2; let sx = 0, sxx = 0, sxy = 0, fmax = 0;
+    for (const k of ks) if (body[off + nC + k] > fmax) fmax = body[off + nC + k];
+    if (fmax < 26) continue;   // detected (any count) in at least 10% of the nuclei of some cluster
+    for (let j = 0; j < m; j++) { const v = body[off + ks[j]]; sx += v; sxx += v * v; sxy += v * ax[j]; }
+    const sd = Math.sqrt(Math.max(0, sxx / m - (sx / m) ** 2));
+    if (!sd) continue;
+    const rr = sxy / m / sd;
+    if (best.length < top || rr > best[best.length - 1].r) {
+      best.push({ i, r: rr }); best.sort((p, q) => q.r - p.r); if (best.length > top) best.pop();
+    }
+  }
+  coExpressed.key = key;
+  return (coExpressed.out = { ks, list: best });
+}
 async function renderCellTypes() {
   const { region, clusters, gR, gC, detailed } = scView, token = scView.token;
   const rows = [];   // { sec, color } | { label, sub, bar, n, mean, frac, tip }
@@ -3669,7 +3708,7 @@ async function renderCellTypes() {
         const where = c.where.map((w, d) => [w, d]).filter(([w]) => w).sort((a, b) => b[0] - a[0]).slice(0, 5).map(([w, d]) => {
           return `  ${data_label(d)} ${Math.round(w / 2.55)}% of nuclei`;
         }).join("\n");
-        rows.push({ label: withTag(c.name, ntTag(c.nt)), sub: c.sc, markers: `${canon}${c.markers.map(m => `${m}+`).join(" ")}`, bar: gr.color, ...v, grp: gr.name,
+        rows.push({ k, label: withTag(c.name, ntTag(c.nt)), sub: c.sc, markers: `${canon}${c.markers.map(m => `${m}+`).join(" ")}`, bar: gr.color, ...v, grp: gr.name,
           tip: `${c.name} (${c.sc}${c.nt ? `, ${c.nt}` : ""}${c.mtg ? `, like cortical ${c.mtg}` : ""})\nMarkers: ${c.markers.join(", ") || "–"}\nWhere dissected:\n${where}` });
       }
     }
@@ -3696,6 +3735,9 @@ async function renderCellTypes() {
   const top = Math.max(1e-6, ...secMax);
   const probe = chosenProbes()[0], probeLabel = probe ? (expr.probeName.get(probe) ?? probe) : "";
 
+  const co = detailed && $e("sc-coexp").checked && gC?.i >= 0 ? coExpressed(clusters, gC.i) : null;
+  const coIn = co ? new Set(co.ks) : null;
+  const coMax = co ? co.list.map(({ i }) => Math.max(1, ...co.ks.map(k => clusters.body[i * nC * 2 + k]))) : [];
   let lastGrp = null;
   const lines = [], cells = [];
   for (const r of rows) {
@@ -3716,10 +3758,17 @@ async function renderCellTypes() {
     cells.push({ li, ci: nc, bar: r.n / mN, fill: "rgba(255,255,255,0.35)", bar2: r.n * r.frac / mN, fill2: "#3cb371",
       text: `${r.n.toLocaleString()} (${Math.round(r.frac * 100)}%)`, tip: `${r.n.toLocaleString()} nuclei, ${Math.round(r.n * r.frac).toLocaleString()} (${(r.frac * 100).toFixed(1)}%) expressing ${scView.g.name}` });
     if (detailed && r.markers) cells.push({ li, ci: 3, label: r.markers });
+    // Co-expressed genes: each column on its own scale (its maximum over the clusters used)
+    if (co && r.k != null && coIn.has(r.k)) co.list.forEach(({ i, r: rr }, j) => {
+      const b = clusters.body[i * nC * 2 + r.k], f = clusters.body[i * nC * 2 + nC + r.k];
+      cells.push({ li, ci: 4 + j, size: 0.85, fill: scColour(Math.round(b / coMax[j] * 255)),
+        tip: `${clusters.genes[i]} (r = ${rr.toFixed(2)} with ${scView.g.name})\n${r.label}: mean ${(b / 255 * clusters.max[i]).toFixed(2)}, ${Math.round(f / 2.55)}% of nuclei with any count` });
+    });
   }
   $e("sc-sub").textContent = `${detailed ? "Siletti clusters, grouped by subfield (canonical markers) or cell class, sorted by share expressing" : "Hippocampal subfields by canonical markers (CA1: FIBCD1/FNDC1; CA2: PCP4; DG: PROX1), other cell classes per region"}, then each dissection (all its nuclei; dissections mix neighbouring fields). The subiculum has no cluster or canonical marker of its own in these data (its nuclei fall into CA1-type clusters), so it appears only as a dissection row. Colour: mean expression of ${scView.g.name}, log1p(counts per 10k), scaled separately for the by-markers rows and the by-dissection rows (each to its own maximum; bars likewise); all squares the same size. Bars: nuclei (grey, linear) and those expressing the gene (green).${detailed ? " Allen: the probe highlighted in the ribbon, every sample of the Allen structures matching each subfield, class or dissection (the ribbon turned on its side, its colours), from your loaded donors." : " Allen: mean z of the probe highlighted in the ribbon in each marker subfield's Allen structures, in the ribbon's colours."}${detailed ? " Hover a cluster for where it was dissected." : ""} (Ex) excitatory, (In) inhibitory.`;
   drawGrid({ cols: [{ label: `${scView.g.name} snRNA-seq expression (Siletti, mean log(1 + normalised count))` }, { label: `${scView.g.name} (Allen expression z-score)`, gap: 6 }, { label: "Nuclei count (% expressing)", w: 190, gap: 10, plain: true },
-      ...(detailed ? [{ label: "Markers ([canonical] then cluster-specific)", w: 360, gap: 8, plain: true }] : [])],
+      ...(detailed ? [{ label: "Markers ([canonical] then cluster-specific)", w: 360, gap: 8, plain: true }] : []),
+      ...(co ? co.list.map(({ i, r: rr }, j) => ({ label: `${clusters.genes[i]} (co-expressed, r ${rr.toFixed(2)})`, gap: j ? 0 : 8 })) : [])],
     lines, cells, labelW: Math.max(150, ...lines.filter(l => l.label).map(l => 18 + l.label.length * 6.4 + (l.sub ? 6 + l.sub.length * 5.6 : 0))), cw: 22, rh: detailed ? 17 : 20, flatLabels: true });
   $e("sc-legend").replaceChildren();   // square size carries nothing (the bars give the nuclei count)
 }
@@ -3937,6 +3986,7 @@ $e("sc-max").addEventListener("click", () => $e("sc-max").setAttribute("aria-pre
 $e("sc-dialog").addEventListener("close", () => ($e("sc-tip").hidden = true));
 $e("sc-zoom-out").addEventListener("click", () => setScZoom(scView.zoom / 1.25));
 $e("sc-detail").addEventListener("change", () => showCellTypes());
+$e("sc-coexp").addEventListener("change", () => { if ($e("sc-coexp").checked && !$e("sc-detail").checked) $e("sc-detail").checked = true; showCellTypes(); });
 $e("cells-btn").addEventListener("click", showCellTypes);
 $e("sc-dialog").addEventListener("click", e => { if (e.target === $e("sc-dialog")) $e("sc-dialog").close(); });
 
