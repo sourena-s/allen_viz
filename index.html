@@ -193,8 +193,10 @@
   #gene-menu a { font: 12px var(--mono); color: var(--ink); text-decoration: none; padding: 6px 8px; border-radius: 4px; }
   #gene-menu a:hover { background: rgba(255, 255, 255, 0.12); }
   #gene-menu .gm-hpa { max-width: 240px; padding: 6px 8px 4px; font: 11px var(--sans); color: var(--ink); border-top: 1px solid var(--edge); margin-top: 4px; }
-  #gene-menu .gm-hpa img { display: block; width: 200px; height: auto; border-radius: 3px; margin-bottom: 5px; }
-  #gene-menu .gm-credit { color: var(--muted); font-size: 10px; margin-top: 3px; }
+  #hpa-view { position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: var(--void); cursor: pointer; font: 12px var(--sans); color: var(--ink); text-align: center; padding: 16px; box-sizing: border-box; }
+  #hpa-view[hidden] { display: none; }
+  #hpa-view img { max-width: min(92%, 640px); max-height: 72%; object-fit: contain; border-radius: 4px; }
+  #hpa-view .gm-credit { color: var(--muted); font-size: 10px; }
   #alias-tip {
     position: fixed; z-index: 8; pointer-events: none; font: 11.5px var(--sans); color: var(--ink);
     padding: 4px 9px; border-radius: 6px; background: rgba(46, 51, 58, 0.95); border: 1px solid var(--edge); white-space: nowrap;
@@ -2992,15 +2994,20 @@ async function showSubcellular(symbol) {
   catch { if (box?.isConnected) box.textContent = "Subcellular location: not available from this page (open the Protein Atlas link)."; return; }
   if (!box?.isConnected) return;
   if (!d || !d.main.length) { box.textContent = "Subcellular location: no data in the Protein Atlas."; return; }
-  box.replaceChildren();
-  if (d.image) {
-    const img = Object.assign(document.createElement("img"), { src: d.image, alt: `${symbol} immunofluorescence`, loading: "lazy" });
-    img.addEventListener("error", () => img.remove());
-    box.append(img);
-  }
-  box.append(Object.assign(document.createElement("div"), { textContent: `${d.main.join(", ")}${d.extra.length ? ` (also ${d.extra.join(", ")})` : ""}${d.reliability ? ` · ${d.reliability}` : ""}` }),
-    Object.assign(document.createElement("div"), { className: "gm-credit", textContent: "Human Protein Atlas (proteinatlas.org), CC BY-SA 4.0" }));
+  const where = `${d.main.join(", ")}${d.extra.length ? ` (also ${d.extra.join(", ")})` : ""}${d.reliability ? ` · ${d.reliability}` : ""}`;
+  box.textContent = `Subcellular location: ${where}${d.image ? " (image shown over the 3D view)" : ""}`;
+  if (!d.image) return;
+  // The immunofluorescence image covers the 3D viewport until it is clicked
+  const img = Object.assign(document.createElement("img"), { src: d.image, alt: `${symbol} immunofluorescence` });
+  img.addEventListener("error", () => img.remove());
+  hpaView.replaceChildren(img,
+    Object.assign(document.createElement("div"), { textContent: `${symbol}: ${where}` }),
+    Object.assign(document.createElement("div"), { className: "gm-credit", textContent: "Human Protein Atlas (proteinatlas.org), CC BY-SA 4.0 · click to return to the brain" }));
+  hpaView.hidden = false;
 }
+const hpaView = Object.assign(document.createElement("div"), { id: "hpa-view", hidden: true });
+stage.append(hpaView);
+hpaView.addEventListener("click", () => (hpaView.hidden = true));
 document.addEventListener("pointerdown", e => { if (!geneMenu.hidden && !geneMenu.contains(e.target) && !e.target.closest?.(".rgene")) geneMenu.hidden = true; });
 geneMenu.addEventListener("click", e => { if (e.target.closest("a")) geneMenu.hidden = true; });
 addEventListener("keydown", e => { if (e.key === "Escape") geneMenu.hidden = true; });
