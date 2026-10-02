@@ -86,9 +86,10 @@
   html body.phone .view-corner button { padding: 7px 0; font-size: 12px; }
   body.phone .view-corner { grid-template-columns: repeat(6, 30px); top: calc(var(--sy) + var(--ss) - 38px); }
   html body .ribbon-head input.gene-box { padding: 1px 6px; }
-  body.phone .ribbon-head input.gene-box { width: 6ch; min-width: 0; font-size: 16px; }
+  body.phone .ribbon-head input.gene-box { width: auto; flex: 1 1 0; min-width: 7ch; font-size: 16px; }   /* takes the room left in the row */
   body.phone .ribbon-head { flex-wrap: nowrap; gap: 6px; }
-  body.phone .ribbon-head .zsym input[type=range] { width: 64px; min-width: 0; }
+  body.phone .ribbon-head .zsym input[type=range] { width: 52px; min-width: 0; }
+  body.phone .ribbon-head .corr-btn { padding-left: 5px; padding-right: 5px; }
   body.phone.panel-open .view-corner, html body.ribbon-full .view-corner { display: none; }
   .views button, .text-button, .file-button {
     font: 500 12px var(--sans); color: var(--ink); background: var(--field);
