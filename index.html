@@ -349,6 +349,8 @@
   .sc-form { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 14px 16px; }
   .sc-head { display: flex; align-items: center; gap: 10px; }
   .sc-head h2 { margin: 0; font-size: 15px; font-weight: 600; flex: 1; }
+  .sc-toggle { flex: none; font-size: 12px; }
+  #sc-plot .mk { fill: var(--muted); }
   #sc-plot { overflow-x: auto; }
   #sc-plot svg { display: block; font: 10.5px var(--sans); }
   #sc-plot text { fill: var(--ink); }
@@ -637,7 +639,9 @@
 
 <dialog id="sc-dialog" class="glass" aria-labelledby="sc-title">
   <form method="dialog" class="sc-form">
-    <div class="sc-head"><h2 id="sc-title">Cell types</h2><button class="text-button" value="close">Close</button></div>
+    <div class="sc-head"><h2 id="sc-title">Cell types</h2>
+      <div class="row sc-toggle"><input type="checkbox" id="sc-detail"><label for="sc-detail">Detailed: Siletti clusters</label></div>
+      <button class="text-button" value="close">Close</button></div>
     <p class="sub" id="sc-sub"></p>
     <div id="sc-plot"></div>
     <div class="sc-legend" id="sc-legend"></div>
@@ -3299,11 +3303,11 @@ $e("corr-btn").addEventListener("click", findCorrelated);
 // scaled to the gene's maximum, and the fraction of nuclei with any count. "SILETTI1", uint32
 // header length, JSON header, padding to 8 bytes, then per gene: one byte per group of means,
 // then one byte per group of fractions.
-let scData = null;
-async function loadSingleCell() {
-  if (scData) return scData;
+const scCache = new Map();
+async function loadSingleCell(base = "assets/siletti_hipamy") {
+  if (scCache.has(base)) return scCache.get(base);
   let buf;
-  for (const name of ["assets/siletti_hipamy.bin.gz", "assets/siletti_hipamy.bin"]) {
+  for (const name of [`${base}.bin.gz`, `${base}.bin`]) {
     const res = await fetch(name).catch(() => null);
     if (res?.ok) { buf = new Uint8Array(await res.arrayBuffer()); break; }
   }
@@ -3314,7 +3318,8 @@ async function loadSingleCell() {
   const start = Math.ceil((12 + len) / 8) * 8;
   header.body = buf.subarray(start);
   header.geneIndex = new Map(header.genes.map((g, i) => [g.toUpperCase(), i]));
-  return (scData = header);
+  scCache.set(base, header);
+  return header;
 }
 // The gene of the highlighted row, as its current symbol where the Allen one is outdated
 function scGeneFor(data) {
@@ -3328,9 +3333,10 @@ function scGeneFor(data) {
 }
 function updateCellsButton() { $e("cells-btn").disabled = !(chosenProbes().length && symbolOf(chosenProbes()[0])); }
 async function showCellTypes() {
-  setBusy("Loading single-nucleus data…");
+  const detailed = $e("sc-detail").checked;
+  setBusy(detailed ? "Loading single-nucleus clusters…" : "Loading single-nucleus data…");
   let data;
-  try { data = await loadSingleCell(); await loadHgnc().catch(() => null); }
+  try { data = await loadSingleCell(detailed ? "assets/siletti_clusters" : "assets/siletti_hipamy"); await loadHgnc().catch(() => null); }
   catch (err) { setBusy(null); setExprStatus([`Single-nucleus data: ${err.message}`]); return; }
   setBusy(null);
   const g = scGeneFor(data);
@@ -3341,6 +3347,7 @@ async function showCellTypes() {
     $e("sc-plot").replaceChildren(); $e("sc-legend").replaceChildren();
     $e("sc-dialog").showModal(); return;
   }
+  if (detailed) { drawClusterTable(data, g); if (!$e("sc-dialog").open) $e("sc-dialog").showModal(); return; }
   const nG = data.groups.length, row = data.body.subarray(g.i * nG * 2, (g.i + 1) * nG * 2), gmax = data.max[g.i];
   $e("sc-sub").textContent = `Dot size: fraction of nuclei expressing ${g.name}; colour: mean expression, log1p(counts per 10k), up to ${gmax.toFixed(2)}${g.name !== g.allen ? ` (Allen symbol ${g.allen})` : ""}.`;
   // Columns: superclusters present; rows: dissections, in sections
@@ -3378,8 +3385,60 @@ async function showCellTypes() {
   const ramp = el("svg", { width: 160, height: 14 });
   for (let i = 0; i < 32; i++) ramp.append(el("rect", { x: i * 5, y: 2, width: 5, height: 10, fill: colour(i / 31 * 255) }));
   $e("sc-legend").replaceChildren(leg, Object.assign(document.createElement("span"), { textContent: "0" }), ramp, Object.assign(document.createElement("span"), { textContent: `${gmax.toFixed(2)} mean` }));
-  $e("sc-dialog").showModal();
+  if (!$e("sc-dialog").open) $e("sc-dialog").showModal();
 }
+// Shared by both views
+const scColour = q => { const t = q / 255; return `rgb(${Math.round(255 - t * 75)},${Math.round(240 - t * 215)},${Math.round(200 - t * 170)})`; };
+const svgEl = (tag, attrs, text) => {
+  const e = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text != null) e.textContent = text;
+  return e;
+};
+// Detailed view: one row per Siletti cluster (with at least 30 nuclei in these dissections),
+// grouped by supercluster and sorted by the share of its nuclei expressing the gene. Each row:
+// cluster name and its protein-coding markers (most specific against its sibling clusters),
+// where its nuclei come from (a strip over the 21 dissections, darker = more), and the gene's dot
+function drawClusterTable(data, g) {
+  const nC = data.clusters.length, row = data.body.subarray(g.i * nC * 2, (g.i + 1) * nC * 2), gmax = data.max[g.i];
+  $e("sc-sub").textContent = `Siletti clusters in the hippocampal, parahippocampal and amygdala dissections. Dot: share of the cluster's nuclei expressing ${g.name} (size) and its mean, log1p(counts per 10k), up to ${gmax.toFixed(2)} (colour). Strip: where the cluster's nuclei were dissected.`;
+  const groups = new Map();
+  data.clusters.forEach((c, k) => (groups.get(c.sc) ?? groups.set(c.sc, []).get(c.sc)).push(k));
+  for (const ks of groups.values()) ks.sort((a, b) => row[nC + b] - row[nC + a] || row[b] - row[a]);
+  const SQ = 13, nD = data.labels.length;
+  const secGap = d => (d && data.sections[d] !== data.sections[d - 1] ? 5 : 0);
+  const stripX = []; let sx = 0;
+  for (let d = 0; d < nD; d++) { sx += secGap(d); stripX.push(sx); sx += SQ; }
+  const NAMEW = 330, STRIP0 = NAMEW, DOTX = STRIP0 + sx + 22, RH = 17, TOP = 175, R = 7.5;
+  const lines = [];
+  for (const [sc, ks] of groups) { lines.push({ sec: sc }); for (const k of ks) lines.push({ k }); }
+  const W = DOTX + 130, H = TOP + lines.length * RH + 6;
+  const svg = svgEl("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}` });
+  // Strip column labels: the dissections, with their section's initial
+  data.labels.forEach((lab, d) => {
+    const x = STRIP0 + stripX[d] + SQ / 2, sec = data.sections[d].replace("Hippocampus · ", "Hipp ").replace("Parahippocampal gyrus", "PHG");
+    svg.append(svgEl("text", { class: "col", x, y: TOP - 6, transform: `rotate(-70 ${x} ${TOP - 6})` }, `${sec} · ${lab}`));
+  });
+  svg.append(svgEl("text", { class: "col", x: DOTX - 8, y: TOP - 6 }, g.name));
+  lines.forEach((ln, i) => {
+    const y = TOP + i * RH + RH / 2;
+    if (ln.sec) { svg.append(svgEl("text", { class: "sec", x: 2, y: y + 4 }, ln.sec)); return; }
+    const c = data.clusters[ln.k], frac = row[nC + ln.k] / 255, mean = row[ln.k] / 255 * gmax;
+    const t = svgEl("text", { x: 10, y: y + 4 });
+    t.append(svgEl("tspan", {}, c.name), svgEl("tspan", { class: "mk", dx: 6 }, c.markers.map(m => `${m}+`).join(" ")));
+    svg.append(t);
+    c.where.forEach((w, d) => { if (w) svg.append(svgEl("rect", { x: STRIP0 + stripX[d], y: y - SQ / 2, width: SQ - 1, height: SQ - 1, fill: `rgba(255,255,255,${(0.12 + 0.88 * w / 255).toFixed(2)})` })); });
+    const top3 = c.where.map((w, d) => [w, d]).sort((a, b) => b[0] - a[0]).slice(0, 3).filter(([w]) => w)
+      .map(([w, d]) => `${data.sections[d]} · ${data.labels[d]} ${Math.round(w / 2.55)}%`).join(", ");
+    const dot = svgEl("circle", { cx: DOTX, cy: y, r: Math.max(frac > 0 ? 1 : 0, Math.sqrt(frac) * R), fill: scColour(row[ln.k]), stroke: "rgba(0,0,0,0.25)", "stroke-width": 0.5 });
+    svg.append(dot, svgEl("text", { class: "mk", x: DOTX + 14, y: y + 4 }, `${Math.round(frac * 100)}% · n ${c.n.toLocaleString()}`));
+    const tip = `${c.name} (${c.sc}${c.nt ? `, ${c.nt}` : ""}${c.mtg ? `, like cortical ${c.mtg}` : ""})\nMarkers: ${c.markers.join(", ") || "–"}\nFrom: ${top3}\n${g.name}: ${(frac * 100).toFixed(0)}% of ${c.n.toLocaleString()} nuclei, mean ${mean.toFixed(2)}`;
+    for (const e of [t, dot]) e.append(svgEl("title", {}, tip));
+  });
+  $e("sc-plot").replaceChildren(svg);
+  $e("sc-legend").replaceChildren();
+}
+$e("sc-detail").addEventListener("change", () => showCellTypes());
 $e("cells-btn").addEventListener("click", showCellTypes);
 $e("sc-dialog").addEventListener("click", e => { if (e.target === $e("sc-dialog")) $e("sc-dialog").close(); });
 

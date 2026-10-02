@@ -1,34 +1,11 @@
 import json, gzip, struct, numpy as np, pandas as pd
+from scdefs import ORDER, FIRST
 var, out = pd.read_pickle('agg.pkl')
 # Dissection -> (section, short label), in anatomical order
-ORDER = [
- ("Head of hippocampus (HiH) - Uncal DG-CA4", "Hippocampus · head", "DG–CA4"),
- ("Head of hippocampus (HiH) - Uncal CA2-CA3", "Hippocampus · head", "CA2–CA3"),
- ("Head of hippocampus (HiH) - Uncal CA1-CA3", "Hippocampus · head", "CA1–CA3"),
- ("Head of hippocampus (HiH) - Uncal CA1", "Hippocampus · head", "CA1"),
- ("Head of hippocampus (HiH) - Tail of Hippocampus (HiT) - Subicular cortex - Sub", "Hippocampus · head", "Subiculum"),
- ("Body of hippocampus (HiB) - Rostral DG-CA4", "Hippocampus · body", "DG–CA4"),
- ("Body of hippocampus (HiB) - Rostral CA3", "Hippocampus · body", "CA3"),
- ("Body of hippocampus (HiB) - Rostral CA1-CA3", "Hippocampus · body", "CA1–CA3"),
- ("Body of hippocampus (HiB) - Rostral CA1-2", "Hippocampus · body", "CA1–CA2"),
- ("Tail of Hippocampus (HiT) - Caudal Hippocampus - CA4-DGC", "Hippocampus · tail", "CA4–DG"),
- ("Tail of Hippocampus (HiT) - Caudal Hippocampus - CA1-CA3", "Hippocampus · tail", "CA1–CA3"),
- ("Cerebral cortex (Cx) - Anterior parahippocampal gyrus (AG) - Lateral entorhinal cortex - LEC", "Parahippocampal gyrus", "Lateral entorhinal"),
- ("Cerebral cortex (Cx) - Anterior parahippocampal gyrus, posterior part (APH) - Medial entorhinal cortex - MEC", "Parahippocampal gyrus", "Medial entorhinal"),
- ("Cerebral cortex (Cx) - Posterior parahippocampal gyrus (PPH) - TH-TL", "Parahippocampal gyrus", "Posterior PHG (TH–TL)"),
- ("Amygdaloid complex (AMY) - Basolateral nuclear group (BLN) - lateral nucleus - La", "Amygdala", "Lateral (La)"),
- ("Amygdaloid complex (AMY) - basolateral nuclear group (BLN) - basolateral nucleus (basal nucleus) - BL", "Amygdala", "Basolateral (BL)"),
- ("Amygdaloid complex (AMY) - basolateral nuclear group (BLN) - basomedial nucleus (accessory basal nucleus) - BM", "Amygdala", "Basomedial (BM)"),
- ("Amygdaloid complex (AMY) - Central nuclear group - CEN", "Amygdala", "Central (CEN)"),
- ("Amygdaloid complex (AMY) - corticomedial nuclear group - CMN", "Amygdala", "Corticomedial (CMN)"),
- ("Amygdaloid complex (AMY) - Corticomedial nuclear group (CMN) - anterior cortical nucleus - CoA", "Amygdala", "Anterior cortical (CoA)"),
- ("Extended amygdala (EXA) - Bed nucleus of stria terminalis and nearby - BNST", "Amygdala", "Bed nucleus (BNST)"),
-]
 dis = [o[0] for o in ORDER]
 assert set(dis) == {r['dissection'] for r in out}, set(r['dissection'] for r in out) ^ set(dis)
 tot = pd.Series({}, dtype=float)
 for r in out: tot[r['supercluster']] = tot.get(r['supercluster'], 0) + r['n']
-FIRST = ["Hippocampal dentate gyrus","Hippocampal CA4","Hippocampal CA1-3","Amygdala excitatory","Upper-layer intratelencephalic","Deep-layer intratelencephalic","Deep-layer near-projecting","Deep-layer corticothalamic and 6b","MGE interneuron","CGE interneuron","LAMP5-LHX6 and Chandelier","Medium spiny neuron","Eccentric medium spiny neuron","Splatter","Miscellaneous","Astrocyte","Oligodendrocyte precursor","Committed oligodendrocyte precursor","Oligodendrocyte","Microglia","Vascular","Fibroblast","Ependymal"]
 scs = [s for s in FIRST if tot.get(s,0) >= 200] + [s for s in tot.sort_values(ascending=False).index if s not in FIRST and tot[s] >= 200]
 keep = [r for r in out if r['supercluster'] in scs and r['n'] >= 30]
 keep.sort(key=lambda r: (dis.index(r['dissection']), scs.index(r['supercluster'])))
