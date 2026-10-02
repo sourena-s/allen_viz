@@ -3397,7 +3397,7 @@ const classOf = sc => { const i = SC_CLASSES.findIndex(c => c.sc.includes(sc)); 
 const ntTag = nt => (/GABA|GLY/.test(nt) ? "In" : /VGLUT/.test(nt) ? "Ex" : "");
 const scTag = sc => (SC_INHIB.has(sc) ? "In" : SC_EXCIT.has(sc) ? "Ex" : "");
 const withTag = (name, t) => (t ? `${name} (${t})` : name);
-const scView = { zoom: 1, caOrder: true, sel: null, data: null, g: null, detailed: false };
+const scView = { zoom: 1, sel: null, data: null, g: null, detailed: false };
 
 async function showCellTypes() {
   const detailed = $e("sc-detail").checked;
@@ -3497,9 +3497,6 @@ async function renderCellTypes() {
     byClassRows("Parahippocampal gyrus", d => d >= 11 && d <= 13, false, ["PHG"]);
     byClassRows("Amygdala", d => d >= 14, false, ALLEN_AMY);
   } else if (crow) {
-    // Per-dissection values of each cluster, for its tooltip
-    const cd = await loadClusterGene(gC.i).catch(() => null);
-    if (token !== scView.token) return;
     const groupsOf = [...MARKER_FIELDS.map(f => ({ name: `Subfield by markers: ${f.label}`, color: f.color, field: f.key, test: c => markerField(c) === f.key })),
       ...SC_CLASSES.map(cls => ({ name: cls.name, color: cls.color, test: c => !markerField(c) && clsOf(c.sc) === cls }))];
     for (const gr of groupsOf) {
@@ -3521,8 +3518,7 @@ async function renderCellTypes() {
         const c = clusters.clusters[k], v = cval(k);
         const canon = c.canon?.length ? `[${c.canon.map(m => `${m}+`).join(" ")}] ` : "";
         const where = c.where.map((w, d) => [w, d]).filter(([w]) => w).sort((a, b) => b[0] - a[0]).slice(0, 5).map(([w, d]) => {
-          const at = cd?.at.get(`${c.id}|${d}`), here = at === undefined ? "" : `: ${Math.round(cd.frac[at] / 2.55)}% expressing, mean ${(cd.mean[at] / 255 * cd.max).toFixed(2)}`;
-          return `  ${data_label(d)} ${Math.round(w / 2.55)}% of nuclei${here}`;
+          return `  ${data_label(d)} ${Math.round(w / 2.55)}% of nuclei`;
         }).join("\n");
         rows.push({ label: withTag(c.name, ntTag(c.nt)), sub: c.sc, markers: `${canon}${c.markers.map(m => `${m}+`).join(" ")}`, bar: gr.color, ...v, grp: gr.name,
           tip: `${c.name} (${c.sc}${c.nt ? `, ${c.nt}` : ""}${c.mtg ? `, like cortical ${c.mtg}` : ""})\nMarkers: ${c.markers.join(", ") || "–"}\nWhere dissected:\n${where}` });
@@ -3571,7 +3567,7 @@ async function renderCellTypes() {
       text: `${r.n.toLocaleString()} (${Math.round(r.frac * 100)}%)`, tip: `${r.n.toLocaleString()} nuclei, ${Math.round(r.n * r.frac).toLocaleString()} (${(r.frac * 100).toFixed(1)}%) expressing ${scView.g.name}` });
     if (detailed && r.markers) cells.push({ li, ci: 3, label: r.markers });
   }
-  $e("sc-sub").textContent = `${detailed ? "Siletti clusters, grouped by subfield (canonical markers) or cell class, sorted by share expressing" : "Hippocampal subfields by canonical markers (CA1: FIBCD1/FNDC1; CA2: PCP4; DG: PROX1), other cell classes per region"}, then each dissection (all its nuclei; dissections mix neighbouring fields). The subiculum has no cluster or canonical marker of its own in these data (its nuclei fall into CA1-type clusters), so it appears only as a dissection row. Colour: mean expression of ${scView.g.name}, log1p(counts per 10k), scaled separately for the by-markers rows and the by-dissection rows (each to its own maximum; bars likewise); size: nuclei. Bars: nuclei (grey, linear) and those expressing the gene (green).${detailed ? " Allen: the probe highlighted in the ribbon, every sample of the Allen structures matching each subfield, class or dissection (the ribbon turned on its side, its colours), from your loaded donors." : " Allen: mean z of the probe highlighted in the ribbon in each marker subfield's Allen structures, in the ribbon's colours."}${detailed ? " Hover a cluster for where it was dissected and its values there." : ""} (Ex) excitatory, (In) inhibitory.`;
+  $e("sc-sub").textContent = `${detailed ? "Siletti clusters, grouped by subfield (canonical markers) or cell class, sorted by share expressing" : "Hippocampal subfields by canonical markers (CA1: FIBCD1/FNDC1; CA2: PCP4; DG: PROX1), other cell classes per region"}, then each dissection (all its nuclei; dissections mix neighbouring fields). The subiculum has no cluster or canonical marker of its own in these data (its nuclei fall into CA1-type clusters), so it appears only as a dissection row. Colour: mean expression of ${scView.g.name}, log1p(counts per 10k), scaled separately for the by-markers rows and the by-dissection rows (each to its own maximum; bars likewise); size: nuclei. Bars: nuclei (grey, linear) and those expressing the gene (green).${detailed ? " Allen: the probe highlighted in the ribbon, every sample of the Allen structures matching each subfield, class or dissection (the ribbon turned on its side, its colours), from your loaded donors." : " Allen: mean z of the probe highlighted in the ribbon in each marker subfield's Allen structures, in the ribbon's colours."}${detailed ? " Hover a cluster for where it was dissected." : ""} (Ex) excitatory, (In) inhibitory.`;
   drawGrid({ cols: [{ label: `${scView.g.name} (Siletti snRNA-seq: mean of log1p counts per 10k per nucleus)` }, { label: `${scView.g.name} (Allen expression z-score)`, gap: 6 }, { label: "Nuclei count (% expressing)", w: 190, gap: 10, plain: true },
       ...(detailed ? [{ label: "Markers ([canonical] then cluster-specific)", w: 360, gap: 8, plain: true }] : [])],
     lines, cells, labelW: Math.max(150, ...lines.filter(l => l.label).map(l => 18 + l.label.length * 6.4 + (l.sub ? 6 + l.sub.length * 5.6 : 0))), cw: 22, rh: detailed ? 17 : 20, flatLabels: true });
@@ -3605,7 +3601,6 @@ function ribbonColour(z) {
   const c = paletteStops[k].clone().lerp(paletteStops[k + 1], u - k);
   return `rgb(${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)})`;
 }
-const zColour = z => { const t = Math.max(-1, Math.min(1, z / 2)); return t >= 0 ? `rgb(255,${Math.round(255 - 200 * t)},${Math.round(255 - 215 * t)})` : `rgb(${Math.round(255 + 205 * t)},${Math.round(255 + 120 * t)},255)`; };
 // "head · CA1"-style label of a dissection
 function data_label(d) {
   const r = scView.region, sec = r.sections[d];
@@ -3620,7 +3615,7 @@ const svgEl = (tag, attrs, text) => {
 };
 // Heatmap on a grid: each cell a square whose colour and size both carry a value. spec:
 // cols [{ label, gap }], lines [{ sec } | { label, sub, right }], cells [{ li, ci, size 0..1, fill, tip }],
-// labelW, cw, rh, top, onColLabels (click on the column label area)
+// labelW, cw, rh, and top or flatLabels (horizontal column labels)
 function drawGrid(spec) {
   const { cols, lines, cells, labelW, cw, rh } = spec;
   // Horizontal column labels, stacked (last column lowest) and joined to their column by an L
@@ -3636,28 +3631,24 @@ function drawGrid(spec) {
   // Class colours: a bar along the left of each row group, a line above each column group
   lines.forEach((ln, li) => { if (ln.bar) svg.append(svgEl("rect", { x: 0, y: top + li * rh + 1, width: 3, height: rh - 2, fill: ln.bar })); });
   cols.forEach((c, ci) => { if (c.bar) svg.append(svgEl("rect", { x: xs[ci], y: top - 4, width: cw + (ci + 1 < cols.length && cols[ci + 1].bar === c.bar && !cols[ci + 1].gap ? 0 : -1), height: 2.5, fill: c.bar })); });
+  // Leaders end just above the first row of squares (below a section title that opens the plot)
+  const leadEnd = top + (lines[0]?.sec || lines[0]?.divider ? rh - 2 : -2);
   const colText = cols.map((c, ci) => {
     const cx = xs[ci] + Math.min(ws[ci], cw) / 2;
     if (spec.flatLabels && c.plain) {   // wide column: its label straight above it
       const t = svgEl("text", { class: "col", x: xs[ci] + 3, y: top - 7 }, c.label);
-      svg.append(t, svgEl("line", { x1: xs[ci] + 8, x2: xs[ci] + 8, y1: top - 3, y2: top + 1, stroke: "var(--muted)", "stroke-width": 0.8 }));   // points down to the column
+      svg.append(t, svgEl("line", { x1: xs[ci] + 8, x2: xs[ci] + 8, y1: top - 3, y2: leadEnd, stroke: "var(--muted)", "stroke-width": 0.8 }));   // points down to the column
       return t;
     }
     if (spec.flatLabels) {
       const ly = 16 * (ci + 1);
-      svg.append(svgEl("polyline", { points: `${cx},${top - 3} ${cx},${ly - 4} ${cx + 6},${ly - 4}`, fill: "none", stroke: "var(--muted)", "stroke-width": 0.8 }));
+      svg.append(svgEl("polyline", { points: `${cx},${leadEnd} ${cx},${ly - 4} ${cx + 6},${ly - 4}`, fill: "none", stroke: "var(--muted)", "stroke-width": 0.8 }));
       const t = svgEl("text", { class: "col", x: cx + 9, y: ly }, c.label);
       svg.append(t); return t;
     }
     const t = svgEl("text", { class: "col", x: cx, y: top - 6, transform: `rotate(-62 ${cx} ${top - 6})` }, c.label);
     svg.append(t); return t;
   });
-  if (spec.onColLabels) {
-    const hit = svgEl("rect", { x: labelW, y: 0, width: x - labelW, height: top, fill: "transparent", style: "cursor: pointer" });
-    hit.append(svgEl("title", {}, spec.colTitle ?? ""));
-    hit.addEventListener("click", spec.onColLabels);
-    svg.append(hit);
-  }
   const rowText = lines.map((ln, li) => {
     const y = top + li * rh + rh / 2;
     if (ln.divider) { svg.append(svgEl("line", { x1: 2, x2: x, y1: y, y2: y, stroke: "#e8e8e8", "stroke-width": 1.5 })); return null; }
@@ -3738,39 +3729,6 @@ function drawGrid(spec) {
   scView.svgSize = [W, H];
 }
 
-// Per cluster and dissection (assets/siletti_cd/): the gene's mean and fraction expressing in
-// each cluster's nuclei from each dissection (groups of at least 20 nuclei), split into files of
-// CD_PER genes in the order of the cluster table's genes, fetched one file at a time. index.json
-// lists the groups as [cluster id, dissection, nuclei]. Each file: "SILCD001", uint32 groups,
-// uint32 genes, float32 max per gene, then per gene one byte per group of means (scaled to that
-// max) and one byte per group of fractions.
-const CD_PER = 256, cdCache = new Map();
-let cdIndex = null;
-async function fetchMaybeGz(base) {
-  for (const name of [`${base}.gz`, base]) {
-    const res = await fetch(name).catch(() => null);
-    if (!res?.ok) continue;
-    let buf = new Uint8Array(await res.arrayBuffer());
-    if (buf[0] === 0x1f && buf[1] === 0x8b) buf = new Uint8Array(await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer());
-    return buf;
-  }
-  return null;
-}
-async function loadClusterGene(geneIndex) {
-  if (!cdIndex) {
-    const buf = await fetchMaybeGz("assets/siletti_cd/index.json");
-    if (!buf) return null;
-    const ix = JSON.parse(new TextDecoder().decode(buf));
-    cdIndex = { groups: ix.groups, at: new Map(ix.groups.map(([c, d], k) => [`${c}|${d}`, k])) };
-  }
-  const shard = Math.floor(geneIndex / CD_PER);
-  if (!cdCache.has(shard)) cdCache.set(shard, fetchMaybeGz(`assets/siletti_cd/s${shard}.bin`));
-  const buf = await cdCache.get(shard);
-  if (!buf) return null;
-  const dv = new DataView(buf.buffer, buf.byteOffset), K = dv.getUint32(8, true), nG = dv.getUint32(12, true), j = geneIndex - shard * CD_PER;
-  const body = 16 + nG * 4, off = body + j * K * 2;
-  return { K, max: dv.getFloat32(16 + j * 4, true), mean: buf.subarray(off, off + K), frac: buf.subarray(off + K, off + 2 * K), at: cdIndex.at, groups: cdIndex.groups };
-}
 // CA-field order, CA1 first: CA1 (head), CA1-2 (body), CA1-3 (head, body, tail), CA2-3 (head),
 // CA3 (body), DG-CA4 (head, body, tail), subiculum, then parahippocampal gyrus and amygdala
 const CA_ORDER = [[3], [8], [2, 7, 10], [1], [6], [0, 5, 9], [4], [11, 12, 13], [14, 15, 16, 17, 18, 19, 20]];

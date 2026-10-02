@@ -42,7 +42,6 @@ for i, c in enumerate(keep):
     canon = [m for m in CANON if m in gidx and Fr[i, gidx[m]] >= 0.5] if scs[i].startswith('Hippocampal') else []
     clusters.append(dict(id=int(c), name=str(a['Cluster name']), sc=str(a['Supercluster']), nt=str(a['Neurotransmitter auto-annotation']) if pd.notna(a['Neurotransmitter auto-annotation']) else "",
                          mtg=str(a['Transferred MTG Label']) if pd.notna(a['Transferred MTG Label']) else "", n=int(n[c]), markers=top, where=[int(round(x * 255)) for x in w], canon=canon))
-np.save('cl_sel.npy', sel)
 gmax = M.max(0); gmax[gmax == 0] = 1
 qm = np.round(M / gmax * 255).astype(np.uint8); qf = np.round(Fr * 255).astype(np.uint8)
 body = np.concatenate([qm.T, qf.T], axis=1)
