@@ -350,6 +350,7 @@
   .sc-head { display: flex; align-items: center; gap: 10px; }
   .sc-head h2 { margin: 0; font-size: 15px; font-weight: 600; flex: 1; }
   .sc-toggle { flex: none; font-size: 12px; }
+  .sc-toggle select { font-size: 12px; padding: 3px 6px; width: auto; }
   #sc-plot .mk { fill: var(--muted); }
   #sc-plot { overflow: auto; max-height: calc(100dvh - 190px); touch-action: pan-x pan-y; }
 
@@ -651,6 +652,7 @@
   <div id="sc-tip" hidden></div>
   <form method="dialog" class="sc-form">
     <div class="sc-head"><h2 id="sc-title">Cell types</h2>
+      <label class="sc-toggle" for="sc-fields">Subfields by <select id="sc-fields"><option value="dissection">dissection</option><option value="markers">markers</option></select></label>
       <div class="row sc-toggle"><input type="checkbox" id="sc-detail"><label for="sc-detail">Detailed: Siletti clusters</label></div>
       <button class="text-button sc-z" type="button" id="sc-max" aria-label="Maximise" title="Maximise / restore">⤢</button>
       <button class="text-button sc-z" type="button" id="sc-zoom-out" aria-label="Zoom out">−</button><button class="text-button sc-z" type="button" id="sc-zoom-in" aria-label="Zoom in">+</button>
@@ -3392,20 +3394,90 @@ async function showCellTypes() {
   const detailed = $e("sc-detail").checked;
   setBusy(detailed ? "Loading single-nucleus clusters…" : "Loading single-nucleus data…");
   let data;
-  try { data = await loadSingleCell(detailed ? "assets/siletti_clusters" : "assets/siletti_hipamy"); await loadHgnc().catch(() => null); }
+  const markers = $e("sc-fields").value === "markers";
+  let clusters = null;
+  try {
+    data = await loadSingleCell(detailed ? "assets/siletti_clusters" : "assets/siletti_hipamy");
+    if (markers && !detailed) clusters = await loadSingleCell("assets/siletti_clusters");
+    await loadHgnc().catch(() => null);
+  }
   catch (err) { setBusy(null); setExprStatus([`Single-nucleus data: ${err.message}`]); return; }
   setBusy(null);
   const g = scGeneFor(data);
   if (!g) return;
   $e("sc-title").textContent = `${g.name} · cell types in hippocampus and amygdala`;
-  Object.assign(scView, { data, g, detailed, sel: null });
+  Object.assign(scView, { data, g, detailed, sel: null, markers, clusters, cg: clusters ? scGeneFor(clusters) : null });
   if (g.i < 0) {
     $e("sc-sub").textContent = `${g.name} is not detected in this single-nucleus dataset.`;
     $e("sc-plot").replaceChildren(); $e("sc-legend").replaceChildren();
   } else renderCellTypes();
   if (!$e("sc-dialog").open) $e("sc-dialog").showModal();
 }
-function renderCellTypes() { (scView.detailed ? drawClusterHeatmap : drawRegionHeatmap)(scView.data, scView.g); }
+function renderCellTypes() {
+  if (scView.detailed) drawClusterHeatmap(scView.data, scView.g);
+  else if (scView.markers) drawMarkerOverview(scView.data, scView.g, scView.clusters, scView.cg);
+  else drawRegionHeatmap(scView.data, scView.g);
+}
+// Subfields defined by markers: a hippocampal neuron cluster's subfield from the canonical
+// markers most of its nuclei express (c.canon), not from where it was dissected. Clusters whose
+// nuclei mostly come from outside the hippocampus (e.g. amygdala) are left out.
+const MARKER_FIELDS = [
+  { key: "CA1", label: "CA1 (FIBCD1+ or FNDC1+)", color: "#0a84ff" },
+  { key: "CA2", label: "CA2 (PCP4+, no CA1 markers)", color: "#3fa7ff" },
+  { key: "CA34", label: "CA3–CA4 (Siletti CA4 class, no CA1 markers)", color: "#7cc0ff" },
+  { key: "DG", label: "Dentate gyrus granule (PROX1+)", color: "#00a3a3" },
+  { key: "CAx", label: "CA1–3 class, no canonical marker", color: "#8a96a8" },
+];
+const HIPP_DISSECTIONS = 11;   // dissections 0-10 are hippocampal (head, body, tail)
+function markerField(c) {
+  const hipp = c.where.slice(0, HIPP_DISSECTIONS).reduce((a, w) => a + w, 0) / 255;
+  if (!c.sc.startsWith("Hippocampal") || hipp < 0.5) return null;
+  const has = m => c.canon?.includes(m);
+  if (c.sc === "Hippocampal dentate gyrus") return "DG";
+  if (c.sc === "Hippocampal CA4") return has("FIBCD1") || has("FNDC1") ? "CA1" : "CA34";
+  if (has("FIBCD1") || has("FNDC1")) return "CA1";
+  if (has("PCP4")) return "CA2";
+  return "CAx";
+}
+// Overview with marker-defined subfields: one row per subfield (its clusters pooled, weighted by
+// nuclei), then the other cell classes within the hippocampal dissections (pooled from the
+// dissection table); one column, the gene: colour = mean, size = nuclei, right = % expressing
+function drawMarkerOverview(data, g, cl, cg) {
+  const lines = [], cells = [], vals = [];
+  if (cg && cg.i >= 0) {
+    const nC = cl.clusters.length, crow = cl.body.subarray(cg.i * nC * 2, (cg.i + 1) * nC * 2), cmax = cl.max[cg.i];
+    for (const f of MARKER_FIELDS) {
+      const ks = cl.clusters.map((c, k) => (markerField(c) === f.key ? k : -1)).filter(k => k >= 0);
+      if (!ks.length) continue;
+      let n = 0, m = 0, fr = 0;
+      for (const k of ks) { const c = cl.clusters[k]; n += c.n; m += c.n * crow[k] / 255 * cmax; fr += c.n * crow[nC + k] / 255; }
+      vals.push({ sec: "Hippocampal neurons, subfield by markers", label: f.label, bar: f.color, n, mean: m / n, frac: fr / n, tip: `${f.label}\nClusters: ${ks.map(k => cl.clusters[k].name).join(", ")}` });
+    }
+  }
+  if (g.i >= 0) {
+    const nG = data.groups.length, row = data.body.subarray(g.i * nG * 2, (g.i + 1) * nG * 2), gmax = data.max[g.i];
+    const pooled = new Map();
+    data.groups.forEach(([d, c, n], k) => {
+      if (d >= HIPP_DISSECTIONS) return;
+      const sc = data.superclusters[c], cls = SC_CLASSES[classOf(sc)];
+      if (["Hippocampal pyramidal (CA)", "Dentate granule"].includes(cls.name)) return;
+      const key = cls.name === "Glia" ? sc : cls.name;
+      const p = pooled.get(key) ?? pooled.set(key, { n: 0, m: 0, f: 0, color: cls.color }).get(key);
+      p.n += n; p.m += n * row[k] / 255 * gmax; p.f += n * row[nG + k] / 255;
+    });
+    for (const [key, p] of pooled) if (p.n >= 30) vals.push({ sec: "Other cells in the hippocampal dissections", label: key, bar: p.color, n: p.n, mean: p.m / p.n, frac: p.f / p.n, tip: key });
+  }
+  const top = Math.max(1e-6, ...vals.map(v => v.mean));
+  let sec = null;
+  for (const v of vals) {
+    if (v.sec !== sec) { lines.push({ sec: (sec = v.sec) }); }
+    const li = lines.push({ label: v.label, bar: v.bar, right: `${Math.round(v.frac * 100)}% · n ${v.n.toLocaleString()}` }) - 1;
+    cells.push({ li, ci: 0, size: nucleiSize(v.n), fill: scColour(Math.round(v.mean / top * 255)), tip: `${v.tip}\n${g.name}: ${(v.frac * 100).toFixed(0)}% of ${v.n.toLocaleString()} nuclei, mean ${v.mean.toFixed(2)}` });
+  }
+  $e("sc-sub").textContent = `Subfields defined by canonical markers, not by dissection: each hippocampal neuron cluster is assigned from the markers most of its nuclei express (clusters mostly dissected outside the hippocampus left out), and pooled. Colour: mean expression of ${g.name}, log1p(counts per 10k), up to ${top.toFixed(2)}; size: nuclei; right: share expressing. No well-established human marker separates CA3 from CA4, so they stay together.`;
+  drawGrid({ cols: [{ label: g.name }], lines, cells, labelW: 330, cw: 22, rh: 20, top: 90 });
+  scLegend(top);
+}
 
 const scColour = q => { const t = q / 255; return `rgb(${Math.round(255 - t * 75)},${Math.round(240 - t * 215)},${Math.round(200 - t * 170)})`; };
 const svgEl = (tag, attrs, text) => {
@@ -3582,13 +3654,17 @@ async function drawClusterHeatmap(data, g) {
   // Rows grouped by cell class (heading and a coloured bar), sorted within each class by the share
   // of nuclei expressing the gene. Hippocampal clusters also list which canonical field markers
   // most of their nuclei express (CA1: FIBCD1, FNDC1, WFS1; CA2: PCP4, RGS14, AMIGO2; DG: PROX1)
-  const byClass = SC_CLASSES.map(() => []);
-  data.clusters.forEach((c, k) => byClass[Math.min(classOf(c.sc), SC_CLASSES.length - 1)].push(k));
+  // With subfields by markers, hippocampal neuron clusters are grouped by their marker subfield
+  const groupsOf = scView.markers
+    ? [...MARKER_FIELDS.map(f => ({ name: `Subfield by markers: ${f.label}`, color: f.color, test: c => markerField(c) === f.key })),
+       ...SC_CLASSES.map(cls => ({ name: cls.name, color: cls.color, test: c => !markerField(c) && SC_CLASSES[Math.min(classOf(c.sc), SC_CLASSES.length - 1)] === cls }))]
+    : SC_CLASSES.map(cls => ({ name: cls.name, color: cls.color, test: c => SC_CLASSES[Math.min(classOf(c.sc), SC_CLASSES.length - 1)] === cls }));
+  const byClass = groupsOf.map(gr => data.clusters.map((c, k) => (gr.test(c) ? k : -1)).filter(k => k >= 0));
   const lines = [], cells = [];
   for (const [ci0, ks] of byClass.entries()) {
    if (!ks.length) continue;
    ks.sort((a, b) => row[nC + b] - row[nC + a] || row[b] - row[a]);
-   const cls = SC_CLASSES[ci0];
+   const cls = groupsOf[ci0];
    lines.push({ sec: cls.name, secColor: cls.color });
    for (const k of ks) {
     const c = data.clusters[k], frac = row[nC + k] / 255, mean = row[k] / 255 * cmax;
@@ -3660,6 +3736,7 @@ $e("sc-max").addEventListener("click", () => $e("sc-dialog").classList.toggle("m
 $e("sc-dialog").addEventListener("close", () => ($e("sc-tip").hidden = true));
 $e("sc-zoom-out").addEventListener("click", () => setScZoom(scView.zoom / 1.25));
 $e("sc-detail").addEventListener("change", () => showCellTypes());
+$e("sc-fields").addEventListener("change", () => showCellTypes());
 $e("cells-btn").addEventListener("click", showCellTypes);
 $e("sc-dialog").addEventListener("click", e => { if (e.target === $e("sc-dialog")) $e("sc-dialog").close(); });
 
