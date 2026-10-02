@@ -3540,7 +3540,8 @@ async function renderCellTypes() {
   { let cur = -1; for (const r of rows) { if (r.sec) { cur++; secMax[cur] = 1e-6; } else if (r.n) { r.secI = cur; secMax[cur] = Math.max(secMax[cur], r.mean); } } }
   const top = Math.max(1e-6, ...secMax);
   const probe = chosenProbes()[0], probeLabel = probe ? (expr.probeName.get(probe) ?? probe) : "";
-  const maxN = Math.max(1, ...rows.filter(r => r.n).map(r => r.n));
+  // Bar lengths: the marker / class / cluster rows and the dissection rows each scaled to their own longest
+  const maxN = Math.max(1, ...rows.filter(r => r.n && !r.dis).map(r => r.n)), maxND = Math.max(1, ...rows.filter(r => r.n && r.dis).map(r => r.n));
   let lastGrp = null;
   const lines = [], cells = [];
   for (const r of rows) {
@@ -3556,13 +3557,13 @@ async function renderCellTypes() {
     if (!detailed && r.allen) cells.push({ li, ci: 1, size: 0.9, fill: ribbonColour(r.allen.z), tip: `Allen microarray, probe ${probeLabel}: mean z ${r.allen.z >= 0 ? "+" : ""}${r.allen.z.toFixed(2)} over ${r.allen.n} samples in ${r.allenWhere}` });
     // Nuclei (grey, linear) with those expressing the gene (green) on top
     const nc = 2;
-    cells.push({ li, ci: nc, bar: r.n / maxN, fill: "rgba(255,255,255,0.35)", bar2: r.n * r.frac / maxN, fill2: "#3cb371",
+    const mN = r.dis ? maxND : maxN;
+    cells.push({ li, ci: nc, bar: r.n / mN, fill: "rgba(255,255,255,0.35)", bar2: r.n * r.frac / mN, fill2: "#3cb371",
       text: `${r.n.toLocaleString()} (${Math.round(r.frac * 100)}%)`, tip: `${r.n.toLocaleString()} nuclei, ${Math.round(r.n * r.frac).toLocaleString()} (${(r.frac * 100).toFixed(1)}%) expressing ${scView.g.name}` });
     if (detailed && r.markers) cells.push({ li, ci: 3, label: r.markers });
   }
   $e("sc-sub").textContent = `${detailed ? "Siletti clusters, grouped by subfield (canonical markers) or cell class, sorted by share expressing" : "Hippocampal subfields by canonical markers (CA1: FIBCD1/FNDC1; CA2: PCP4; DG: PROX1), other cell classes per region"}, then each dissection (all its nuclei; dissections mix neighbouring fields). The subiculum has no cluster or canonical marker of its own in these data (its nuclei fall into CA1-type clusters), so it appears only as a dissection row. Colour: mean expression of ${scView.g.name}, log1p(counts per 10k), scaled within each section to that section's maximum (hover a square for it); size: nuclei. Bars: nuclei (grey, linear) and those expressing the gene (green).${detailed ? " Allen: the probe highlighted in the ribbon, every sample of the Allen structures matching each subfield, class or dissection (the ribbon turned on its side, its colours), from your loaded donors." : " Allen: mean z of the probe highlighted in the ribbon in each marker subfield's Allen structures, in the ribbon's colours."}${detailed ? " Hover a cluster for where it was dissected and its values there." : ""} (Ex) excitatory, (In) inhibitory.`;
-  const allenLabel = !expr.byDonor.size ? "Allen z (load donors)" : `Allen z, probe ${probeLabel}`;
-  drawGrid({ cols: [{ label: `${scView.g.name} (Siletti)` }, { label: allenLabel, gap: 6 }, { label: "Nuclei (expressing)", w: 190, gap: 10, plain: true },
+  drawGrid({ cols: [{ label: `${scView.g.name} (Siletti: mean log1p of counts per 10k)` }, { label: "Allen expression z-score", gap: 6 }, { label: "Nuclei count (% expressing)", w: 190, gap: 10, plain: true },
       ...(detailed ? [{ label: "Markers ([canonical] then cluster-specific)", w: 360, gap: 8, plain: true }] : [])],
     lines, cells, labelW: 330, cw: 22, rh: detailed ? 17 : 20, flatLabels: true });
   scLegend(top);
