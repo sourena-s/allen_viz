@@ -3677,7 +3677,8 @@ async function renderCellTypes() {
   // Dissection rows, CA-field order (CA1 first), all nuclei of each dissection pooled
   function dissectionZ(d) { if (!dzCache.has(d)) dzCache.set(d, allenZ(ALLEN_OF_DISSECTION[d])); return dzCache.get(d); }
   let lastSec = null;
-  for (const d of CA_ORDER.flat()) {
+  // (detailed view: none, they repeat the brief view)
+  if (!detailed) for (const d of CA_ORDER.flat()) {
     const v = pool(dd => dd === d);
     if (!v) continue;
     const sec = `By dissection: ${region.sections[d].startsWith("Hippocampus") ? "hippocampus" : region.sections[d]} (all nuclei)`;
