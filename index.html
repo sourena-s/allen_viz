@@ -3440,6 +3440,7 @@ async function renderCellTypes() {
   const { region, clusters, gR, gC, detailed } = scView, token = scView.token;
   const rows = [];   // { sec, color } | { label, sub, bar, n, mean, frac, tip }
   const dzCache = new Map();   // Allen z per dissection (see dissectionZ below)
+  const groupAllen = new Map();   // detailed view: Allen z per row group
   // Pools over the dissection table (supercluster x dissection), weighted by nuclei
   const nG = region.groups.length, rrow = gR.i >= 0 ? region.body.subarray(gR.i * nG * 2, (gR.i + 1) * nG * 2) : null, rmax = gR.i >= 0 ? region.max[gR.i] : 0;
   const pool = test => {
@@ -3464,7 +3465,7 @@ async function renderCellTypes() {
       .filter(r => r.v && r.v.n >= 30).sort((a, b) => SC_CLASSES.indexOf(a.cls) - SC_CLASSES.indexOf(b.cls));
     if (!out.length) return;
     rows.push({ sec: title });
-    for (const r of out) rows.push({ label: r.key, bar: r.cls.color, ...r.v, allen: allenZ(allenKeys), allenWhere: allenKeys.join(", "), tip: `${title} · ${r.key}` });
+    for (const r of out) rows.push({ label: r.key, bar: r.cls.color, ...r.v, tip: `${title} · ${r.key}` });
   };
   if (!detailed) {
     if (crow) {
@@ -3474,7 +3475,7 @@ async function renderCellTypes() {
         if (!ks.length) continue;
         let n = 0, m = 0, fr = 0;
         for (const k of ks) { const v = cval(k); n += v.n; m += v.n * v.mean; fr += v.n * v.frac; }
-        rows.push({ label: f.label, bar: f.color, n, mean: m / n, frac: fr / n, allen: allenZ(ALLEN_OF_FIELD[f.key]), allenWhere: ALLEN_OF_FIELD[f.key].join(", "), tip: `${f.label}\nClusters: ${ks.map(k => clusters.clusters[k].name).join(", ")}` });
+        rows.push({ label: f.label, bar: f.color, n, mean: m / n, frac: fr / n, tip: `${f.label}\nClusters: ${ks.map(k => clusters.clusters[k].name).join(", ")}` });
       }
     }
     byClassRows("Other cells in the hippocampus", d => d < HIPP_DISSECTIONS, true, ALLEN_HIPP);
@@ -3484,12 +3485,20 @@ async function renderCellTypes() {
     // Per-dissection values of each cluster, for its tooltip
     const cd = await loadClusterGene(gC.i).catch(() => null);
     if (token !== scView.token) return;
-    const groupsOf = [...MARKER_FIELDS.map(f => ({ name: `Subfield by markers: ${f.label}`, color: f.color, test: c => markerField(c) === f.key })),
+    const groupsOf = [...MARKER_FIELDS.map(f => ({ name: `Subfield by markers: ${f.label}`, color: f.color, field: f.key, test: c => markerField(c) === f.key })),
       ...SC_CLASSES.map(cls => ({ name: cls.name, color: cls.color, test: c => !markerField(c) && clsOf(c.sc) === cls }))];
     for (const gr of groupsOf) {
       const ks = clusters.clusters.map((c, k) => (gr.test(c) ? k : -1)).filter(k => k >= 0).sort((a, b) => crow[nC + b] - crow[nC + a] || crow[b] - crow[a]);
       if (!ks.length) continue;
       rows.push({ sec: gr.name, color: gr.color });
+      // One Allen value per group: a marker subfield's own structures; for a cell class, the
+      // structures of its clusters' dissections, weighted by their nuclei
+      if (gr.field) groupAllen.set(gr.name, { ...(allenZ(ALLEN_OF_FIELD[gr.field]) ?? {}), where: ALLEN_OF_FIELD[gr.field].join(", ") });
+      else {
+        let zs = 0, zw = 0, zn = 0;
+        for (const k of ks) clusters.clusters[k].where.forEach((w, d) => { if (!w) return; const a = dissectionZ(d); if (a) { const wt = w * clusters.clusters[k].n; zs += wt * a.z; zw += wt; zn += a.n; } });
+        groupAllen.set(gr.name, zw ? { z: zs / zw, n: zn, where: "the Allen structures of its clusters' dissections, weighted by nuclei" } : {});
+      }
       for (const k of ks) {
         const c = clusters.clusters[k], v = cval(k);
         const canon = c.canon?.length ? `[${c.canon.map(m => `${m}+`).join(" ")}] ` : "";
@@ -3497,10 +3506,7 @@ async function renderCellTypes() {
           const at = cd?.at.get(`${c.id}|${d}`), here = at === undefined ? "" : `: ${Math.round(cd.frac[at] / 2.55)}% expressing, mean ${(cd.mean[at] / 255 * cd.max).toFixed(2)}`;
           return `  ${data_label(d)} ${Math.round(w / 2.55)}% of nuclei${here}`;
         }).join("\n");
-        let zs = 0, zw = 0, zn = 0;
-        c.where.forEach((w, d) => { if (!w) return; const a = dissectionZ(d); if (a) { zs += w * a.z; zw += w; zn += a.n; } });
-        rows.push({ label: withTag(c.name, ntTag(c.nt)), sub: `${canon}${c.sc} · ${c.markers.map(m => `${m}+`).join(" ")}`, bar: gr.color, ...v,
-          allen: zw ? { z: zs / zw, n: zn } : null, allenWhere: "the Allen structures of its dissections, weighted by its nuclei",
+        rows.push({ label: withTag(c.name, ntTag(c.nt)), sub: `${canon}${c.sc} · ${c.markers.map(m => `${m}+`).join(" ")}`, bar: gr.color, ...v, grp: gr.name,
           tip: `${c.name} (${c.sc}${c.nt ? `, ${c.nt}` : ""}${c.mtg ? `, like cortical ${c.mtg}` : ""})\nMarkers: ${c.markers.join(", ") || "–"}\nWhere dissected:\n${where}` });
       }
     }
@@ -3513,21 +3519,32 @@ async function renderCellTypes() {
     if (!v) continue;
     const sec = `By dissection: ${region.sections[d].startsWith("Hippocampus") ? "hippocampus" : region.sections[d]} (all nuclei)`;
     if (sec !== lastSec) rows.push({ sec: (lastSec = sec) });
-    rows.push({ label: data_label(d), bar: region.sections[d].startsWith("Hippocampus") ? "#0a84ff" : region.sections[d] === "Amygdala" ? "#e6194b" : "#f28e00", ...v, allen: dissectionZ(d), allenWhere: ALLEN_OF_DISSECTION[d].join(", "), tip: `Dissection ${region.sections[d]} · ${region.labels[d]}` });
+    if (detailed) { const a = dissectionZ(d); groupAllen.set(`d${d}`, a ? { ...a, where: ALLEN_OF_DISSECTION[d].join(", ") } : {}); }
+    rows.push({ label: data_label(d), bar: region.sections[d].startsWith("Hippocampus") ? "#0a84ff" : region.sections[d] === "Amygdala" ? "#e6194b" : "#f28e00", ...v, grp: `d${d}`, tip: `Dissection ${region.sections[d]} · ${region.labels[d]}` });
   }
   const top = Math.max(1e-6, ...rows.filter(r => r.n).map(r => r.mean));
   const probe = chosenProbes()[0], probeLabel = probe ? (expr.probeName.get(probe) ?? probe) : "";
+  const maxN = Math.max(1, ...rows.filter(r => r.n).map(r => r.n));
+  let lastGrp = null;
   const lines = [], cells = [];
   for (const r of rows) {
     if (r.sec) { lines.push({ sec: r.sec, secColor: r.color }); continue; }
     const li = lines.push({ label: r.label, sub: r.sub, bar: r.bar }) - 1;
     cells.push({ li, ci: 0, size: nucleiSize(r.n), fill: scColour(Math.round(r.mean / top * 255)), tip: `${r.tip}\n${scView.g.name}: ${(r.frac * 100).toFixed(0)}% of ${r.n.toLocaleString()} nuclei, mean ${r.mean.toFixed(2)}` });
-    if (r.allen) cells.push({ li, ci: 1, size: 0.85, fill: zColour(r.allen.z), tip: `Allen microarray, ${probeLabel}: mean z ${r.allen.z >= 0 ? "+" : ""}${r.allen.z.toFixed(2)} over ${r.allen.n} samples in ${r.allenWhere}` });
-    cells.push({ li, ci: 2, bar: nucleiSize(r.n), fill: "rgba(255,255,255,0.55)", text: r.n.toLocaleString(), tip: `${r.n.toLocaleString()} nuclei` });
-    cells.push({ li, ci: 3, bar: r.frac, fill: scColour(200), text: `${Math.round(r.frac * 100)}%`, tip: `${(r.frac * 100).toFixed(1)}% of nuclei express ${scView.g.name}` });
+    // Allen (detailed view): one rectangle per row group, on the group's first row
+    if (detailed && r.grp && r.grp !== lastGrp) {
+      lastGrp = r.grp;
+      const a = groupAllen.get(r.grp), span = rows.filter(x => x.grp === r.grp).length;
+      if (a?.z != null) cells.push({ li, ci: 1, span, fill: zColour(a.z), tip: `Allen microarray, probe ${probeLabel}: mean z ${a.z >= 0 ? "+" : ""}${a.z.toFixed(2)} over ${a.n} samples in ${a.where}` });
+    }
+    // Nuclei (grey, linear) with those expressing the gene (green) on top
+    const nc = detailed ? 2 : 1;
+    cells.push({ li, ci: nc, bar: r.n / maxN, fill: "rgba(255,255,255,0.35)", bar2: r.n * r.frac / maxN, fill2: "#3cb371",
+      text: `${r.n.toLocaleString()} (${Math.round(r.frac * 100)}%)`, tip: `${r.n.toLocaleString()} nuclei, ${Math.round(r.n * r.frac).toLocaleString()} (${(r.frac * 100).toFixed(1)}%) expressing ${scView.g.name}` });
   }
-  $e("sc-sub").textContent = `${detailed ? "Siletti clusters, grouped by subfield (canonical markers) or cell class, sorted by share expressing" : "Hippocampal subfields by canonical markers (CA1: FIBCD1/FNDC1; CA2: PCP4; DG: PROX1), other cell classes per region"}, then each dissection (all its nuclei; dissections mix neighbouring fields). Colour: mean expression of ${scView.g.name}, log1p(counts per 10k), up to ${top.toFixed(2)}; size: nuclei. Allen z: the ribbon's highlighted probe in the matching Allen structures of your loaded donors (blue below, red above the donor's average).${detailed ? " Hover a cluster for where it was dissected and its values there." : ""} (Ex) excitatory, (In) inhibitory.`;
-  drawGrid({ cols: [{ label: `${scView.g.name} (Siletti)` }, { label: expr.byDonor.size ? "Allen z, same region" : "Allen z (load donors)", gap: 6 }, { label: "Nuclei", w: 96, gap: 10 }, { label: "% expressing", w: 96, gap: 4 }],
+  $e("sc-sub").textContent = `${detailed ? "Siletti clusters, grouped by subfield (canonical markers) or cell class, sorted by share expressing" : "Hippocampal subfields by canonical markers (CA1: FIBCD1/FNDC1; CA2: PCP4; DG: PROX1), other cell classes per region"}, then each dissection (all its nuclei; dissections mix neighbouring fields). Colour: mean expression of ${scView.g.name}, log1p(counts per 10k), up to ${top.toFixed(2)}; size: nuclei. Bars: nuclei (grey, linear) and those expressing the gene (green).${detailed ? " Allen z: the probe highlighted in the ribbon, in the Allen structures matching each subfield, class or dissection, from your loaded donors (blue below, red above each donor's average)." : ""}${detailed ? " Hover a cluster for where it was dissected and its values there." : ""} (Ex) excitatory, (In) inhibitory.`;
+  const allenLabel = !expr.byDonor.size ? "Allen z (load donors)" : `Allen z, probe ${probeLabel}`;
+  drawGrid({ cols: [{ label: `${scView.g.name} (Siletti)` }, ...(detailed ? [{ label: allenLabel, gap: 6 }] : []), { label: "Nuclei (expressing)", w: 190, gap: 10 }],
     lines, cells, labelW: detailed ? 540 : 330, cw: 22, rh: detailed ? 17 : 20, top: 92 });
   scLegend(top);
 }
@@ -3603,10 +3620,15 @@ function drawGrid(spec) {
     const w = ws[c.ci], cy = top + c.li * rh + rh / 2;
     svg.append(svgEl("rect", { x: xs[c.ci] + 0.5, y: cy - rh / 2 + 0.5, width: w - 1, height: rh - 1, fill: "rgba(255,255,255,0.05)" }));
     let mark;
-    if (c.bar != null) {   // a horizontal bar (0..1 of the bar room) with its number beside it
-      const room = w - 46, bw = Math.max(c.bar > 0 ? 1 : 0, c.bar * room);
-      mark = svgEl("rect", { x: xs[c.ci] + 3, y: cy - rh * 0.28, width: bw, height: rh * 0.56, fill: c.fill, rx: 1 });
-      svg.append(mark, svgEl("text", { class: "mk", x: xs[c.ci] + room + 7, y: cy + 4 }, c.text ?? ""));
+    if (c.span) {   // one rectangle down c.span rows (e.g. a subfield's clusters)
+      mark = svgEl("rect", { x: xs[c.ci] + 2, y: cy - rh / 2 + 1, width: w - 4, height: c.span * rh - 2, fill: c.fill, rx: 2 });
+      svg.append(mark);
+    } else if (c.bar != null) {   // horizontal bar(s), 0..1 of the bar room, with a label after
+      const room = w - 92, bw = v => Math.max(v > 0 ? 1 : 0, v * room);
+      mark = svgEl("rect", { x: xs[c.ci] + 3, y: cy - rh * 0.3, width: bw(c.bar), height: rh * 0.6, fill: c.fill, rx: 1 });
+      svg.append(mark);
+      if (c.bar2 != null) { const m2 = svgEl("rect", { x: xs[c.ci] + 3, y: cy - rh * 0.3, width: bw(c.bar2), height: rh * 0.6, fill: c.fill2, rx: 1, "pointer-events": "none" }); svg.append(m2); }
+      svg.append(svgEl("text", { class: "mk", x: xs[c.ci] + room + 8, y: cy + 4 }, c.text ?? ""));
     } else {
       const s2 = c.size > 0 ? Math.max(2, c.size * side) : 0;
       if (!s2) continue;
