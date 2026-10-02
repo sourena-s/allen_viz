@@ -3369,6 +3369,20 @@ function updateCellsButton() { $e("cells-btn").disabled = !(chosenProbes().lengt
 // (GABA or glycine: inhibitory; otherwise VGLUT1-3: excitatory), superclusters by their type
 const SC_INHIB = new Set(["MGE interneuron", "CGE interneuron", "LAMP5-LHX6 and Chandelier", "Medium spiny neuron", "Eccentric medium spiny neuron", "Cerebellar inhibitory", "Midbrain-derived inhibitory"]);
 const SC_EXCIT = new Set(["Hippocampal dentate gyrus", "Hippocampal CA4", "Hippocampal CA1-3", "Amygdala excitatory", "Upper-layer intratelencephalic", "Deep-layer intratelencephalic", "Deep-layer near-projecting", "Deep-layer corticothalamic and 6b", "Thalamic excitatory", "Splatter", "Mammillary body", "Upper rhombic lip", "Lower rhombic lip"]);
+// Cell classes grouping the rows (detailed view) and columns (overview), each with its colour
+// (hippocampus blue and amygdala red as in the ribbon)
+const SC_CLASSES = [
+  { name: "Hippocampal pyramidal (CA)", color: "#0a84ff", sc: ["Hippocampal CA1-3", "Hippocampal CA4"] },
+  { name: "Dentate granule", color: "#00a3a3", sc: ["Hippocampal dentate gyrus"] },
+  { name: "Amygdala excitatory", color: "#e6194b", sc: ["Amygdala excitatory"] },
+  { name: "Cortical excitatory", color: "#f28e00", sc: ["Upper-layer intratelencephalic", "Deep-layer intratelencephalic", "Deep-layer near-projecting", "Deep-layer corticothalamic and 6b"] },
+  { name: "Other excitatory", color: "#d9a400", sc: ["Thalamic excitatory", "Mammillary body", "Upper rhombic lip", "Lower rhombic lip"] },
+  { name: "Inhibitory", color: "#9b3fe6", sc: ["MGE interneuron", "CGE interneuron", "LAMP5-LHX6 and Chandelier", "Medium spiny neuron", "Eccentric medium spiny neuron", "Cerebellar inhibitory", "Midbrain-derived inhibitory"] },
+  { name: "Mixed neurons", color: "#b35900", sc: ["Splatter", "Miscellaneous"] },
+  { name: "Glia", color: "#22a83a", sc: ["Astrocyte", "Bergmann glia", "Oligodendrocyte precursor", "Committed oligodendrocyte precursor", "Oligodendrocyte", "Microglia"] },
+  { name: "Vascular and other", color: "#8a96a8", sc: ["Vascular", "Fibroblast", "Ependymal", "Choroid plexus"] },
+];
+const classOf = sc => { const i = SC_CLASSES.findIndex(c => c.sc.includes(sc)); return i < 0 ? SC_CLASSES.length - 1 : i; };   // unlisted: last class
 const ntTag = nt => (/GABA|GLY/.test(nt) ? "In" : /VGLUT/.test(nt) ? "Ex" : "");
 const scTag = sc => (SC_INHIB.has(sc) ? "In" : SC_EXCIT.has(sc) ? "Ex" : "");
 const withTag = (name, t) => (t ? `${name} (${t})` : name);
@@ -3410,6 +3424,9 @@ function drawGrid(spec) {
   const rightW = lines.some(l => l.right) ? 110 : 10;
   const W = x + rightW, H = top + lines.length * rh + 8;
   const svg = svgEl("svg", { width: W * scView.zoom, height: H * scView.zoom, viewBox: `0 0 ${W} ${H}` });
+  // Class colours: a bar along the left of each row group, a line above each column group
+  lines.forEach((ln, li) => { if (ln.bar) svg.append(svgEl("rect", { x: 0, y: top + li * rh + 1, width: 3, height: rh - 2, fill: ln.bar })); });
+  cols.forEach((c, ci) => { if (c.bar) svg.append(svgEl("rect", { x: xs[ci], y: top - 4, width: cw + (ci + 1 < cols.length && cols[ci + 1].bar === c.bar && !cols[ci + 1].gap ? 0 : -1), height: 2.5, fill: c.bar })); });
   const colText = cols.map((c, ci) => {
     const cx = xs[ci] + cw / 2, t = svgEl("text", { class: "col", x: cx, y: top - 6, transform: `rotate(-62 ${cx} ${top - 6})` }, c.label);
     svg.append(t); return t;
@@ -3422,7 +3439,7 @@ function drawGrid(spec) {
   }
   const rowText = lines.map((ln, li) => {
     const y = top + li * rh + rh / 2;
-    if (ln.sec) { svg.append(svgEl("text", { class: "sec", x: 2, y: y + 4 }, ln.sec)); return null; }
+    if (ln.sec) { svg.append(svgEl("text", { class: "sec", x: 2, y: y + 4, ...(ln.secColor ? { style: `fill: ${ln.secColor}` } : {}) }, ln.sec)); return null; }
     const t = svgEl("text", { x: 10, y: y + 4 });
     t.append(svgEl("tspan", {}, ln.label));
     if (ln.sub) t.append(svgEl("tspan", { class: "mk", dx: 6 }, ln.sub));
@@ -3478,10 +3495,11 @@ function drawGrid(spec) {
 
 function drawRegionHeatmap(data, g) {
   const nG = data.groups.length, row = data.body.subarray(g.i * nG * 2, (g.i + 1) * nG * 2), gmax = data.max[g.i];
-  $e("sc-sub").textContent = `Colour: mean expression of ${g.name}, log1p(counts per 10k), up to ${gmax.toFixed(2)}${g.name !== g.allen ? ` (Allen symbol ${g.allen})` : ""}. Square size: number of nuclei of that cell type in that dissection (the same for every gene). (Ex) excitatory, (In) inhibitory. Click a square to mark its row and column.`;
+  $e("sc-sub").textContent = `Colour: mean expression of ${g.name}, log1p(counts per 10k), up to ${gmax.toFixed(2)}${g.name !== g.allen ? ` (Allen symbol ${g.allen})` : ""}. Square size: number of nuclei of that cell type in that dissection (the same for every gene). Note: dissections mix neighbouring fields, and Siletti's "CA1-3" class pools CA1-, CA2- and CA3-like pyramidal cells, so this view cannot separate CA fields; the Detailed view's clusters can (see their CA1/CA2 marker tags). (Ex) excitatory, (In) inhibitory. Click a square to mark its row and column.`;
   const cell = new Map(data.groups.map(([d, c, n], k) => [`${d}|${c}`, { n, k }]));
+  // Columns grouped by cell class (a coloured line above each group), in the class order
   const usedCols = data.superclusters.map((_, c) => c).filter(c => data.labels.some((_, d) => cell.has(`${d}|${c}`)))
-    .sort((a, b) => (data.superclusters[a] === "Splatter") - (data.superclusters[b] === "Splatter"));   // Splatter last
+    .sort((a, b) => classOf(data.superclusters[a]) - classOf(data.superclusters[b]) || a - b);
   const lines = [], cells = [];
   const part = d => data.sections[d].replace("Hippocampus · ", "");
   const isHipp = d => data.sections[d].startsWith("Hippocampus");
@@ -3497,7 +3515,10 @@ function drawRegionHeatmap(data, g) {
       cells.push({ li, ci, size: nucleiSize(v.n), fill: scColour(row[v.k]), tip: `${data.sections[d]} · ${data.labels[d]}\n${data.superclusters[c]}: ${(frac * 100).toFixed(0)}% of ${v.n.toLocaleString()} nuclei, mean ${mean.toFixed(2)}` });
     });
   });
-  drawGrid({ cols: usedCols.map(c => ({ label: withTag(data.superclusters[c], scTag(data.superclusters[c])) })), lines, cells, labelW: 150, cw: 22, rh: 20, top: 200 });
+  drawGrid({ cols: usedCols.map((c, j) => {
+    const k = classOf(data.superclusters[c]), prev = j ? classOf(data.superclusters[usedCols[j - 1]]) : k;
+    return { label: withTag(data.superclusters[c], scTag(data.superclusters[c])), bar: SC_CLASSES[k]?.color, gap: k !== prev ? 6 : 0 };
+  }), lines, cells, labelW: 150, cw: 22, rh: 20, top: 200 });
   scLegend(gmax);
 }
 
@@ -3548,7 +3569,7 @@ async function drawClusterHeatmap(data, g) {
   if (scView.g !== g) return;   // another gene was asked for meanwhile
   const cmax = data.max[g.i], top = Math.max(cmax, cd?.max ?? 0);   // one colour scale for both
   const q = v => Math.round(Math.min(255, v / top * 255));
-  $e("sc-sub").textContent = `Siletti clusters in these dissections, sorted by the share of nuclei expressing ${g.name} (right). Colour: mean expression of ${g.name}, log1p(counts per 10k), up to ${top.toFixed(2)}: first column for the whole cluster, then ${cd ? "for the cluster's nuclei in each dissection" : "the whole cluster again (per-dissection values unavailable)"}. Square size: number of nuclei. (Ex) excitatory, (In) inhibitory. Click the column labels to order by ${scView.caOrder ? "head, body and tail" : "CA field"}.`;
+  $e("sc-sub").textContent = `Siletti clusters in these dissections, grouped by cell class and sorted within each by the share of nuclei expressing ${g.name} (right); [brackets]: canonical CA1 (FIBCD1, FNDC1, WFS1), CA2 (PCP4, RGS14, AMIGO2) and dentate (PROX1) markers in most of the cluster's nuclei. Colour: mean expression of ${g.name}, log1p(counts per 10k), up to ${top.toFixed(2)}: first column for the whole cluster, then ${cd ? "for the cluster's nuclei in each dissection" : "the whole cluster again (per-dissection values unavailable)"}. Square size: number of nuclei. (Ex) excitatory, (In) inhibitory. Click the column labels to order by ${scView.caOrder ? "head, body and tail" : "CA field"}.`;
   const part = d => data.sections[d].replace("Hippocampus · ", "").replace("Parahippocampal gyrus", "PHG");
   let order, gaps;
   if (scView.caOrder) {
@@ -3558,11 +3579,21 @@ async function drawClusterHeatmap(data, g) {
   }
   const cols = [{ label: `${g.name} (whole cluster)` }];
   for (const d of order) cols.push({ label: scView.caOrder ? `${data.labels[d]} · ${part(d)}` : `${part(d)} · ${data.labels[d]}`, gap: d === order[0] ? 12 : gaps.has(d) ? 6 : 0 });
-  const ks = data.clusters.map((_, k) => k).sort((a, b) => row[nC + b] - row[nC + a] || row[b] - row[a]);
+  // Rows grouped by cell class (heading and a coloured bar), sorted within each class by the share
+  // of nuclei expressing the gene. Hippocampal clusters also list which canonical field markers
+  // most of their nuclei express (CA1: FIBCD1, FNDC1, WFS1; CA2: PCP4, RGS14, AMIGO2; DG: PROX1)
+  const byClass = SC_CLASSES.map(() => []);
+  data.clusters.forEach((c, k) => byClass[Math.min(classOf(c.sc), SC_CLASSES.length - 1)].push(k));
   const lines = [], cells = [];
-  for (const k of ks) {
+  for (const [ci0, ks] of byClass.entries()) {
+   if (!ks.length) continue;
+   ks.sort((a, b) => row[nC + b] - row[nC + a] || row[b] - row[a]);
+   const cls = SC_CLASSES[ci0];
+   lines.push({ sec: cls.name, secColor: cls.color });
+   for (const k of ks) {
     const c = data.clusters[k], frac = row[nC + k] / 255, mean = row[k] / 255 * cmax;
-    const li = lines.push({ label: withTag(c.name, ntTag(c.nt)), sub: `${c.sc} · ${c.markers.map(m => `${m}+`).join(" ")}`, right: `${Math.round(frac * 100)}% · n ${c.n.toLocaleString()}` }) - 1;
+    const canon = c.canon?.length ? `[${c.canon.map(m => `${m}+`).join(" ")}] ` : "";
+    const li = lines.push({ label: withTag(c.name, ntTag(c.nt)), sub: `${canon}${c.sc} · ${c.markers.map(m => `${m}+`).join(" ")}`, right: `${Math.round(frac * 100)}% · n ${c.n.toLocaleString()}`, bar: cls.color }) - 1;
     cells.push({ li, ci: 0, size: nucleiSize(c.n), fill: scColour(q(mean)),
       tip: `${c.name} (${c.sc}${c.nt ? `, ${c.nt}` : ""}${c.mtg ? `, like cortical ${c.mtg}` : ""})\nMarkers: ${c.markers.join(", ") || "–"}\n${g.name}: ${(frac * 100).toFixed(0)}% of ${c.n.toLocaleString()} nuclei, mean ${mean.toFixed(2)}` });
     order.forEach((d, j) => {
@@ -3577,6 +3608,7 @@ async function drawClusterHeatmap(data, g) {
       const m = cd.mean[at] / 255 * cd.max, f = cd.frac[at] / 255;
       cells.push({ li, ci: j + 1, size: nucleiSize(cd.groups[at][2]), fill: scColour(q(m)), tip: `${where}\n${g.name}: ${(f * 100).toFixed(0)}% expressing, mean ${m.toFixed(2)}` });
     });
+   }
   }
   drawGrid({ cols, lines, cells, labelW: 540, cw: 14, rh: 17, top: 205,
     onColLabels: () => { scView.caOrder = !scView.caOrder; scView.sel = null; renderCellTypes(); },

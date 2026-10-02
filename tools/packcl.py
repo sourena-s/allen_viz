@@ -24,6 +24,8 @@ import re
 ispc = np.array([g in pc and not re.match(r'^(RPL|RPS|MRPL|MRPS|MT-)', g) for g in gnames])   # no ribosomal / mitochondrial markers
 # Markers: protein-coding genes most specific to the cluster within its supercluster (fraction
 # expressing minus the siblings' mean), expressed in at least 30% of its nuclei
+CANON = ['FIBCD1', 'FNDC1', 'WFS1', 'PCP4', 'RGS14', 'AMIGO2', 'PROX1']
+gidx = {g: j for j, g in enumerate(gnames)}
 clusters = []
 scs = [ann.loc[c, 'Supercluster'] for c in keep]
 for i, c in enumerate(keep):
@@ -35,8 +37,11 @@ for i, c in enumerate(keep):
     top = [gnames[j] for j in np.argsort(-score)[:4] if score[j] > 0.1]
     w = cnt[c] / max(1, cnt[c].sum())
     a = ann.loc[c]
+    # Canonical hippocampal field markers (fixed panel) expressed in at least half of the nuclei:
+    # field identity from the cells' own genes rather than from the (mixed) dissections
+    canon = [m for m in CANON if m in gidx and Fr[i, gidx[m]] >= 0.5] if scs[i].startswith('Hippocampal') else []
     clusters.append(dict(id=int(c), name=str(a['Cluster name']), sc=str(a['Supercluster']), nt=str(a['Neurotransmitter auto-annotation']) if pd.notna(a['Neurotransmitter auto-annotation']) else "",
-                         mtg=str(a['Transferred MTG Label']) if pd.notna(a['Transferred MTG Label']) else "", n=int(n[c]), markers=top, where=[int(round(x * 255)) for x in w]))
+                         mtg=str(a['Transferred MTG Label']) if pd.notna(a['Transferred MTG Label']) else "", n=int(n[c]), markers=top, where=[int(round(x * 255)) for x in w], canon=canon))
 np.save('cl_sel.npy', sel)
 gmax = M.max(0); gmax[gmax == 0] = 1
 qm = np.round(M / gmax * 255).astype(np.uint8); qf = np.round(Fr * 255).astype(np.uint8)
