@@ -354,6 +354,7 @@
   #sc-plot .mk { fill: var(--muted); }
   #sc-plot { overflow: auto; max-height: calc(100dvh - 190px); touch-action: pan-x pan-y; }
 
+  body.phone .sc-z:not(#sc-max) { display: none; }
   .sc-z { flex: none; width: 30px; padding: 4px 0; text-align: center; font-size: 15px; line-height: 1; }
   #sc-plot svg { display: block; font: 10.5px var(--sans); }
   #sc-plot text { fill: var(--ink); }
@@ -3481,7 +3482,7 @@ async function renderCellTypes() {
         if (!ks.length) continue;
         let n = 0, m = 0, fr = 0;
         for (const k of ks) { const v = cval(k); n += v.n; m += v.n * v.mean; fr += v.n * v.frac; }
-        rows.push({ label: f.label, bar: f.color, n, mean: m / n, frac: fr / n, allen: allenZ(ALLEN_OF_FIELD[f.key]), allenWhere: ALLEN_OF_FIELD[f.key].join(", "), tip: `${f.label}\nClusters: ${ks.map(k => clusters.clusters[k].name).join(", ")}` });
+        rows.push({ label: f.label, bar: f.color, n, mean: m / n, frac: fr / n, allen: f.key === "CAx" ? null : allenZ(ALLEN_OF_FIELD[f.key]), allenWhere: ALLEN_OF_FIELD[f.key].join(", "), tip: `${f.label}\nClusters: ${ks.map(k => clusters.clusters[k].name).join(", ")}` });
       }
     }
     byClassRows("Other cells in the hippocampus", d => d < HIPP_DISSECTIONS, true, ALLEN_HIPP);
@@ -3500,7 +3501,7 @@ async function renderCellTypes() {
       // One Allen value per group: a marker subfield's own structures; for a cell class, the
       // structures of its clusters' dissections, weighted by their nuclei
       // Allen only for the hippocampal subfields and the amygdala (not other regions or classes)
-      if (gr.field) groupAllen.set(gr.name, { ...(allenZ(ALLEN_OF_FIELD[gr.field]) ?? {}), where: ALLEN_OF_FIELD[gr.field].join(", ") });
+      if (gr.field && gr.field !== "CAx") groupAllen.set(gr.name, { ...(allenZ(ALLEN_OF_FIELD[gr.field]) ?? {}), where: ALLEN_OF_FIELD[gr.field].join(", ") });
       else if (gr.name === "Amygdala excitatory") {
         // the Allen amygdala structures of the dissections holding at least a tenth of its nuclei
         const byD = new Array(region.labels.length).fill(0);
@@ -3531,9 +3532,8 @@ async function renderCellTypes() {
     // Allen: each hippocampal dissection its own; the parahippocampal gyrus and the amygdala one
     // region-wide rectangle each (no resolution to their subregions)
     const grp = d < HIPP_DISSECTIONS ? `d${d}` : region.sections[d] === "Amygdala" ? "rAMY" : "rPHG";
-    if (detailed && d < HIPP_DISSECTIONS) { const a = dissectionZ(d); groupAllen.set(grp, a ? { ...a, where: ALLEN_OF_DISSECTION[d].join(", ") } : {}); }
-    if (grp.startsWith("r") && !groupAllen.has(grp)) { const keys = grp === "rAMY" ? ALLEN_AMY.concat("BST") : ["PHG"]; groupAllen.set(grp, { ...(allenZ(keys) ?? {}), where: keys.join(", ") }); }
-    rows.push({ label: data_label(d), bar: region.sections[d].startsWith("Hippocampus") ? "#0a84ff" : region.sections[d] === "Amygdala" ? "#e6194b" : "#f28e00", ...v, grp: `${grp}:dis`, dis: true, tip: `Dissection ${region.sections[d]} · ${region.labels[d]}` });
+    // (no Allen on the dissection rows)
+    rows.push({ label: data_label(d), bar: region.sections[d].startsWith("Hippocampus") ? "#0a84ff" : region.sections[d] === "Amygdala" ? "#e6194b" : "#f28e00", ...v, dis: true, tip: `Dissection ${region.sections[d]} · ${region.labels[d]}` });
   }
   // Each section (rows under one heading) has its own colour range, up to its own maximum
   const secMax = [];
@@ -3547,13 +3547,11 @@ async function renderCellTypes() {
     if (r.sec) { lines.push({ sec: r.sec, secColor: r.color }); continue; }
     const li = lines.push({ label: r.label, sub: r.sub, bar: r.bar }) - 1;
     cells.push({ li, ci: 0, size: nucleiSize(r.n), fill: scColour(Math.round(r.mean / secMax[r.secI] * 255)), tip: `${r.tip}\n${scView.g.name}: ${(r.frac * 100).toFixed(0)}% of ${r.n.toLocaleString()} nuclei, mean ${r.mean.toFixed(2)} (colour scaled to this section's maximum, ${secMax[r.secI].toFixed(2)})` });
-    // Allen: one rectangle per row group, on the group's first row (detailed: the samples as
-    // stripes; brief: the regions' mean)
+    // Allen: one rectangle per row group, on the group's first row, its samples as stripes
     if (r.grp && r.grp !== lastGrp) {
       lastGrp = r.grp;
-      const a = groupAllen.get(r.grp.replace(":dis", "")), span = rows.filter(x => x.grp === r.grp).length;
-      if (a?.z != null && !detailed) cells.push({ li, ci: 1, span, fill: ribbonColour(a.z), tip: `Allen microarray, probe ${probeLabel}: mean z ${a.z >= 0 ? "+" : ""}${a.z.toFixed(2)} over ${a.n} samples in ${a.where}` });
-      else if (a?.z != null) cells.push({ li, ci: 1, span, stripes: a.vals.map(ribbonColour), tip: `Allen microarray, probe ${probeLabel}: ${a.n} samples in ${a.where} (stripes in ribbon order), mean z ${a.z >= 0 ? "+" : ""}${a.z.toFixed(2)}` });
+      const a = groupAllen.get(r.grp), span = rows.filter(x => x.grp === r.grp).length;
+      if (a?.z != null) cells.push({ li, ci: 1, span, stripes: a.vals.map(ribbonColour), tip: `Allen microarray, probe ${probeLabel}: ${a.n} samples in ${a.where} (stripes in ribbon order), mean z ${a.z >= 0 ? "+" : ""}${a.z.toFixed(2)}` });
     }
     if (!detailed && r.allen) cells.push({ li, ci: 1, size: 0.9, fill: ribbonColour(r.allen.z), tip: `Allen microarray, probe ${probeLabel}: mean z ${r.allen.z >= 0 ? "+" : ""}${r.allen.z.toFixed(2)} over ${r.allen.n} samples in ${r.allenWhere}` });
     // Nuclei (grey, linear) with those expressing the gene (green) on top
@@ -3564,8 +3562,8 @@ async function renderCellTypes() {
   }
   $e("sc-sub").textContent = `${detailed ? "Siletti clusters, grouped by subfield (canonical markers) or cell class, sorted by share expressing" : "Hippocampal subfields by canonical markers (CA1: FIBCD1/FNDC1; CA2: PCP4; DG: PROX1), other cell classes per region"}, then each dissection (all its nuclei; dissections mix neighbouring fields). The subiculum has no cluster or canonical marker of its own in these data (its nuclei fall into CA1-type clusters), so it appears only as a dissection row. Colour: mean expression of ${scView.g.name}, log1p(counts per 10k), scaled within each section to that section's maximum (hover a square for it); size: nuclei. Bars: nuclei (grey, linear) and those expressing the gene (green).${detailed ? " Allen: the probe highlighted in the ribbon, every sample of the Allen structures matching each subfield, class or dissection (the ribbon turned on its side, its colours), from your loaded donors." : " Allen: mean z of the probe highlighted in the ribbon in each marker subfield's Allen structures, in the ribbon's colours."}${detailed ? " Hover a cluster for where it was dissected and its values there." : ""} (Ex) excitatory, (In) inhibitory.`;
   const allenLabel = !expr.byDonor.size ? "Allen z (load donors)" : `Allen z, probe ${probeLabel}`;
-  drawGrid({ cols: [{ label: `${scView.g.name} (Siletti)` }, { label: allenLabel, gap: 6 }, { label: "Nuclei (expressing)", w: 190, gap: 10 },
-      ...(detailed ? [{ label: "Markers ([canonical] then cluster-specific)", w: 360, gap: 8 }] : [])],
+  drawGrid({ cols: [{ label: `${scView.g.name} (Siletti)` }, { label: allenLabel, gap: 6 }, { label: "Nuclei (expressing)", w: 190, gap: 10, plain: true },
+      ...(detailed ? [{ label: "Markers ([canonical] then cluster-specific)", w: 360, gap: 8, plain: true }] : [])],
     lines, cells, labelW: 330, cw: 22, rh: detailed ? 17 : 20, flatLabels: true });
   scLegend(top);
 }
@@ -3616,7 +3614,7 @@ const svgEl = (tag, attrs, text) => {
 function drawGrid(spec) {
   const { cols, lines, cells, labelW, cw, rh } = spec;
   // Horizontal column labels, stacked (last column lowest) and joined to their column by an L
-  const top = spec.flatLabels ? 14 * cols.length + 12 : spec.top;
+  const top = spec.flatLabels ? 14 * cols.filter(c => !c.plain).length + 12 : spec.top;
   const xs = []; let x = labelW;
   const ws = cols.map(c => c.w ?? cw);
   cols.forEach((c, i) => { x += c.gap ?? 0; xs.push(x); x += ws[i]; });
@@ -3628,6 +3626,10 @@ function drawGrid(spec) {
   cols.forEach((c, ci) => { if (c.bar) svg.append(svgEl("rect", { x: xs[ci], y: top - 4, width: cw + (ci + 1 < cols.length && cols[ci + 1].bar === c.bar && !cols[ci + 1].gap ? 0 : -1), height: 2.5, fill: c.bar })); });
   const colText = cols.map((c, ci) => {
     const cx = xs[ci] + Math.min(ws[ci], cw) / 2;
+    if (spec.flatLabels && c.plain) {   // wide column: its label straight above it
+      const t = svgEl("text", { class: "col", x: xs[ci] + 3, y: 14 }, c.label);
+      svg.append(t); return t;
+    }
     if (spec.flatLabels) {
       const ly = 14 * (ci + 1);
       svg.append(svgEl("polyline", { points: `${cx},${top - 3} ${cx},${ly - 4} ${cx + 6},${ly - 4}`, fill: "none", stroke: "var(--muted)", "stroke-width": 0.8 }));
@@ -3664,10 +3666,10 @@ function drawGrid(spec) {
       if (c.stripes?.length) {   // filled with stacked stripes, one per value (the ribbon turned on its side)
         const g2 = svgEl("g", {}), sh = hh / c.stripes.length;
         c.stripes.forEach((f, i) => g2.append(svgEl("rect", { x: xs[c.ci] + 2, y: y0 + i * sh, width: w - 4, height: sh + 0.3, fill: f })));
-        mark = svgEl("rect", { x: xs[c.ci] + 2, y: y0, width: w - 4, height: hh, fill: "transparent", stroke: "#000", "stroke-width": 1 });
+        mark = svgEl("rect", { x: xs[c.ci] + 2, y: y0, width: w - 4, height: hh, fill: "transparent", stroke: "#000", "stroke-width": 1.8 });
         svg.append(g2, mark);
       } else {
-        mark = svgEl("rect", { x: xs[c.ci] + 2, y: y0, width: w - 4, height: hh, fill: c.fill, stroke: "#000", "stroke-width": 1 });
+        mark = svgEl("rect", { x: xs[c.ci] + 2, y: y0, width: w - 4, height: hh, fill: c.fill, stroke: "#000", "stroke-width": 1.8 });
         svg.append(mark);
       }
     } else if (c.bar != null) {   // horizontal bar(s), 0..1 of the bar room, with a label after
