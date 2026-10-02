@@ -389,10 +389,10 @@
 
   .panel-toggle {
     display: none; position: fixed; z-index: 2; left: 10px; top: calc(10px + env(safe-area-inset-top, 0px));
-    width: 44px; height: 44px; padding: 0; border-radius: 4px; color: var(--ink);
+    width: 34px; height: 34px; padding: 0; border-radius: 4px; color: var(--ink);
     align-items: center; justify-content: center; cursor: pointer; -webkit-tap-highlight-color: transparent;
   }
-  .panel-toggle svg { width: 22px; height: 22px; flex: none; }
+  .panel-toggle svg { width: 16px; height: 16px; flex: none; }
   .sheet-handle { display: none; }
   #scrim { display: none; }
 
@@ -2217,7 +2217,7 @@ document.querySelectorAll("[data-mesh]").forEach(btn => btn.addEventListener("cl
   box.checked = !box.checked; box.dispatchEvent(new Event("change"));
   btn.setAttribute("aria-pressed", box.checked);
 }));
-$e("expr-files").addEventListener("change", e => { loadExpressionFiles(e.target.files); e.target.value = ""; });
+$e("expr-files").addEventListener("change", async e => { const files = [...e.target.files]; e.target.value = ""; await loadExpressionFiles(files); schedulePack(); });
 
 // ---------------------------------------------------------------- zip reading
 // Reads a .zip (a File or Blob) through its central directory, so entries are sliced out and
@@ -2448,8 +2448,13 @@ async function loadSavedDonors(ask = true) {
 // Every probe of a donor gets a row; a probe the donor lacks is all 65535 and is left out on
 // loading. On load each donor becomes one Float32Array with a view per probe.
 const PACK_NAME = "allen_pack.bin", PACK_MAGIC = "AHBAPK01", PACK_LO = -4, PACK_STEP = 0.0005, PACK_NONE = 65535;
-async function writePack() {
-  if (!dataDir || !(await dirPermission(dataDir, true))) { setExprStatus(["Choose a data folder first (Download donor data…)."]); return; }
+// Where packs live: the chosen data folder, or else (phones, no folder chosen) the browser's
+// own private storage (origin private file system), so that a reload, e.g. after Android has
+// discarded the tab in the background, brings the data straight back
+async function opfsDir() { try { return await navigator.storage.getDirectory(); } catch { return null; } }
+const dirLabel = dir => (dir === dataDir && dataDir ? `${dataDir.name}/` : "this browser's storage");
+async function writePack(dir = dataDir) {
+  if (!dir || !(await dirPermission(dir, true))) { setExprStatus(["Choose a data folder first (Download donor data…)."]); return; }
   const donorList = loadedDonors();
   if (!donorList.length) return;
   const probes = [...new Set(donorList.flatMap(d => [...expr.byDonor.get(d).keys()]))];
@@ -2474,7 +2479,8 @@ async function writePack() {
   new DataView(pre.buffer).setUint32(8, json.length, true);
   pre.set(json, 12);
   // createWritable writes to a temporary file that replaces the old pack only on close()
-  const handle = await dataDir.getFileHandle(PACK_NAME, { create: true });
+  if (dir !== dataDir) navigator.storage.persist?.().catch(() => {});   // ask the browser not to evict it
+  const handle = await dir.getFileHandle(PACK_NAME, { create: true });
   const out = await handle.createWritable(), total = offset;
   try {
     setBusy("Packing donors…", 0);
@@ -2502,19 +2508,46 @@ async function writePack() {
   } catch (err) { await out.abort?.(); throw err; }
   finally { setBusy(null); }
   expr.packed = new Set(donorList);
-  await dataDir.removeEntry(`${PACK_NAME}.part`).catch(() => {});   // left by an earlier version
-  setExprStatus([`Packed ${header.donors.length} donor${header.donors.length > 1 ? "s" : ""} (${Math.round((pre.length + total) / 1e6)} MB) into ${dataDir.name}/${PACK_NAME}. Next visits load it instead of the CSV files.`]);
+  await dir.removeEntry(`${PACK_NAME}.part`).catch(() => {});   // left by an earlier version
+  setExprStatus([`Packed ${header.donors.length} donor${header.donors.length > 1 ? "s" : ""} (${Math.round((pre.length + total) / 1e6)} MB) into ${dirLabel(dir)} (${PACK_NAME}). Next visits load it instead of the CSV files.`]);
+}
+// A donor's expression kept as packed uint16 (half the memory of Float32, which matters on
+// phones), decoded to a Float32Array per probe when asked for; used like the Map of a CSV load
+class PackedRows {
+  constructor(q, n, index, lo, step) { Object.assign(this, { q, n, index, lo, step, cache: new Map() }); }
+  get size() { return this.index.size; }
+  has(id) { return this.index.has(id); }
+  keys() { return this.index.keys(); }
+  *values() { for (const id of this.index.keys()) yield this.get(id); }
+  get(id) {
+    const base = this.index.get(id);
+    if (base === undefined) return undefined;
+    let v = this.cache.get(id);
+    if (v) return v;
+    const { q, n, lo, step } = this;
+    v = new Float32Array(n);
+    for (let i = 0; i < n; i++) { const x = q[base + i]; v[i] = x === PACK_NONE ? NaN : lo + x * step; }
+    // A few recently used probes stay decoded (the shown gene, its neighbours)
+    if (this.cache.size >= 256) this.cache.delete(this.cache.keys().next().value);
+    this.cache.set(id, v);
+    return v;
+  }
 }
 // After loading from CSV: pack every loaded donor when the pack lacks any of them
 async function packIfNeeded() {
-  if (!hasFsAccess || !dataDir || !expr.byDonor.size) return;
-  if (loadedDonors().every(d => expr.packed?.has(d))) return;
-  if (!(await dirPermission(dataDir, false))) return;
-  await writePack().catch(err => { console.error(err); setExprStatus([`Packing failed: ${err.message}`]); });
+  if (!expr.byDonor.size || loadedDonors().every(d => expr.packed?.has(d))) return;
+  const dir = hasFsAccess && dataDir && (await dirPermission(dataDir, false)) ? dataDir : await opfsDir();
+  if (!dir) return;
+  await writePack(dir).catch(err => { console.error(err); setExprStatus([`Packing failed: ${err.message}`]); });
 }
-async function loadPack() {
+// Donors chosen one by one (Choose files…): pack once the loading has paused for a moment
+function schedulePack() {
+  clearTimeout(schedulePack.timer);
+  schedulePack.timer = setTimeout(() => packIfNeeded(), 4000);
+}
+async function loadPack(dir = dataDir) {
   let file;
-  try { file = await (await dataDir.getFileHandle(PACK_NAME)).getFile(); } catch { return false; }
+  try { file = await (await dir.getFileHandle(PACK_NAME)).getFile(); } catch { return false; }
   const head = new Uint8Array(await file.slice(0, 12).arrayBuffer());
   if (new TextDecoder().decode(head.subarray(0, 8)) !== PACK_MAGIC) throw new Error("not a pack file");
   const len = new DataView(head.buffer).getUint32(8, true);
@@ -2538,15 +2571,13 @@ async function loadPack() {
       if (n !== cloud.userData.items.length) throw new Error(`donor ${donorShort(dd.donor)} has ${cloud.userData.items.length} samples, the pack ${n}`);
       setBusy(`Loading dataset (packed)… ${k + 1} of ${todo.length}`, k / todo.length);
       const q = new Uint16Array(await file.slice(dataStart + dd.offset, dataStart + dd.offset + dd.bytes).arrayBuffer());
-      const all = new Float32Array(P * n), rows = new Map();
+      const index = new Map();
       for (let p = 0; p < P; p++) {
         const base = p * n;
         if (q[base] === PACK_NONE && q.subarray(base, base + n).every(v => v === PACK_NONE)) continue;
-        for (let i = 0; i < n; i++) { const v = q[base + i]; all[base + i] = v === PACK_NONE ? NaN : header.lo + v * header.step; }
-        rows.set(header.probes[p], all.subarray(base, base + n));
-        if (p % 5000 === 4999) { setBusy(`Loading dataset (packed)… ${k + 1} of ${todo.length}`, (k + p / P) / todo.length); await new Promise(r => setTimeout(r, 0)); }
+        index.set(header.probes[p], base);
       }
-      expr.byDonor.set(dd.donor, rows);
+      expr.byDonor.set(dd.donor, new PackedRows(q, n, index, header.lo, header.step));
       (expr.packed ??= new Set()).add(dd.donor);
     }
   } finally { setBusy(null); }
@@ -2571,7 +2602,11 @@ $e("dl-load").addEventListener("click", () => loadSavedDonors(true));
 const savedDirReady = hasFsAccess ? idb("readonly", st => st.get("dataDir")).then(h => { if (h) { dataDir = h; showDataDir(); } }).catch(() => {}) : Promise.resolve();
 async function autoLoadSaved() {
   await savedDirReady;
-  if (!dataDir) return;
+  if (!dataDir) {   // no folder: data packed into the browser's own storage on an earlier visit
+    const dir = await opfsDir();
+    if (dir) await loadPack(dir).catch(err => console.error(err));
+    return;
+  }
   if (await dirPermission(dataDir, false).catch(() => false)) { loadSavedDonors(false); return; }
   const btn = $e("resume-load");
   btn.textContent = `Load saved donors from ${dataDir.name}/`;
@@ -3558,6 +3593,16 @@ function resize() {
 }
 layoutStage();
 setView([-0.62, 0.35, -0.7].map(v => v / Math.hypot(-0.62, 0.35, -0.7)));
+// Android drops the WebGL context of a page left in the background: let it be restored
+// (three.js re-uploads everything), and re-lay out once the page is shown again
+renderer.domElement.addEventListener("webglcontextlost", e => e.preventDefault());
+renderer.domElement.addEventListener("webglcontextrestored", () => {
+  // The restored context starts with black as the clear colour: set the white again
+  renderer.setClearColor(0x000000); renderer.setClearColor(0xffffff);
+  applyRibbonOrientation();
+});
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") applyRibbonOrientation(); });
+addEventListener("pageshow", () => applyRibbonOrientation());
 renderer.setAnimationLoop(() => {
   stepFocus(0.15); controls.update();
   // A sample picked in the ribbon flashes its yellow ring for 1 s; otherwise the ring is steady
