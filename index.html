@@ -374,6 +374,8 @@
   #sc-dialog.max #sc-plot { max-height: calc(100dvh - 170px); }
   .sc-legend { display: flex; gap: 28px; align-items: center; flex-wrap: wrap; font-size: 11px; color: var(--muted); }
   .sc-leg { display: inline-flex; align-items: center; gap: 6px; }
+  /* Phone: the plot does not scroll on its own, so the legend and notes follow it in the page */
+  body.phone #sc-plot, body.phone #sc-dialog.max #sc-plot { max-height: none; overflow-y: visible; }
   .sc-legend svg { vertical-align: middle; }
   .sc-cite { font-size: 11px; }
   .dl-actions { display: flex; gap: 8px; justify-content: flex-end; }
@@ -3742,12 +3744,8 @@ function scLegend(gmax) {
   const span = (text, cls) => Object.assign(document.createElement("span"), { textContent: text, className: cls ?? "" });
   const leg = svgEl("svg", { width: 250, height: 22 });
   [30, 300, 3000, 30000].forEach((n, k) => { const s = Math.max(2, nucleiSize(n) * 16); leg.append(svgEl("rect", { x: 10 + k * 60 - s / 2, y: 11 - s / 2, width: s, height: s, fill: "#ccc", stroke: "#000", "stroke-width": 0.8 }), svgEl("text", { x: 21 + k * 60, y: 15, style: "fill: var(--muted)" }, n.toLocaleString())); });
-  const ramp = svgEl("svg", { width: 160, height: 14 });
-  for (let i = 0; i < 32; i++) ramp.append(svgEl("rect", { x: i * 5, y: 2, width: 5, height: 10, fill: scColour(i / 31 * 255) }));
   const sizes = Object.assign(document.createElement("span"), { className: "sc-leg" }); sizes.append(span("Nuclei count"), leg);
-  const colours = Object.assign(document.createElement("span"), { className: "sc-leg" });
-  colours.append(span("Mean log(1 + count per 10k)"), span("0"), ramp, span(`max (per group; up to ${gmax.toFixed(2)})`));
-  $e("sc-legend").replaceChildren(sizes, colours);
+  $e("sc-legend").replaceChildren(sizes);
 }
 // Trim the plot to what was drawn, so there is no empty area to scroll into (it can only be
 // measured once the window is shown)
