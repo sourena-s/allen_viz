@@ -355,6 +355,8 @@
   .sc-detail-row input[type=checkbox] { transform: scale(0.75); transform-origin: left center; margin-right: -6px; }
   #sc-plot .mk { fill: var(--muted); }
   #sc-plot { overflow: auto; max-height: calc(100dvh - 190px); touch-action: pan-x pan-y; }
+  /* No page zoom from inside the window (it would stay zoomed after closing); a pinch zooms the plot */
+  #sc-dialog { touch-action: pan-x pan-y; }
 
   body.phone .sc-zb { display: none; }
   #sc-max .restore, #sc-max[aria-pressed=true] .max { display: none; }
@@ -3416,7 +3418,15 @@ async function showCellTypes() {
   if (!gR) return;
   const g = gC?.i >= 0 ? gC : gR;
   $e("sc-title").textContent = "";   // the gene is named in the column labels
-  scView.zrManual = false;   // the Allen colour range follows the plotted values until the slider is moved
+  // Allen colour range: once per gene, the largest |z| over every Allen sample either view can
+  // show (hippocampal subfields, parahippocampal gyrus, amygdala), so brief and detailed share it;
+  // a range set with the slider stays until another gene is shown
+  const zrKey = `${g.name}|${chosenProbes()[0] ?? ""}`;
+  if (scView.zrKey !== zrKey) {
+    scView.zrKey = zrKey; scView.zrManual = false;
+    const all = allenZ(["CA1", "CA2", "CA3", "CA4", "DG", "PHG", ...ALLEN_AMY, "BST"]);
+    if (all) setScZr(Math.max(...all.vals.map(Math.abs)), false);
+  }
   Object.assign(scView, { region, clusters, gR, gC, g, detailed, sel: null, token: (scView.token ?? 0) + 1 });
   if (gR.i < 0 && !(gC?.i >= 0)) {
     $e("sc-sub").textContent = `${g.name} is not detected in this single-nucleus dataset.`;
@@ -3545,13 +3555,6 @@ async function renderCellTypes() {
   }
   // Two groups of rows, each with its own colour range and bar scale (its own maximum):
   // "by markers" (subfields, classes, clusters) and "by dissection"
-  // Allen colour range: the largest |z| among the Allen values shown (unless set with the slider)
-  if (!scView.zrManual) {
-    const shown = new Set(rows.map(r => r.grp).filter(Boolean));
-    const zs = [...groupAllen].filter(([k]) => shown.has(k)).flatMap(([, a]) => a.vals ?? [])   // group rectangles show their samples as stripes
-      .concat(rows.filter(r => r.allen && !detailed).map(r => r.allen.z));
-    if (zs.length) setScZr(Math.max(...zs.map(Math.abs)), false);
-  }
   const secMax = [], secMaxN = [];
   for (const r of rows) if (r.n) { r.secI = r.dis ? 1 : 0; secMax[r.secI] = Math.max(secMax[r.secI] ?? 1e-6, r.mean); secMaxN[r.secI] = Math.max(secMaxN[r.secI] ?? 1, r.n); }
   const top = Math.max(1e-6, ...secMax);
@@ -3772,7 +3775,7 @@ function setScZoom(z, cx, cy) {
 $e("sc-plot").addEventListener("wheel", e => { if (!e.ctrlKey) return; e.preventDefault(); setScZoom(scView.zoom * Math.exp(-e.deltaY * 0.01), e.clientX, e.clientY); }, { passive: false });
 {
   const pts = new Map(); let d0 = 0, z0 = 1;
-  const box = $e("sc-plot");
+  const box = $e("sc-dialog");   // a pinch anywhere in the window zooms the plot
   const dist = () => { const [a, b] = [...pts.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
   box.addEventListener("pointerdown", e => {
     if (e.pointerType !== "touch") return;
