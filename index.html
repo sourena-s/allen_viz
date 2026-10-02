@@ -3372,7 +3372,7 @@ const SC_EXCIT = new Set(["Hippocampal dentate gyrus", "Hippocampal CA4", "Hippo
 const ntTag = nt => (/GABA|GLY/.test(nt) ? "In" : /VGLUT/.test(nt) ? "Ex" : "");
 const scTag = sc => (SC_INHIB.has(sc) ? "In" : SC_EXCIT.has(sc) ? "Ex" : "");
 const withTag = (name, t) => (t ? `${name} (${t})` : name);
-const scView = { zoom: 1, caOrder: false, sel: null, data: null, g: null, detailed: false };
+const scView = { zoom: 1, caOrder: true, sel: null, data: null, g: null, detailed: false };
 
 async function showCellTypes() {
   const detailed = $e("sc-detail").checked;
@@ -3483,14 +3483,18 @@ function drawRegionHeatmap(data, g) {
   const usedCols = data.superclusters.map((_, c) => c).filter(c => data.labels.some((_, d) => cell.has(`${d}|${c}`)))
     .sort((a, b) => (data.superclusters[a] === "Splatter") - (data.superclusters[b] === "Splatter"));   // Splatter last
   const lines = [], cells = [];
-  data.labels.forEach((label, d) => {
-    if (!d || data.sections[d] !== data.sections[d - 1]) lines.push({ sec: data.sections[d] });
+  const part = d => data.sections[d].replace("Hippocampus · ", "");
+  const isHipp = d => data.sections[d].startsWith("Hippocampus");
+  CA_ORDER.flat().forEach((d, j, all) => {
+    const label = isHipp(d) ? `${data.labels[d]} · ${part(d)}` : data.labels[d];
+    if (!j) lines.push({ sec: "Hippocampus, by CA field" });
+    else if (data.sections[d] !== data.sections[all[j - 1]] && !(isHipp(d) && isHipp(all[j - 1]))) lines.push({ sec: data.sections[d] });
     const li = lines.push({ label }) - 1;
     usedCols.forEach((c, ci) => {
       const v = cell.get(`${d}|${c}`);
       if (!v) return;
       const frac = row[nG + v.k] / 255, mean = row[v.k] / 255 * gmax;
-      cells.push({ li, ci, size: nucleiSize(v.n), fill: scColour(row[v.k]), tip: `${data.sections[d]} · ${label}\n${data.superclusters[c]}: ${(frac * 100).toFixed(0)}% of ${v.n.toLocaleString()} nuclei, mean ${mean.toFixed(2)}` });
+      cells.push({ li, ci, size: nucleiSize(v.n), fill: scColour(row[v.k]), tip: `${data.sections[d]} · ${data.labels[d]}\n${data.superclusters[c]}: ${(frac * 100).toFixed(0)}% of ${v.n.toLocaleString()} nuclei, mean ${mean.toFixed(2)}` });
     });
   });
   drawGrid({ cols: usedCols.map(c => ({ label: withTag(data.superclusters[c], scTag(data.superclusters[c])) })), lines, cells, labelW: 150, cw: 22, rh: 20, top: 200 });
@@ -3535,7 +3539,9 @@ async function loadClusterGene(geneIndex) {
 // dissections, each square the cluster's nuclei from that dissection (size: how many) coloured by
 // the gene's mean there. Clicking the column labels switches between head/body/tail order and
 // CA-field order (like fields side by side).
-const CA_ORDER = [[0, 5, 9], [6, 1], [2, 7, 10], [8, 3], [4], [11, 12, 13], [14, 15, 16, 17, 18, 19, 20]];
+// CA-field order, CA1 first: CA1 (head), CA1-2 (body), CA1-3 (head, body, tail), CA2-3 (head),
+// CA3 (body), DG-CA4 (head, body, tail), subiculum, then parahippocampal gyrus and amygdala
+const CA_ORDER = [[3], [8], [2, 7, 10], [1], [6], [0, 5, 9], [4], [11, 12, 13], [14, 15, 16, 17, 18, 19, 20]];
 async function drawClusterHeatmap(data, g) {
   const nC = data.clusters.length, row = data.body.subarray(g.i * nC * 2, (g.i + 1) * nC * 2);
   const cd = await loadClusterGene(g.i).catch(() => null);
