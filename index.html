@@ -350,7 +350,7 @@
   .sc-head { display: flex; align-items: center; gap: 10px; }
   .sc-head h2 { margin: 0; font-size: 15px; font-weight: 600; flex: 1; }
   .sc-toggle { flex: none; font-size: 12px; }
-  .sc-toggle select { font-size: 12px; padding: 3px 6px; width: auto; }
+  .sc-zr { align-self: flex-start; }
   #sc-plot .mk { fill: var(--muted); }
   #sc-plot { overflow: auto; max-height: calc(100dvh - 190px); touch-action: pan-x pan-y; }
 
@@ -656,9 +656,11 @@
       <button class="text-button sc-z" type="button" id="sc-max" aria-label="Maximise" title="Maximise / restore">⤢</button>
       <button class="text-button sc-z" type="button" id="sc-zoom-out" aria-label="Zoom out">−</button><button class="text-button sc-z" type="button" id="sc-zoom-in" aria-label="Zoom in">+</button>
       <button class="text-button" value="close">Close</button></div>
-    <p class="sub" id="sc-sub"></p>
+    <label class="zsym sc-zr" title="Colour range of the Allen z-scores: from minus to plus this value">Allen z
+      <input type="range" id="sc-zr" min="0.5" max="6" step="0.1" value="2" aria-label="Allen colour range, z"><span id="sc-zr-val" class="rm-value">±2.0</span></label>
     <div id="sc-plot"></div>
     <div class="sc-legend" id="sc-legend"></div>
+    <p class="sub" id="sc-sub"></p>
     <p class="sub sc-cite">Single-nucleus RNA-seq of adult human brain: Siletti K. et al. (2023) Transcriptomic diversity of cell types across the adult human brain. <i>Science</i> 382, eadd7046 (CC BY 4.0), via CELLxGENE Census. Rows are dissections, columns Siletti's superclusters; groups under 30 nuclei are left out.</p>
   </form>
 </dialog>
@@ -3401,7 +3403,9 @@ async function showCellTypes() {
   const gR = scGeneFor(region), gC = scGeneFor(clusters);
   if (!gR) return;
   const g = gC?.i >= 0 ? gC : gR;
-  $e("sc-title").textContent = `${g.name} · cell types in hippocampus and amygdala`;
+  $e("sc-title").textContent = g.name;
+  // The Allen colour range starts at the ribbon's
+  if (!scView.zr) setScZr(Math.max(Math.abs(zRange[0]), Math.abs(zRange[1])), false);
   Object.assign(scView, { region, clusters, gR, gC, g, detailed, sel: null, token: (scView.token ?? 0) + 1 });
   if (gR.i < 0 && !(gC?.i >= 0)) {
     $e("sc-sub").textContent = `${g.name} is not detected in this single-nucleus dataset.`;
@@ -3493,12 +3497,13 @@ async function renderCellTypes() {
       rows.push({ sec: gr.name, color: gr.color });
       // One Allen value per group: a marker subfield's own structures; for a cell class, the
       // structures of its clusters' dissections, weighted by their nuclei
+      // Allen only for the hippocampal subfields and the amygdala (not other regions or classes)
       if (gr.field) groupAllen.set(gr.name, { ...(allenZ(ALLEN_OF_FIELD[gr.field]) ?? {}), where: ALLEN_OF_FIELD[gr.field].join(", ") });
-      else {
-        // the Allen structures of the dissections holding at least a tenth of the group's nuclei
+      else if (gr.name === "Amygdala excitatory") {
+        // the Allen amygdala structures of the dissections holding at least a tenth of its nuclei
         const byD = new Array(region.labels.length).fill(0);
         for (const k of ks) clusters.clusters[k].where.forEach((w, d) => (byD[d] += w * clusters.clusters[k].n));
-        const tot = byD.reduce((a, v) => a + v, 0), keys = [...new Set(byD.flatMap((v, d) => (v >= tot * 0.1 ? ALLEN_OF_DISSECTION[d] : [])))];
+        const tot = byD.reduce((a, v) => a + v, 0), keys = [...new Set(byD.flatMap((v, d) => (v >= tot * 0.1 && region.sections[d] === "Amygdala" ? ALLEN_OF_DISSECTION[d] : [])))];
         groupAllen.set(gr.name, { ...(allenZ(keys) ?? {}), where: keys.join(", ") });
       }
       for (const k of ks) {
@@ -3508,7 +3513,7 @@ async function renderCellTypes() {
           const at = cd?.at.get(`${c.id}|${d}`), here = at === undefined ? "" : `: ${Math.round(cd.frac[at] / 2.55)}% expressing, mean ${(cd.mean[at] / 255 * cd.max).toFixed(2)}`;
           return `  ${data_label(d)} ${Math.round(w / 2.55)}% of nuclei${here}`;
         }).join("\n");
-        rows.push({ label: withTag(c.name, ntTag(c.nt)), sub: `${canon}${c.sc} · ${c.markers.map(m => `${m}+`).join(" ")}`, bar: gr.color, ...v, grp: gr.name,
+        rows.push({ label: withTag(c.name, ntTag(c.nt)), sub: c.sc, markers: `${canon}${c.markers.map(m => `${m}+`).join(" ")}`, bar: gr.color, ...v, grp: gr.name,
           tip: `${c.name} (${c.sc}${c.nt ? `, ${c.nt}` : ""}${c.mtg ? `, like cortical ${c.mtg}` : ""})\nMarkers: ${c.markers.join(", ") || "–"}\nWhere dissected:\n${where}` });
       }
     }
@@ -3521,7 +3526,8 @@ async function renderCellTypes() {
     if (!v) continue;
     const sec = `By dissection: ${region.sections[d].startsWith("Hippocampus") ? "hippocampus" : region.sections[d]} (all nuclei)`;
     if (sec !== lastSec) rows.push({ sec: (lastSec = sec) });
-    if (detailed) { const a = dissectionZ(d); groupAllen.set(`d${d}`, a ? { ...a, where: ALLEN_OF_DISSECTION[d].join(", ") } : {}); }
+    const allenHere = d < HIPP_DISSECTIONS || region.sections[d] === "Amygdala";   // not the parahippocampal gyrus
+    if (detailed && allenHere) { const a = dissectionZ(d); groupAllen.set(`d${d}`, a ? { ...a, where: ALLEN_OF_DISSECTION[d].join(", ") } : {}); }
     rows.push({ label: data_label(d), bar: region.sections[d].startsWith("Hippocampus") ? "#0a84ff" : region.sections[d] === "Amygdala" ? "#e6194b" : "#f28e00", ...v, grp: `d${d}`, dis: true, tip: `Dissection ${region.sections[d]} · ${region.labels[d]}` });
   }
   // Separate colour ranges: the subfield / class / cluster rows, and the dissection rows
@@ -3546,11 +3552,13 @@ async function renderCellTypes() {
     const nc = 2;
     cells.push({ li, ci: nc, bar: r.n / maxN, fill: "rgba(255,255,255,0.35)", bar2: r.n * r.frac / maxN, fill2: "#3cb371",
       text: `${r.n.toLocaleString()} (${Math.round(r.frac * 100)}%)`, tip: `${r.n.toLocaleString()} nuclei, ${Math.round(r.n * r.frac).toLocaleString()} (${(r.frac * 100).toFixed(1)}%) expressing ${scView.g.name}` });
+    if (detailed && r.markers) cells.push({ li, ci: 3, label: r.markers });
   }
-  $e("sc-sub").textContent = `${detailed ? "Siletti clusters, grouped by subfield (canonical markers) or cell class, sorted by share expressing" : "Hippocampal subfields by canonical markers (CA1: FIBCD1/FNDC1; CA2: PCP4; DG: PROX1), other cell classes per region"}, then each dissection (all its nuclei; dissections mix neighbouring fields). Colour: mean expression of ${scView.g.name}, log1p(counts per 10k), up to ${top.toFixed(2)} (dissection rows on their own scale, up to ${topD.toFixed(2)}); size: nuclei. Bars: nuclei (grey, linear) and those expressing the gene (green).${detailed ? " Allen: the probe highlighted in the ribbon, every sample of the Allen structures matching each subfield, class or dissection (the ribbon turned on its side, its colours), from your loaded donors." : " Allen: mean z of the probe highlighted in the ribbon in each marker subfield's Allen structures, in the ribbon's colours."}${detailed ? " Hover a cluster for where it was dissected and its values there." : ""} (Ex) excitatory, (In) inhibitory.`;
+  $e("sc-sub").textContent = `${detailed ? "Siletti clusters, grouped by subfield (canonical markers) or cell class, sorted by share expressing" : "Hippocampal subfields by canonical markers (CA1: FIBCD1/FNDC1; CA2: PCP4; DG: PROX1), other cell classes per region"}, then each dissection (all its nuclei; dissections mix neighbouring fields). The subiculum has no cluster or canonical marker of its own in these data (its nuclei fall into CA1-type clusters), so it appears only as a dissection row. Colour: mean expression of ${scView.g.name}, log1p(counts per 10k), up to ${top.toFixed(2)} (dissection rows on their own scale, up to ${topD.toFixed(2)}); size: nuclei. Bars: nuclei (grey, linear) and those expressing the gene (green).${detailed ? " Allen: the probe highlighted in the ribbon, every sample of the Allen structures matching each subfield, class or dissection (the ribbon turned on its side, its colours), from your loaded donors." : " Allen: mean z of the probe highlighted in the ribbon in each marker subfield's Allen structures, in the ribbon's colours."}${detailed ? " Hover a cluster for where it was dissected and its values there." : ""} (Ex) excitatory, (In) inhibitory.`;
   const allenLabel = !expr.byDonor.size ? "Allen z (load donors)" : `Allen z, probe ${probeLabel}`;
-  drawGrid({ cols: [{ label: `${scView.g.name} (Siletti)` }, { label: allenLabel, gap: 6 }, { label: "Nuclei (expressing)", w: 190, gap: 10 }],
-    lines, cells, labelW: detailed ? 540 : 330, cw: 22, rh: detailed ? 17 : 20, top: 92 });
+  drawGrid({ cols: [{ label: `${scView.g.name} (Siletti)` }, { label: allenLabel, gap: 6 }, { label: "Nuclei (expressing)", w: 190, gap: 10 },
+      ...(detailed ? [{ label: "Markers ([canonical] then cluster-specific)", w: 360, gap: 8 }] : [])],
+    lines, cells, labelW: detailed ? 330 : 330, cw: 22, rh: detailed ? 17 : 20, top: 92 });
   scLegend(top);
 }
 // Allen structures matching each Siletti dissection (Allen has no separate entorhinal cortex: PHG)
@@ -3575,9 +3583,9 @@ function allenZ(keys) {
   }
   return vals.length ? { z: vals.reduce((a, v) => a + v, 0) / vals.length, n: vals.length, vals } : null;
 }
-// The ribbon's colour for a z-score (its palette and colour range)
+// The ribbon's palette for a z-score, over the cell-type view's own colour range (its slider)
 function ribbonColour(z) {
-  const [lo, hi] = zRange, u = Math.max(0, Math.min(1, (z - lo) / (hi - lo))) * (paletteStops.length - 1), k = Math.min(paletteStops.length - 2, Math.floor(u));
+  const lo = -(scView.zr ?? 2), hi = scView.zr ?? 2, u = Math.max(0, Math.min(1, (z - lo) / (hi - lo))) * (paletteStops.length - 1), k = Math.min(paletteStops.length - 2, Math.floor(u));
   const c = paletteStops[k].clone().lerp(paletteStops[k + 1], u - k);
   return `rgb(${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)})`;
 }
@@ -3633,6 +3641,7 @@ function drawGrid(spec) {
     const w = ws[c.ci], cy = top + c.li * rh + rh / 2;
     svg.append(svgEl("rect", { x: xs[c.ci] + 0.5, y: cy - rh / 2 + 0.5, width: w - 1, height: rh - 1, fill: "rgba(255,255,255,0.05)" }));
     let mark;
+    if (c.label != null) { svg.append(svgEl("text", { class: "mk", x: xs[c.ci] + 4, y: cy + 4 }, c.label)); continue; }
     if (c.span) {   // one rectangle down c.span rows (e.g. a subfield's clusters)
       const y0 = cy - rh / 2 + 1, hh = c.span * rh - 2;
       if (c.stripes?.length) {   // filled with stacked stripes, one per value (the ribbon turned on its side)
@@ -3773,6 +3782,12 @@ $e("sc-plot").addEventListener("wheel", e => { if (!e.ctrlKey) return; e.prevent
   for (const t of ["pointerup", "pointercancel"]) box.addEventListener(t, up);
 }
 $e("sc-zoom-in").addEventListener("click", () => setScZoom(scView.zoom * 1.25));
+function setScZr(v, redraw = true) {
+  scView.zr = Math.min(6, Math.max(0.5, Math.round(v * 10) / 10));
+  $e("sc-zr").value = scView.zr; $e("sc-zr-val").textContent = `±${scView.zr.toFixed(1)}`;
+  if (redraw && scView.region) { if (setScZr.frame) return; setScZr.frame = requestAnimationFrame(() => { setScZr.frame = 0; renderCellTypes(); }); }
+}
+$e("sc-zr").addEventListener("input", e => setScZr(+e.target.value));
 $e("sc-max").addEventListener("click", () => $e("sc-dialog").classList.toggle("max"));
 $e("sc-dialog").addEventListener("close", () => ($e("sc-tip").hidden = true));
 $e("sc-zoom-out").addEventListener("click", () => setScZoom(scView.zoom / 1.25));
