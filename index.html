@@ -343,7 +343,7 @@
   #legal-dialog::backdrop { background: rgba(20, 28, 38, 0.3); }
   #sc-dialog {
     width: min(980px, calc(100vw - 16px)); max-height: calc(100dvh - 16px); box-sizing: border-box; padding: 0;
-    border-radius: 4px; color: var(--ink); background: var(--sheet); overflow: auto;
+    border-radius: 4px; color: var(--ink); background: #3a3f46; border: 1px solid #555; overflow: auto;
   }
   #sc-dialog::backdrop { background: rgba(20, 28, 38, 0.3); }
   .sc-form { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 14px 16px; }
@@ -352,13 +352,20 @@
   .sc-toggle { flex: none; font-size: 12px; }
   #sc-plot .mk { fill: var(--muted); }
   #sc-plot { overflow: auto; max-height: calc(100dvh - 190px); touch-action: pan-x pan-y; }
-  #sc-plot .hl { fill: #ffe600; font-weight: 700; }
-  #sc-plot .hl tspan { fill: #ffe600; }
+
   .sc-z { flex: none; width: 30px; padding: 4px 0; text-align: center; font-size: 15px; line-height: 1; }
   #sc-plot svg { display: block; font: 10.5px var(--sans); }
   #sc-plot text { fill: var(--ink); }
   #sc-plot .sec { font-weight: 600; font-size: 11px; }
   #sc-plot .col { fill: var(--muted); }
+  #sc-plot text.hl, #sc-plot text.hl tspan { fill: #ffe600; font-weight: 700; }
+  #sc-tip {
+    position: fixed; z-index: 30; pointer-events: none; max-width: 340px; padding: 6px 9px; border-radius: 4px;
+    font: 11.5px var(--sans); line-height: 1.4; white-space: pre-line; color: #fff; background: #23272d; border: 1px solid #555;
+  }
+  #sc-tip[hidden] { display: none; }
+  #sc-dialog.max { width: 100vw; max-width: none; height: 100dvh; max-height: none; margin: 0; border-radius: 0; }
+  #sc-dialog.max #sc-plot { max-height: calc(100dvh - 170px); }
   .sc-legend { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; font-size: 11px; color: var(--muted); }
   .sc-legend svg { vertical-align: middle; }
   .sc-cite { font-size: 11px; }
@@ -640,10 +647,12 @@
 <div class="edge-rail v right" data-rail="axial" role="slider" tabindex="0" aria-label="Axial cut (z)" aria-orientation="vertical"><div class="rail-track"></div><div class="rail-thumb"><span></span></div></div>
 <div class="edge-rail h" data-rail="sagittal" role="slider" tabindex="0" aria-label="Sagittal cut (x)" aria-orientation="horizontal"><div class="rail-track"></div><div class="rail-thumb"><span></span></div></div>
 
-<dialog id="sc-dialog" class="glass" aria-labelledby="sc-title">
+<dialog id="sc-dialog" aria-labelledby="sc-title">
+  <div id="sc-tip" hidden></div>
   <form method="dialog" class="sc-form">
     <div class="sc-head"><h2 id="sc-title">Cell types</h2>
       <div class="row sc-toggle"><input type="checkbox" id="sc-detail"><label for="sc-detail">Detailed: Siletti clusters</label></div>
+      <button class="text-button sc-z" type="button" id="sc-max" aria-label="Maximise" title="Maximise / restore">⤢</button>
       <button class="text-button sc-z" type="button" id="sc-zoom-out" aria-label="Zoom out">−</button><button class="text-button sc-z" type="button" id="sc-zoom-in" aria-label="Zoom in">+</button>
       <button class="text-button" value="close">Close</button></div>
     <p class="sub" id="sc-sub"></p>
@@ -3356,12 +3365,12 @@ function scGeneFor(data) {
   return { i: -1, name: shownName(sym), allen: sym };
 }
 function updateCellsButton() { $e("cells-btn").disabled = !(chosenProbes().length && symbolOf(chosenProbes()[0])); }
-// Excitatory (X) / inhibitory (B) tags: clusters by Siletti's neurotransmitter annotation
+// Excitatory (Ex) / inhibitory (In) tags: clusters by Siletti's neurotransmitter annotation
 // (GABA or glycine: inhibitory; otherwise VGLUT1-3: excitatory), superclusters by their type
 const SC_INHIB = new Set(["MGE interneuron", "CGE interneuron", "LAMP5-LHX6 and Chandelier", "Medium spiny neuron", "Eccentric medium spiny neuron", "Cerebellar inhibitory", "Midbrain-derived inhibitory"]);
 const SC_EXCIT = new Set(["Hippocampal dentate gyrus", "Hippocampal CA4", "Hippocampal CA1-3", "Amygdala excitatory", "Upper-layer intratelencephalic", "Deep-layer intratelencephalic", "Deep-layer near-projecting", "Deep-layer corticothalamic and 6b", "Thalamic excitatory", "Splatter", "Mammillary body", "Upper rhombic lip", "Lower rhombic lip"]);
-const ntTag = nt => (/GABA|GLY/.test(nt) ? "B" : /VGLUT/.test(nt) ? "X" : "");
-const scTag = sc => (SC_INHIB.has(sc) ? "B" : SC_EXCIT.has(sc) ? "X" : "");
+const ntTag = nt => (/GABA|GLY/.test(nt) ? "In" : /VGLUT/.test(nt) ? "Ex" : "");
+const scTag = sc => (SC_INHIB.has(sc) ? "In" : SC_EXCIT.has(sc) ? "Ex" : "");
 const withTag = (name, t) => (t ? `${name} (${t})` : name);
 const scView = { zoom: 1, caOrder: false, sel: null, data: null, g: null, detailed: false };
 
@@ -3428,7 +3437,7 @@ function drawGrid(spec) {
     const s = c.size > 0 ? Math.max(2, c.size * side) : 0;
     if (!s) continue;
     const sq = svgEl("rect", { x: cx - s / 2, y: cy - s / 2, width: s, height: s, fill: c.fill, rx: 1 });
-    if (c.tip) sq.append(svgEl("title", {}, c.tip));
+    if (c.tip) sq.dataset.tip = c.tip;
     svg.append(sq);
   }
   // Selection: a click outlines the cell's whole row and column and lights up both labels
@@ -3452,15 +3461,27 @@ function drawGrid(spec) {
     if (li < 0 || li >= lines.length || lines[li].sec || ci < 0) { select(null); return; }
     if (scView.sel?.li === li && scView.sel?.ci === ci) select(null); else select(li, ci);
   });
+  // Values appear at once next to the pointer (an SVG title waits about a second)
+  const tip = $e("sc-tip");
+  svg.addEventListener("pointermove", e => {
+    const t = e.target.dataset?.tip;
+    if (!t) { tip.hidden = true; return; }
+    tip.textContent = t; tip.hidden = false;
+    const r = tip.getBoundingClientRect();
+    tip.style.left = `${Math.min(innerWidth - r.width - 6, e.clientX + 14)}px`;
+    tip.style.top = `${Math.max(6, e.clientY - r.height - 10)}px`;
+  });
+  svg.addEventListener("pointerleave", () => (tip.hidden = true));
   $e("sc-plot").replaceChildren(svg);
   scView.svgSize = [W, H];
 }
 
 function drawRegionHeatmap(data, g) {
   const nG = data.groups.length, row = data.body.subarray(g.i * nG * 2, (g.i + 1) * nG * 2), gmax = data.max[g.i];
-  $e("sc-sub").textContent = `Colour: mean expression of ${g.name}, log1p(counts per 10k), up to ${gmax.toFixed(2)}${g.name !== g.allen ? ` (Allen symbol ${g.allen})` : ""}. Square size: number of nuclei of that cell type in that dissection (the same for every gene). (X) excitatory, (B) inhibitory. Click a square to mark its row and column.`;
+  $e("sc-sub").textContent = `Colour: mean expression of ${g.name}, log1p(counts per 10k), up to ${gmax.toFixed(2)}${g.name !== g.allen ? ` (Allen symbol ${g.allen})` : ""}. Square size: number of nuclei of that cell type in that dissection (the same for every gene). (Ex) excitatory, (In) inhibitory. Click a square to mark its row and column.`;
   const cell = new Map(data.groups.map(([d, c, n], k) => [`${d}|${c}`, { n, k }]));
-  const usedCols = data.superclusters.map((_, c) => c).filter(c => data.labels.some((_, d) => cell.has(`${d}|${c}`)));
+  const usedCols = data.superclusters.map((_, c) => c).filter(c => data.labels.some((_, d) => cell.has(`${d}|${c}`)))
+    .sort((a, b) => (data.superclusters[a] === "Splatter") - (data.superclusters[b] === "Splatter"));   // Splatter last
   const lines = [], cells = [];
   data.labels.forEach((label, d) => {
     if (!d || data.sections[d] !== data.sections[d - 1]) lines.push({ sec: data.sections[d] });
@@ -3476,14 +3497,52 @@ function drawRegionHeatmap(data, g) {
   scLegend(gmax);
 }
 
+// Per cluster and dissection (assets/siletti_cd/): the gene's mean and fraction expressing in
+// each cluster's nuclei from each dissection (groups of at least 20 nuclei), split into files of
+// CD_PER genes in the order of the cluster table's genes, fetched one file at a time. index.json
+// lists the groups as [cluster id, dissection, nuclei]. Each file: "SILCD001", uint32 groups,
+// uint32 genes, float32 max per gene, then per gene one byte per group of means (scaled to that
+// max) and one byte per group of fractions.
+const CD_PER = 256, cdCache = new Map();
+let cdIndex = null;
+async function fetchMaybeGz(base) {
+  for (const name of [`${base}.gz`, base]) {
+    const res = await fetch(name).catch(() => null);
+    if (!res?.ok) continue;
+    let buf = new Uint8Array(await res.arrayBuffer());
+    if (buf[0] === 0x1f && buf[1] === 0x8b) buf = new Uint8Array(await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer());
+    return buf;
+  }
+  return null;
+}
+async function loadClusterGene(geneIndex) {
+  if (!cdIndex) {
+    const buf = await fetchMaybeGz("assets/siletti_cd/index.json");
+    if (!buf) return null;
+    const ix = JSON.parse(new TextDecoder().decode(buf));
+    cdIndex = { groups: ix.groups, at: new Map(ix.groups.map(([c, d], k) => [`${c}|${d}`, k])) };
+  }
+  const shard = Math.floor(geneIndex / CD_PER);
+  if (!cdCache.has(shard)) cdCache.set(shard, fetchMaybeGz(`assets/siletti_cd/s${shard}.bin`));
+  const buf = await cdCache.get(shard);
+  if (!buf) return null;
+  const dv = new DataView(buf.buffer, buf.byteOffset), K = dv.getUint32(8, true), nG = dv.getUint32(12, true), j = geneIndex - shard * CD_PER;
+  const body = 16 + nG * 4, off = body + j * K * 2;
+  return { K, max: dv.getFloat32(16 + j * 4, true), mean: buf.subarray(off, off + K), frac: buf.subarray(off + K, off + 2 * K), at: cdIndex.at, groups: cdIndex.groups };
+}
 // Detailed: one row per Siletti cluster, sorted by the share of its nuclei expressing the gene
-// (its supercluster named beside it). Columns: the 21 dissections (grey squares: where the cluster's
-// nuclei were dissected, sized against its main dissection), then the gene. Clicking the column
-// labels switches between head/body/tail order and CA-field order (like fields side by side).
+// (its supercluster named beside it). First column: the gene in the whole cluster; then the 21
+// dissections, each square the cluster's nuclei from that dissection (size: how many) coloured by
+// the gene's mean there. Clicking the column labels switches between head/body/tail order and
+// CA-field order (like fields side by side).
 const CA_ORDER = [[0, 5, 9], [6, 1], [2, 7, 10], [8, 3], [4], [11, 12, 13], [14, 15, 16, 17, 18, 19, 20]];
-function drawClusterHeatmap(data, g) {
-  const nC = data.clusters.length, row = data.body.subarray(g.i * nC * 2, (g.i + 1) * nC * 2), gmax = data.max[g.i];
-  $e("sc-sub").textContent = `Siletti clusters in these dissections. Colour: the cluster's mean expression of ${g.name}, log1p(counts per 10k), up to ${gmax.toFixed(2)}; square size: number of the cluster's nuclei in each dissection (last column: the whole cluster). Rows sorted by the share of nuclei expressing ${g.name} (right). (X) excitatory, (B) inhibitory. Click the column labels to order by ${scView.caOrder ? "head, body and tail" : "CA field"}.`;
+async function drawClusterHeatmap(data, g) {
+  const nC = data.clusters.length, row = data.body.subarray(g.i * nC * 2, (g.i + 1) * nC * 2);
+  const cd = await loadClusterGene(g.i).catch(() => null);
+  if (scView.g !== g) return;   // another gene was asked for meanwhile
+  const cmax = data.max[g.i], top = Math.max(cmax, cd?.max ?? 0);   // one colour scale for both
+  const q = v => Math.round(Math.min(255, v / top * 255));
+  $e("sc-sub").textContent = `Siletti clusters in these dissections, sorted by the share of nuclei expressing ${g.name} (right). Colour: mean expression of ${g.name}, log1p(counts per 10k), up to ${top.toFixed(2)}: first column for the whole cluster, then ${cd ? "for the cluster's nuclei in each dissection" : "the whole cluster again (per-dissection values unavailable)"}. Square size: number of nuclei. (Ex) excitatory, (In) inhibitory. Click the column labels to order by ${scView.caOrder ? "head, body and tail" : "CA field"}.`;
   const part = d => data.sections[d].replace("Hippocampus · ", "").replace("Parahippocampal gyrus", "PHG");
   let order, gaps;
   if (scView.caOrder) {
@@ -3491,28 +3550,32 @@ function drawClusterHeatmap(data, g) {
   } else {
     order = data.labels.map((_, d) => d); gaps = new Set(order.filter(d => d && data.sections[d] !== data.sections[d - 1]));
   }
-  const cols = order.map(d => ({ label: scView.caOrder ? `${data.labels[d]} · ${part(d)}` : `${part(d)} · ${data.labels[d]}`, gap: gaps.has(d) ? 6 : 0 }));
-  cols.push({ label: g.name, gap: 12 });
-  const geneCol = cols.length - 1;
-  // All clusters in one list, highest share of nuclei expressing the gene first
+  const cols = [{ label: `${g.name} (whole cluster)` }];
+  for (const d of order) cols.push({ label: scView.caOrder ? `${data.labels[d]} · ${part(d)}` : `${part(d)} · ${data.labels[d]}`, gap: d === order[0] ? 12 : gaps.has(d) ? 6 : 0 });
   const ks = data.clusters.map((_, k) => k).sort((a, b) => row[nC + b] - row[nC + a] || row[b] - row[a]);
   const lines = [], cells = [];
   for (const k of ks) {
-    const c = data.clusters[k], frac = row[nC + k] / 255, mean = row[k] / 255 * gmax;
+    const c = data.clusters[k], frac = row[nC + k] / 255, mean = row[k] / 255 * cmax;
     const li = lines.push({ label: withTag(c.name, ntTag(c.nt)), sub: `${c.sc} · ${c.markers.map(m => `${m}+`).join(" ")}`, right: `${Math.round(frac * 100)}% · n ${c.n.toLocaleString()}` }) - 1;
-    const wmax = Math.max(...c.where);
-    order.forEach((d, ci) => {
-      const w = c.where[d];
-      // Colour: the cluster's mean expression of the gene; size: share of its nuclei from there
-      if (w) cells.push({ li, ci, size: nucleiSize(w / 255 * c.n), fill: scColour(row[k]), tip: `${c.name}: ${Math.round(w / 2.55)}% of its nuclei from ${data.sections[d]} · ${data.labels[d]}\n${g.name}: mean ${mean.toFixed(2)}, ${(frac * 100).toFixed(0)}% expressing (whole cluster)` });
-    });
-    cells.push({ li, ci: geneCol, size: nucleiSize(c.n), fill: scColour(row[k]),
+    cells.push({ li, ci: 0, size: nucleiSize(c.n), fill: scColour(q(mean)),
       tip: `${c.name} (${c.sc}${c.nt ? `, ${c.nt}` : ""}${c.mtg ? `, like cortical ${c.mtg}` : ""})\nMarkers: ${c.markers.join(", ") || "–"}\n${g.name}: ${(frac * 100).toFixed(0)}% of ${c.n.toLocaleString()} nuclei, mean ${mean.toFixed(2)}` });
+    order.forEach((d, j) => {
+      const w = c.where[d];
+      if (!w) return;
+      const nHere = Math.round(w / 255 * c.n), at = cd?.at.get(`${c.id}|${d}`);
+      const where = `${c.name} · ${data.sections[d]} · ${data.labels[d]}: ${nHere.toLocaleString()} nuclei`;
+      if (at === undefined) {   // too few nuclei here for their own value: the cluster's colour, faint
+        cells.push({ li, ci: j + 1, size: nucleiSize(nHere), fill: cd ? "rgba(255,255,255,0.35)" : scColour(q(mean)), tip: `${where}\n${cd ? "too few nuclei for a value of their own" : `${g.name}: whole cluster mean ${mean.toFixed(2)}`}` });
+        return;
+      }
+      const m = cd.mean[at] / 255 * cd.max, f = cd.frac[at] / 255;
+      cells.push({ li, ci: j + 1, size: nucleiSize(cd.groups[at][2]), fill: scColour(q(m)), tip: `${where}\n${g.name}: ${(f * 100).toFixed(0)}% expressing, mean ${m.toFixed(2)}` });
+    });
   }
-  drawGrid({ cols, lines, cells, labelW: 470, cw: 14, rh: 17, top: 205,
+  drawGrid({ cols, lines, cells, labelW: 540, cw: 14, rh: 17, top: 205,
     onColLabels: () => { scView.caOrder = !scView.caOrder; scView.sel = null; renderCellTypes(); },
     colTitle: "Click to switch between head/body/tail order and CA-field order" });
-  scLegend(gmax);
+  scLegend(top);
 }
 // Square side from a number of nuclei, on a log scale: 10 nuclei barely visible, 30,000 full
 const nucleiSize = n => Math.max(0, Math.min(1, Math.log10(Math.max(1, n) / 10) / Math.log10(3000)));
@@ -3555,6 +3618,8 @@ $e("sc-plot").addEventListener("wheel", e => { if (!e.ctrlKey) return; e.prevent
   for (const t of ["pointerup", "pointercancel"]) box.addEventListener(t, up);
 }
 $e("sc-zoom-in").addEventListener("click", () => setScZoom(scView.zoom * 1.25));
+$e("sc-max").addEventListener("click", () => $e("sc-dialog").classList.toggle("max"));
+$e("sc-dialog").addEventListener("close", () => ($e("sc-tip").hidden = true));
 $e("sc-zoom-out").addEventListener("click", () => setScZoom(scView.zoom / 1.25));
 $e("sc-detail").addEventListener("change", () => showCellTypes());
 $e("cells-btn").addEventListener("click", showCellTypes);

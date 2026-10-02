@@ -26,3 +26,11 @@ Requires `pip install cellxgene-census`; `cxopen.py` opens Census by its S3 path
    `gene_with_protein_product.txt` as `pc.txt`.
 
 `scdefs.py` holds the dissection order and labels and the supercluster order used by both packers.
+
+## Per cluster and dissection (assets/siletti_cd/), the detailed view's dissection squares
+
+7. `agg3.py`: per Siletti cluster within each dissection (groups of at least 20 nuclei), mean
+   log1p(counts per 10k) and fraction expressing for every gene; one file per dissection in agg3/.
+8. `packcd.py`: `index.json.gz` (groups as [cluster id, dissection, nuclei]) and `s<k>.bin.gz`,
+   256 genes per file in the cluster table's gene order (`cl_sel.npy`, written by packcl.py),
+   so the page fetches only the file holding the gene it shows.
