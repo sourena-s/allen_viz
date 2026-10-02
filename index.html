@@ -3548,7 +3548,7 @@ async function renderCellTypes() {
   // Allen colour range: the largest |z| among the Allen values shown (unless set with the slider)
   if (!scView.zrManual) {
     const shown = new Set(rows.map(r => r.grp).filter(Boolean));
-    const zs = [...groupAllen].filter(([k]) => shown.has(k)).flatMap(([, a]) => (detailed ? a.vals ?? [] : a.z != null ? [a.z] : []))
+    const zs = [...groupAllen].filter(([k]) => shown.has(k)).flatMap(([, a]) => a.vals ?? [])   // group rectangles show their samples as stripes
       .concat(rows.filter(r => r.allen && !detailed).map(r => r.allen.z));
     if (zs.length) setScZr(Math.max(...zs.map(Math.abs)), false);
   }
@@ -3563,7 +3563,7 @@ async function renderCellTypes() {
     if (r.divider) { lines.push({ divider: true }); continue; }
     if (r.sec) { lines.push({ sec: r.sec, secColor: r.color }); continue; }
     const li = lines.push({ label: r.label, sub: r.sub, bar: r.bar }) - 1;
-    cells.push({ li, ci: 0, size: nucleiSize(r.n), fill: scColour(Math.round(r.mean / secMax[r.secI] * 255)), tip: `${r.tip}\n${scView.g.name}: ${(r.frac * 100).toFixed(0)}% of ${r.n.toLocaleString()} nuclei, mean ${r.mean.toFixed(2)} (colour scaled to the ${r.dis ? "by-dissection" : "by-markers"} maximum, ${secMax[r.secI].toFixed(2)})` });
+    cells.push({ li, ci: 0, size: 0.85, fill: scColour(Math.round(r.mean / secMax[r.secI] * 255)), tip: `${r.tip}\n${scView.g.name}: ${(r.frac * 100).toFixed(0)}% of ${r.n.toLocaleString()} nuclei, mean ${r.mean.toFixed(2)} (colour scaled to the ${r.dis ? "by-dissection" : "by-markers"} maximum, ${secMax[r.secI].toFixed(2)})` });
     // Allen: one rectangle per row group, on the group's first row, its samples as stripes
     if (r.grp && r.grp !== lastGrp) {
       lastGrp = r.grp;
@@ -3578,11 +3578,11 @@ async function renderCellTypes() {
       text: `${r.n.toLocaleString()} (${Math.round(r.frac * 100)}%)`, tip: `${r.n.toLocaleString()} nuclei, ${Math.round(r.n * r.frac).toLocaleString()} (${(r.frac * 100).toFixed(1)}%) expressing ${scView.g.name}` });
     if (detailed && r.markers) cells.push({ li, ci: 3, label: r.markers });
   }
-  $e("sc-sub").textContent = `${detailed ? "Siletti clusters, grouped by subfield (canonical markers) or cell class, sorted by share expressing" : "Hippocampal subfields by canonical markers (CA1: FIBCD1/FNDC1; CA2: PCP4; DG: PROX1), other cell classes per region"}, then each dissection (all its nuclei; dissections mix neighbouring fields). The subiculum has no cluster or canonical marker of its own in these data (its nuclei fall into CA1-type clusters), so it appears only as a dissection row. Colour: mean expression of ${scView.g.name}, log1p(counts per 10k), scaled separately for the by-markers rows and the by-dissection rows (each to its own maximum; bars likewise); size: nuclei. Bars: nuclei (grey, linear) and those expressing the gene (green).${detailed ? " Allen: the probe highlighted in the ribbon, every sample of the Allen structures matching each subfield, class or dissection (the ribbon turned on its side, its colours), from your loaded donors." : " Allen: mean z of the probe highlighted in the ribbon in each marker subfield's Allen structures, in the ribbon's colours."}${detailed ? " Hover a cluster for where it was dissected." : ""} (Ex) excitatory, (In) inhibitory.`;
+  $e("sc-sub").textContent = `${detailed ? "Siletti clusters, grouped by subfield (canonical markers) or cell class, sorted by share expressing" : "Hippocampal subfields by canonical markers (CA1: FIBCD1/FNDC1; CA2: PCP4; DG: PROX1), other cell classes per region"}, then each dissection (all its nuclei; dissections mix neighbouring fields). The subiculum has no cluster or canonical marker of its own in these data (its nuclei fall into CA1-type clusters), so it appears only as a dissection row. Colour: mean expression of ${scView.g.name}, log1p(counts per 10k), scaled separately for the by-markers rows and the by-dissection rows (each to its own maximum; bars likewise); all squares the same size. Bars: nuclei (grey, linear) and those expressing the gene (green).${detailed ? " Allen: the probe highlighted in the ribbon, every sample of the Allen structures matching each subfield, class or dissection (the ribbon turned on its side, its colours), from your loaded donors." : " Allen: mean z of the probe highlighted in the ribbon in each marker subfield's Allen structures, in the ribbon's colours."}${detailed ? " Hover a cluster for where it was dissected." : ""} (Ex) excitatory, (In) inhibitory.`;
   drawGrid({ cols: [{ label: `${scView.g.name} (Siletti snRNA-seq: mean log(1 + count per 10k))` }, { label: `${scView.g.name} (Allen expression z-score)`, gap: 6 }, { label: "Nuclei count (% expressing)", w: 190, gap: 10, plain: true },
       ...(detailed ? [{ label: "Markers ([canonical] then cluster-specific)", w: 360, gap: 8, plain: true }] : [])],
     lines, cells, labelW: Math.max(150, ...lines.filter(l => l.label).map(l => 18 + l.label.length * 6.4 + (l.sub ? 6 + l.sub.length * 5.6 : 0))), cw: 22, rh: detailed ? 17 : 20, flatLabels: true });
-  scLegend(top);
+  $e("sc-legend").replaceChildren();   // square size carries nothing (the bars give the nuclei count)
 }
 // Allen structures matching each Siletti dissection (Allen has no separate entorhinal cortex: PHG)
 const ALLEN_OF_DISSECTION = [["DG", "CA4"], ["CA2", "CA3"], ["CA1", "CA2", "CA3"], ["CA1"], ["S"], ["DG", "CA4"], ["CA3"], ["CA1", "CA2", "CA3"], ["CA1", "CA2"], ["CA4", "DG"], ["CA1", "CA2", "CA3"],
@@ -3744,15 +3744,6 @@ function drawGrid(spec) {
 // CA-field order, CA1 first: CA1 (head), CA1-2 (body), CA1-3 (head, body, tail), CA2-3 (head),
 // CA3 (body), DG-CA4 (head, body, tail), subiculum, then parahippocampal gyrus and amygdala
 const CA_ORDER = [[3], [8], [2, 7, 10], [1], [6], [0, 5, 9], [4], [11, 12, 13], [14, 15, 16, 17, 18, 19, 20]];
-// Square side from a number of nuclei, on a log scale: 10 nuclei barely visible, 30,000 full
-const nucleiSize = n => Math.max(0, Math.min(1, Math.log10(Math.max(1, n) / 10) / Math.log10(3000)));
-function scLegend(gmax) {
-  const span = (text, cls) => Object.assign(document.createElement("span"), { textContent: text, className: cls ?? "" });
-  const leg = svgEl("svg", { width: 250, height: 22 });
-  [30, 300, 3000, 30000].forEach((n, k) => { const s = Math.max(2, nucleiSize(n) * 16); leg.append(svgEl("rect", { x: 10 + k * 60 - s / 2, y: 11 - s / 2, width: s, height: s, fill: "#ccc", stroke: "#000", "stroke-width": 0.8 }), svgEl("text", { x: 21 + k * 60, y: 15, style: "fill: var(--muted)" }, n.toLocaleString())); });
-  const sizes = Object.assign(document.createElement("span"), { className: "sc-leg" }); sizes.append(span("Nuclei count"), leg);
-  $e("sc-legend").replaceChildren(sizes);
-}
 // Trim the plot to what was drawn, so there is no empty area to scroll into (it can only be
 // measured once the window is shown)
 function trimScPlot() {
