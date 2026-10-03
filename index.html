@@ -372,6 +372,7 @@
   /* The toggles and buttons wrap onto more lines rather than widening the window (narrow screens) */
   .sc-detail-row { flex-wrap: wrap; min-width: 0; row-gap: 4px; }
   .sc-head { min-width: 0; }
+  #sc-gene { width: 9ch; height: 22px; box-sizing: border-box; padding: 0 5px; font: 12px var(--sans); color: var(--ink); background: rgba(255,255,255,0.1); border: 1px solid var(--edge); border-radius: 4px; }
   .sc-tg { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
   #sc-dialog .sc-form { min-width: 0; }
   .sc-detail-row input[type=checkbox] { transform: scale(0.75); transform-origin: left center; margin-right: -6px; }
@@ -684,7 +685,7 @@
   <div id="sc-tip" hidden></div>
   <form method="dialog" class="sc-form">
     <div class="sc-head"><h2 id="sc-title" hidden></h2>
-      <div class="row sc-toggle sc-detail-row"><span class="sc-tg"><input type="checkbox" id="sc-detail" autocomplete="off"><label for="sc-detail">Detailed (Siletti clusters)</label></span><span class="sc-tg"><input type="checkbox" id="sc-coexp" autocomplete="off"><label for="sc-coexp" title="The 100 genes whose mean expression across the hippocampal formation, dentate, parahippocampal and amygdala cell groups (clusters in the detailed view, dissection x supercluster in the brief) correlates best with this gene (r after the name)">co-expressed</label></span><span class="sc-tg"><input type="checkbox" id="sc-diff" autocomplete="off"><label for="sc-diff" title="Click rows: once yellow (foreground), again blue (background), again clear. Then Calculate: the 100 genes most raised in the foreground relative to the background appear as columns on the right">differential</label></span><span class="sc-tg"><button type="button" class="corr-btn" id="sc-diff-run" hidden title="Rank the genes for the yellow (foreground) vs blue (background) rows">Calculate</button><button type="button" class="corr-btn" id="sc-diff-sub" hidden title="Subcellular location images (Human Protein Atlas) of the differential genes">Sub</button></span></div>
+      <div class="row sc-toggle sc-detail-row"><span class="sc-tg"><input type="text" id="sc-gene" class="gene-box" placeholder="Gene" aria-label="Gene shown in the cells window" autocomplete="off" spellcheck="false" title="Show another gene (Enter); co-expression and differential results stay"></span><span class="sc-tg"><input type="checkbox" id="sc-detail" autocomplete="off"><label for="sc-detail">Detailed (Siletti clusters)</label></span><span class="sc-tg"><input type="checkbox" id="sc-coexp" autocomplete="off"><label for="sc-coexp" title="The 100 genes whose mean expression across the hippocampal formation, dentate, parahippocampal and amygdala cell groups (clusters in the detailed view, dissection x supercluster in the brief) correlates best with this gene (r after the name)">co-expressed</label></span><span class="sc-tg"><input type="checkbox" id="sc-diff" autocomplete="off"><label for="sc-diff" title="Click rows: once yellow (foreground), again blue (background), again clear. Then Calculate: the 100 genes most raised in the foreground relative to the background appear as columns on the right">differential</label></span><span class="sc-tg"><button type="button" class="corr-btn" id="sc-diff-run" hidden title="Rank the genes for the yellow (foreground) vs blue (background) rows">Calculate</button><button type="button" class="corr-btn" id="sc-diff-sub" hidden title="Subcellular location images (Human Protein Atlas) of the differential genes">Sub</button></span></div>
 
       <button class="rb-btn sc-zb" type="button" id="sc-zoom-out" aria-label="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
       <button class="rb-btn sc-zb" type="button" id="sc-zoom-in" aria-label="Zoom in"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button>
@@ -3528,10 +3529,13 @@ async function loadSingleCell(base = "assets/siletti_hipamy") {
   scCache.set(base, header);
   return header;
 }
+// The cells window's gene: the one searched in its own box (scView.sym, with its Allen probe
+// scView.probe, null when Allen has none), else the highlighted ribbon row's
+const scProbe = () => (scView.probe !== undefined ? scView.probe : chosenProbes()[0]);
 // The gene of the highlighted row, as its current symbol where the Allen one is outdated
 function scGeneFor(data) {
-  const id = chosenProbes()[0];
-  const sym = id ? symbolOf(id) : null;
+  const id = scProbe();
+  const sym = scView.sym ?? (id ? symbolOf(id) : null);
   if (!sym) return null;
   const tries = [shownName(sym), expr.currentName?.get(sym) ?? sym, sym, ...(hgnc?.genes.get(shownName(sym).toUpperCase())?.synonyms ?? [])];
   for (const t of tries) { const i = data.geneIndex.get(t.toUpperCase()); if (i !== undefined) return { i, name: data.genes[i], allen: sym }; }
@@ -3571,7 +3575,7 @@ async function showCellTypes() {
     await loadHgnc().catch(() => null);
   } catch (err) { setBusy(null); setExprStatus([`Single-nucleus data: ${err.message}`]); return; }
   setBusy(null);
-  const id0 = chosenProbes()[0];
+  const id0 = scProbe();
   if (id0 && symbolOf(id0)) await currentSymbol(symbolOf(id0));   // search by the gene's current symbol first
   const gR = scGeneFor(region), gC = scGeneFor(clusters);
   if (!gR) return;
@@ -3580,13 +3584,14 @@ async function showCellTypes() {
   // Allen colour range: once per gene, the largest |z| over every Allen sample either view can
   // show (hippocampal subfields, parahippocampal gyrus, amygdala), so brief and detailed share it;
   // a range set with the slider stays until another gene is shown
-  const zrKey = `${g.name}|${chosenProbes()[0] ?? ""}`;
+  const zrKey = `${g.name}|${scProbe() ?? ""}`;
   if (scView.zrKey !== zrKey) {
     scView.zrKey = zrKey; scView.zrManual = false;
     const all = allenZ(["CA1", "CA2", "CA3", "CA4", "DG", "PHG", ...ALLEN_AMY, "BST"]);
     if (all) setScZr(Math.max(...all.vals.map(Math.abs)), false);
   }
   Object.assign(scView, { region, clusters, gR, gC, g, detailed, sel: null, token: (scView.token ?? 0) + 1 });
+  if (document.activeElement !== $e("sc-gene")) $e("sc-gene").value = g.name;
   if (gR.i < 0 && !(gC?.i >= 0)) {
     $e("sc-sub").textContent = `${g.name} is not detected in this single-nucleus dataset.`;
     $e("sc-plot").replaceChildren(); $e("sc-legend").replaceChildren();
@@ -3810,10 +3815,13 @@ async function renderCellTypes() {
   // Square area proportional to the stretched value (side by its square root), a small floor to stay visible
   const sqSize = q => 0.15 + 0.8 * Math.sqrt(q / 255);
   const top = Math.max(1e-6, ...secMax);
-  const probe = chosenProbes()[0], probeLabel = probe ? (expr.probeName.get(probe) ?? probe) : "";
+  const probe = scProbe(), probeLabel = probe ? (expr.probeName.get(probe) ?? probe) : "";
 
   const coData = detailed ? clusters : region, coG = detailed ? gC : gR;
-  const co = $e("sc-coexp").checked && coG?.i >= 0 ? coExpressed(coData, coG.i, detailed) : null;
+  // Co-expression stays with the gene it was started for (a gene searched in the window keeps it)
+  if (!$e("sc-coexp").checked) scView.coAnchor = null; else if (!scView.coAnchor && coG?.i >= 0) scView.coAnchor = coData.genes[coG.i];
+  const coGi = scView.coAnchor ? coData.geneIndex.get(scView.coAnchor.toUpperCase()) : undefined;
+  const co = coGi !== undefined ? coExpressed(coData, coGi, detailed) : null;
   const coIn = co && detailed ? new Set(co.ks) : null;
   // Another gene's { mean, frac } on a row: a cluster, marker clusters, or pooled dissection groups
   const rowOf = (r, name) => {
@@ -3843,7 +3851,7 @@ async function renderCellTypes() {
   $e("sc-diff-sub").hidden = !(diff?.list.length);
   // Extra columns on the right: co-expressed genes, then differential genes, each on its own range
   const extra = [
-    ...(co ? co.list.map(({ i, r: rr }) => ({ name: coData.genes[i], label: `${coData.genes[i]} ${rr.toFixed(2)}`, why: `r = ${rr.toFixed(2)} with ${scView.g.name}`, only: coIn })) : []),
+    ...(co ? co.list.map(({ i, r: rr }) => ({ name: coData.genes[i], label: `${coData.genes[i]} ${rr.toFixed(2)}`, why: `r = ${rr.toFixed(2)} with ${scView.coAnchor}`, only: coIn })) : []),
     ...(diff?.list ?? []).map(({ name, d, pct }, j) => ({ name, pct, sep: diff.nucN != null && j === diff.nucN && j > 0, label: `${name} ${d >= 0 ? "+" : ""}${d.toFixed(1)}`, why: `foreground minus background, ${d.toFixed(2)} SD of the gene across the rows`, diff: true })),
   ];
   const exRows = rows.map(r => (r.n ? extra.map(c => (!c.only || c.only.has(r.k) ? rowOf(r, c.name) : null)) : null));
@@ -3895,7 +3903,7 @@ const ALLEN_HIPP = ["CA1", "CA2", "CA3", "CA4", "DG", "S"], ALLEN_AMY = ["LA", "
 // Mean Allen z-score of the probe highlighted in the ribbon over the loaded donors' samples in
 // those structures (z within each donor, as in the ribbon); null without data there
 function allenZ(keys) {
-  const probe = chosenProbes()[0];
+  const probe = scProbe();
   if (!probe || !expr.byDonor.size) return null;
   const set = new Set(keys);
   if (!allenZ.cols) { allenZ.cols = true; for (const c of donorClouds) c.userData.items.forEach((s, j) => (s.column = j)); }
@@ -4128,7 +4136,24 @@ $e("sc-max").addEventListener("click", () => $e("sc-max").setAttribute("aria-pre
 $e("sc-dialog").addEventListener("close", () => ($e("sc-tip").hidden = true));
 $e("sc-zoom-out").addEventListener("click", () => setScZoom(scView.zoom / 1.25));
 $e("sc-detail").addEventListener("change", () => { scView.marks = new Map(); scView.diffRes = null; showCellTypes(); });
-$e("sc-coexp").addEventListener("change", () => showCellTypes());
+$e("sc-coexp").addEventListener("change", () => { scView.coAnchor = null; showCellTypes(); });
+// Gene box: Enter shows that gene (its Allen probe too, when Allen has it); other results stay
+$e("sc-gene").addEventListener("keydown", async e => {
+  if (e.key !== "Enter") return;
+  e.preventDefault();
+  const q = $e("sc-gene").value.trim();
+  if (!q) return;
+  const region = await loadSingleCell("assets/siletti_hipamy"), table = await loadHgnc().catch(() => null);
+  const Q = q.toUpperCase();
+  // The single-nucleus symbol: as typed, else the approved gene listing it as an alias
+  const scName = region.geneIndex.has(Q) ? Q : (table?.bySynonym.get(Q) ?? []).find(a => region.geneIndex.has(a));
+  if (!scName) { $e("sc-sub").textContent = `"${q}" is not in the single-nucleus data.`; return; }
+  const allen = expr.bySymbol?.size ? (expr.bySymbol.has(q) ? q : [...expr.bySymbol.keys()].find(k => k.toUpperCase() === Q) ?? await resolveAlias(q)) : null;
+  scView.sym = allen ?? region.genes[region.geneIndex.get(scName)];
+  scView.probe = allen ? expr.bySymbol.get(allen)?.[0] ?? null : null;
+  scView.zrKey = null;
+  await showCellTypes();
+});
 $e("sc-diff").addEventListener("change", () => { scView.marks = new Map(); scView.diffRes = null; showCellTypes(); });   // on: a new search; off: cancelled
 $e("sc-diff-sub").addEventListener("click", () => {
   const L = scView.diffRes?.list ?? [];
@@ -4147,7 +4172,7 @@ $e("sc-diff-run").addEventListener("click", () => {
   setBusy("Ranking genes…"); setTimeout(() => { renderCellTypes(); setBusy(null); }, 30);
 });
 // Each opening of the cells window starts fresh: brief view, no co-expression
-$e("cells-btn").addEventListener("click", () => { $e("sc-detail").checked = false; $e("sc-coexp").checked = false; $e("sc-diff").checked = false; scView.marks = new Map(); scView.diffRes = null; showCellTypes(); });
+$e("cells-btn").addEventListener("click", () => { scView.sym = undefined; scView.probe = undefined; scView.coAnchor = null; $e("sc-detail").checked = false; $e("sc-coexp").checked = false; $e("sc-diff").checked = false; scView.marks = new Map(); scView.diffRes = null; showCellTypes(); });
 $e("sc-dialog").addEventListener("click", e => { if (e.target === $e("sc-dialog")) $e("sc-dialog").close(); });
 
 // ---------------------------------------------------------------- differential expression
