@@ -3854,11 +3854,19 @@ async function renderCellTypes() {
   $e("sc-diff-run").disabled = !(nFg && nBg);
   // Sub: always shown; active once a differential search has results
   $e("sc-diff-sub").hidden = false;
-  $e("sc-diff-sub").disabled = !(diff?.list.length);
-  $e("sc-diff-sub").title = diff?.list.length ? "Subcellular location images (Human Protein Atlas) of the differential genes" : "Run a differential search first (differential, mark rows, Calculate)";
+  $e("sc-diff-sub").disabled = !(diff?.list.length || co);
+  $e("sc-diff-sub").title = diff?.list.length ? "Subcellular location images (Human Protein Atlas) of the differential genes" : co ? "Subcellular location images (Human Protein Atlas) of the co-expressed genes" : "Run a co-expression or differential search first";
+  // Co-expressed columns; after Sub, the nucl* genes first, a dashed line, then the rest (r order kept)
+  const coKey = co ? `${detailed}|${scView.coAnchor}` : null;
+  const coNuc = scView.coNuc?.key === coKey ? scView.coNuc.set : null;
+  const coCols = !co ? [] : !coNuc ? co.list : (() => {
+    const a = co.list.filter(c => coNuc.has(coData.genes[c.i])), b = co.list.filter(c => !coNuc.has(coData.genes[c.i]));
+    return [...a, ...b.map((c, j) => (j === 0 && a.length ? { ...c, sep: true } : c))];
+  })();
+  scView.coShown = co ? { key: coKey, list: co.list.map(c => ({ name: coData.genes[c.i], r: c.r })) } : null;
   // Extra columns on the right: co-expressed genes, then differential genes, each on its own range
   const extra = [
-    ...(co ? co.list.map(({ i, r: rr }) => ({ name: coData.genes[i], label: `${coData.genes[i]} ${rr.toFixed(2)}`, why: `r = ${rr.toFixed(2)} with ${scView.coAnchor}`, only: coIn })) : []),
+    ...coCols.map(({ i, r: rr, sep }) => ({ name: coData.genes[i], sep, label: `${coData.genes[i]} ${rr.toFixed(2)}`, why: `r = ${rr.toFixed(2)} with ${scView.coAnchor}`, only: coIn })),
     ...(diff?.list ?? []).map(({ name, d, pct }, j) => ({ name, pct, sep: diff.nucN != null && j === diff.nucN && j > 0, label: `${name} ${d >= 0 ? "+" : ""}${d.toFixed(1)}`, why: `foreground minus background, ${d.toFixed(2)} SD of the gene across the rows`, diff: true })),
   ];
   const exRows = rows.map(r => (r.n ? extra.map(c => (!c.only || c.only.has(r.k) ? rowOf(r, c.name) : null)) : null));
@@ -4163,6 +4171,13 @@ $e("sc-gene").addEventListener("keydown", async e => {
 });
 $e("sc-diff").addEventListener("change", () => { scView.marks = new Map(); scView.diffRes = null; showCellTypes(); });   // on: a new search; off: cancelled
 $e("sc-diff-sub").addEventListener("click", () => {
+  // No differential result: the co-expressed genes (nucl* ones then marked in the same way)
+  if (!scView.diffRes?.list.length && scView.coShown) {
+    const { key, list } = scView.coShown;
+    openSubcellularGrid(list.map(c => ({ sym: c.name, stat: `r = ${c.r.toFixed(2)} with ${scView.coAnchor}` })),
+      set => { if (scView.coShown?.key === key) { scView.coNuc = { key, set }; renderCellTypes(); } });
+    return;
+  }
   const L = scView.diffRes?.list ?? [];
   // Once the locations are known: the nucl* genes first, by share of foreground nuclei expressing
   // them (highest first), then a dashed line and the rest in score order
