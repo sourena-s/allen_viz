@@ -675,7 +675,7 @@
   <div id="sc-tip" hidden></div>
   <form method="dialog" class="sc-form">
     <div class="sc-head"><h2 id="sc-title" hidden></h2>
-      <div class="row sc-toggle sc-detail-row"><input type="checkbox" id="sc-detail" autocomplete="off"><label for="sc-detail">Detailed (Siletti clusters)</label><input type="checkbox" id="sc-coexp" autocomplete="off"><label for="sc-coexp" title="The 100 genes whose mean expression across the hippocampal formation, dentate, parahippocampal and amygdala cell groups (clusters in the detailed view, dissection x supercluster in the brief) correlates best with this gene (r after the name)">co-expressed</label></div>
+      <div class="row sc-toggle sc-detail-row"><input type="checkbox" id="sc-detail" autocomplete="off"><label for="sc-detail">Detailed (Siletti clusters)</label><input type="checkbox" id="sc-coexp" autocomplete="off"><label for="sc-coexp" title="The 100 genes whose mean expression across the hippocampal formation, dentate, parahippocampal and amygdala cell groups (clusters in the detailed view, dissection x supercluster in the brief) correlates best with this gene (r after the name)">co-expressed</label><input type="checkbox" id="sc-diff" autocomplete="off"><label for="sc-diff" title="Click rows: once yellow (foreground), again blue (background), again clear. The 100 genes most raised in the foreground relative to the background appear as columns on the right">differential</label></div>
 
       <button class="rb-btn sc-zb" type="button" id="sc-zoom-out" aria-label="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
       <button class="rb-btn sc-zb" type="button" id="sc-zoom-in" aria-label="Zoom in"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button>
@@ -3648,6 +3648,46 @@ function coExpressed(data, gi, detailed, top = CO_TOP) {
   }
   return done(best);
 }
+// Differential (as the Allen one): each gene's linear mean per row, standardised across all rows
+// shown (z = (value - mean) / SD, rows weighted equally); score = mean z of the foreground rows
+// minus that of the background rows. Named genes detected (any count) in at least 10% of the
+// nuclei of some foreground row; the top 100 by score.
+const DIFF_SC_TOP = 100;
+function scDifferential(rows, detailed, region, clusters) {
+  const fg = [], bg = [], all = [];
+  for (const r of rows) if (r.n && r.key) { all.push(r); const m = scView.marks.get(r.key); if (m === "fg") fg.push(all.length - 1); else if (m === "bg") bg.push(all.length - 1); }
+  if (!fg.length || !bg.length) return { list: [], note: `click rows to mark the foreground (yellow, ${fg.length} so far) and, clicking again, the background (blue, ${bg.length}); a third click clears.` };
+  const data = detailed ? clusters : region, nG = region.groups.length, nC = clusters.clusters.length;
+  // Each row's units: [data, unit, weight]; brief marker rows draw on the clusters file
+  if (!region.toCl) { region.toCl = new Int32Array(region.genes.length).fill(-1); region.genes.forEach((g, i) => { const j = clusters.geneIndex.get(g.toUpperCase()); if (j !== undefined) region.toCl[i] = j; }); }
+  const units = all.map(r => r.k != null ? [[clusters, r.k, 1]] : r.ks ? r.ks.map(k => [clusters, k, clusters.clusters[k].n])
+    : region.groups.map(([d, c, nn], k) => (r.test(d, region.superclusters[c]) ? [region, k, nn] : null)).filter(Boolean));
+  const R = all.length, v = new Float64Array(R), best = [];
+  for (let i = 0; i < data.genes.length; i++) {
+    if (data.genes[i].startsWith("ENSG")) continue;
+    let fdet = 0;
+    for (let a = 0; a < R; a++) {
+      let s = 0, w = 0, f = 0;
+      for (const [dd, k, nn] of units[a]) {
+        const gi = dd === data ? i : dd === clusters ? region.toCl[i] : -1;
+        if (gi < 0) continue;
+        s += nn * scLin(dd, gi, k); f += nn * dd.body[gi * dd.nU * 2 + dd.nU + k] / 255; w += nn;
+      }
+      v[a] = w ? s / w : 0;
+      if (w && fg.includes(a) && f / w > fdet) fdet = f / w;
+    }
+    if (fdet < 0.1) continue;
+    let sx = 0, sxx = 0;
+    for (let a = 0; a < R; a++) { sx += v[a]; sxx += v[a] * v[a]; }
+    const sd = Math.sqrt(Math.max(0, sxx / R - (sx / R) ** 2));
+    if (!sd) continue;
+    let mf = 0, mb = 0;
+    for (const a of fg) mf += v[a]; for (const a of bg) mb += v[a];
+    const d = (mf / fg.length - mb / bg.length) / sd;
+    if (best.length < DIFF_SC_TOP || d > best[best.length - 1].d) { best.push({ name: data.genes[i], d }); best.sort((p, q) => q.d - p.d); if (best.length > DIFF_SC_TOP) best.pop(); }
+  }
+  return { list: best, note: `the ${best.length} genes most raised in the ${fg.length} yellow row${fg.length > 1 ? "s" : ""} relative to the ${bg.length} blue row${bg.length > 1 ? "s" : ""} (linear means standardised across all rows, as the Allen differential; score after each name, in SD). Click rows to change the selection.` };
+}
 // A gene's linear mean (counts per 10k) in unit k; the log mean where a file has no linear block
 const scLin = (data, gi, k) => data.lin ? data.lin[gi * data.nU + k] / 255 * data.lmax[gi] : data.body[gi * data.nU * 2 + k] / 255 * data.max[gi];
 async function renderCellTypes() {
@@ -3769,16 +3809,24 @@ async function renderCellTypes() {
     else if (r.test) region.groups.forEach(([d, c, nn], k) => { if (r.test(d, region.superclusters[c])) add(region, nG, k, nn); });
     return n ? { mean: m / n, frac: f / n, lin: l / n } : null;
   };
-  const coRows = co ? rows.map(r => (r.n && (!coIn || coIn.has(r.k)) ? co.list.map(({ i }) => rowOf(r, coData.genes[i])) : null)) : [];
-  // Each co-expressed column stretched over its own range (linear means)
-  const coRange = co ? co.list.map((_, j) => { const vs = coRows.filter(Boolean).map(v => v[j]?.lin).filter(v => v != null); return [Math.min(...vs), Math.max(...vs)]; }) : [];
+  // Row keys (kept across re-renders) and the differential marks: foreground (yellow), background (blue)
+  scView.marks ??= new Map();
+  { let sec = ""; for (const r of rows) { if (r.sec) sec = r.sec; else if (r.n) r.key = r.k != null ? `k${r.k}` : `${sec}|${r.label}`; } }
+  const diff = $e("sc-diff").checked ? scDifferential(rows, detailed, region, clusters) : null;
+  // Extra columns on the right: co-expressed genes, then differential genes, each on its own range
+  const extra = [
+    ...(co ? co.list.map(({ i, r: rr }) => ({ name: coData.genes[i], label: `${coData.genes[i]} ${rr.toFixed(2)}`, why: `r = ${rr.toFixed(2)} with ${scView.g.name}`, only: coIn })) : []),
+    ...(diff?.list ?? []).map(({ name, d }) => ({ name, label: `${name} ${d >= 0 ? "+" : ""}${d.toFixed(1)}`, why: `foreground minus background, ${d.toFixed(2)} SD of the gene across the rows`, diff: true })),
+  ];
+  const exRows = rows.map(r => (r.n ? extra.map(c => (!c.only || c.only.has(r.k) ? rowOf(r, c.name) : null)) : null));
+  const exRange = extra.map((_, j) => { const vs = exRows.filter(Boolean).map(v => v[j]?.lin).filter(v => v != null); return [Math.min(...vs), Math.max(...vs)]; });
   const coCi = detailed ? 4 : 3;
   let lastGrp = null;
   const lines = [], cells = [];
   for (const r of rows) {
     if (r.divider) { lines.push({ divider: true }); continue; }
     if (r.sec) { lines.push({ sec: r.sec, secColor: r.color }); continue; }
-    const li = lines.push({ label: r.label, sub: r.sub, bar: r.bar }) - 1;
+    const li = lines.push({ label: r.label, sub: r.sub, bar: r.bar, key: r.key, mark: scView.marks.get(r.key) }) - 1;
     cells.push({ li, ci: 0, size: sqSize(stretch(r.lin, [secLo[r.secI], secMax[r.secI]])), fill: scColour(stretch(r.lin, [secLo[r.secI], secMax[r.secI]])), tip: `${r.tip}\n${scView.g.name}: ${(r.frac * 100).toFixed(0)}% of ${r.n.toLocaleString()} nuclei, ${r.lin.toFixed(2)} counts per 10k (log mean ${r.mean.toFixed(2)}); colour from ${secLo[r.secI].toFixed(2)} to ${secMax[r.secI].toFixed(2)}` });
     // Allen: one rectangle per row group, on the group's first row, its samples as stripes
     if (r.grp && r.grp !== lastGrp) {
@@ -3793,19 +3841,22 @@ async function renderCellTypes() {
     cells.push({ li, ci: nc, bar: r.n / mN, fill: "rgba(255,255,255,0.35)", bar2: r.n * r.frac / mN, fill2: "#3cb371",
       text: `${r.n.toLocaleString()} (${Math.round(r.frac * 100)}%)`, tip: `${r.n.toLocaleString()} nuclei, ${Math.round(r.n * r.frac).toLocaleString()} (${(r.frac * 100).toFixed(1)}%) expressing ${scView.g.name}` });
     if (detailed && r.markers) cells.push({ li, ci: 3, label: r.markers });
-    // Co-expressed genes: each column on its own scale (its maximum over the rows shown)
-    const cv = coRows[rows.indexOf(r)];
-    if (cv) co.list.forEach(({ i, r: rr }, j) => {
-      const v = cv[j]; if (!v) return;
-      cells.push({ li, ci: coCi + j, size: sqSize(stretch(v.lin, coRange[j])), fill: scColour(stretch(v.lin, coRange[j])),
-        tip: `${coData.genes[i]} (r = ${rr.toFixed(2)} with ${scView.g.name})\n${r.label}: ${v.lin.toFixed(2)} counts per 10k (log mean ${v.mean.toFixed(2)}), ${Math.round(v.frac * 100)}% of nuclei with any count` });
+    // Extra columns: each on its own range (linear means)
+    const ev = exRows[rows.indexOf(r)];
+    if (ev) extra.forEach((c, j) => {
+      const v = ev[j]; if (!v) return;
+      cells.push({ li, ci: coCi + j, size: sqSize(stretch(v.lin, exRange[j])), fill: scColour(stretch(v.lin, exRange[j])),
+        tip: `${c.name} (${c.why})\n${r.label}: ${v.lin.toFixed(2)} counts per 10k (log mean ${v.mean.toFixed(2)}), ${Math.round(v.frac * 100)}% of nuclei with any count` });
     });
   }
-  $e("sc-sub").textContent = `${detailed ? "Siletti clusters, grouped by subfield (canonical markers) or cell class, sorted by share expressing" : "Hippocampal subfields by canonical markers (CA1: FIBCD1/FNDC1; CA2: PCP4; DG: PROX1), other cell classes per region"}, then each dissection (all its nuclei; dissections mix neighbouring fields). The subiculum has no cluster or canonical marker of its own in these data (its nuclei fall into CA1-type clusters), so it appears only as a dissection row. Colour: mean expression of ${scView.g.name} in counts per 10k (linear, no log), from pale (lowest row) to red (highest row), square area likewise, stretched separately for the by-markers rows and the by-dissection rows; co-expressed columns each over their own range. Bars: nuclei (grey, linear) and those expressing the gene (green).${detailed ? " Allen: the probe highlighted in the ribbon, every sample of the Allen structures matching each subfield, class or dissection (the ribbon turned on its side, its colours), from your loaded donors." : " Allen: mean z of the probe highlighted in the ribbon in each marker subfield's Allen structures, in the ribbon's colours."}${detailed ? " Hover a cluster for where it was dissected." : ""} (Ex) excitatory, (In) inhibitory.`;
+  $e("sc-sub").textContent = `${diff ? `Differential: ${diff.note} ` : ""}${detailed ? "Siletti clusters, grouped by subfield (canonical markers) or cell class, sorted by share expressing" : "Hippocampal subfields by canonical markers (CA1: FIBCD1/FNDC1; CA2: PCP4; DG: PROX1), other cell classes per region"}, then each dissection (all its nuclei; dissections mix neighbouring fields). The subiculum has no cluster or canonical marker of its own in these data (its nuclei fall into CA1-type clusters), so it appears only as a dissection row. Colour: mean expression of ${scView.g.name} in counts per 10k (linear, no log), from pale (lowest row) to red (highest row), square area likewise, stretched separately for the by-markers rows and the by-dissection rows; co-expressed columns each over their own range. Bars: nuclei (grey, linear) and those expressing the gene (green).${detailed ? " Allen: the probe highlighted in the ribbon, every sample of the Allen structures matching each subfield, class or dissection (the ribbon turned on its side, its colours), from your loaded donors." : " Allen: mean z of the probe highlighted in the ribbon in each marker subfield's Allen structures, in the ribbon's colours."}${detailed ? " Hover a cluster for where it was dissected." : ""} (Ex) excitatory, (In) inhibitory.`;
   drawGrid({ cols: [{ label: `${scView.g.name} snRNA-seq expression (Siletti, mean counts per 10k)` }, { label: `${scView.g.name} (Allen expression z-score)`, gap: 6 }, { label: "Nuclei count (% expressing)", w: 190, gap: 10, plain: true },
       ...(detailed ? [{ label: "Markers ([canonical] then cluster-specific)", w: 360, gap: 8, plain: true }] : []),
-      ...(co ? co.list.map(({ i, r: rr }, j) => ({ label: `${coData.genes[i]} ${rr.toFixed(2)}`, vert: true, gap: j ? 0 : 8 })) : [])],
-    lines, cells, labelW: Math.max(150, ...lines.filter(l => l.label).map(l => 18 + l.label.length * 6.4 + (l.sub ? 6 + l.sub.length * 5.6 : 0))), cw: 22, rh: detailed ? 17 : 20, flatLabels: true });
+      ...extra.map((c, j) => ({ label: c.label, vert: true, gap: j === 0 || (c.diff && !extra[j - 1].diff) ? 8 : 0 }))],
+    lines, cells, labelW: Math.max(150, ...lines.filter(l => l.label).map(l => 18 + l.label.length * 6.4 + (l.sub ? 6 + l.sub.length * 5.6 : 0))), cw: 22, rh: detailed ? 17 : 20, flatLabels: true,
+    // Differential mode: a click on a row cycles it foreground -> background -> clear
+    onRow: $e("sc-diff").checked ? li => { const k = lines[li]?.key; if (!k) return; const m = scView.marks.get(k);
+      if (!m) scView.marks.set(k, "fg"); else if (m === "fg") scView.marks.set(k, "bg"); else scView.marks.delete(k); renderCellTypes(); } : null });
   $e("sc-legend").replaceChildren();   // colour and square area both give the expression (stated in the caption)
 }
 // Allen structures matching each Siletti dissection (Allen has no separate entorhinal cortex: PHG)
@@ -3864,6 +3915,8 @@ function drawGrid(spec) {
   const labelEnd = spec.flatLabels ? Math.max(...cols.map((c, i) => c.vert ? 0 : xs[i] + (c.plain ? 3 : Math.min(ws[i], cw) / 2 + 9) + c.label.length * 6)) : 0;
   const W = Math.max(x + rightW, labelEnd + 8), H = top + lines.length * rh + 8;
   const svg = svgEl("svg", { width: W * scView.zoom, height: H * scView.zoom, viewBox: `0 0 ${W} ${H}` });
+  // Differential marks: a yellow (foreground) or blue (background) band behind the row
+  lines.forEach((ln, li) => { if (ln.mark) svg.append(svgEl("rect", { x: 4, y: top + li * rh, width: x - 4, height: rh, fill: ln.mark === "fg" ? "rgba(255,214,0,0.28)" : "rgba(10,132,255,0.30)" })); });
   // Class colours: a bar along the left of each row group, a line above each column group
   lines.forEach((ln, li) => { if (ln.bar) svg.append(svgEl("rect", { x: 0, y: top + li * rh + 1, width: 3, height: rh - 2, fill: ln.bar })); });
   cols.forEach((c, ci) => { if (c.bar) svg.append(svgEl("rect", { x: xs[ci], y: top - 4, width: cw + (ci + 1 < cols.length && cols[ci + 1].bar === c.bar && !cols[ci + 1].gap ? 0 : -1), height: 2.5, fill: c.bar })); });
@@ -3954,6 +4007,7 @@ function drawGrid(spec) {
     // A click on the row labels selects the row too (as its first column)
     const li = Math.floor((pt.y - top) / rh), ci = pt.x < xs[0] ? 0 : xs.findIndex((x0, i) => pt.x >= x0 && pt.x < x0 + ws[i]);
     if (li < 0 || li >= lines.length || lines[li].sec || ci < 0) { select(null); return; }
+    if (spec.onRow) { spec.onRow(li); return; }
     if (scView.sel?.li === li && scView.sel?.ci === ci) select(null); else select(li, ci);
   });
   // Values appear at once next to the pointer (an SVG title waits about a second)
@@ -4027,10 +4081,11 @@ $e("sc-zr").addEventListener("input", e => { scView.zrManual = true; setScZr(+e.
 $e("sc-max").addEventListener("click", () => $e("sc-max").setAttribute("aria-pressed", $e("sc-dialog").classList.toggle("max")));
 $e("sc-dialog").addEventListener("close", () => ($e("sc-tip").hidden = true));
 $e("sc-zoom-out").addEventListener("click", () => setScZoom(scView.zoom / 1.25));
-$e("sc-detail").addEventListener("change", () => showCellTypes());
+$e("sc-detail").addEventListener("change", () => { scView.marks = new Map(); showCellTypes(); });
 $e("sc-coexp").addEventListener("change", () => showCellTypes());
+$e("sc-diff").addEventListener("change", () => { if (!$e("sc-diff").checked) scView.marks = new Map(); showCellTypes(); });
 // Each opening of the cells window starts fresh: brief view, no co-expression
-$e("cells-btn").addEventListener("click", () => { $e("sc-detail").checked = false; $e("sc-coexp").checked = false; showCellTypes(); });
+$e("cells-btn").addEventListener("click", () => { $e("sc-detail").checked = false; $e("sc-coexp").checked = false; $e("sc-diff").checked = false; scView.marks = new Map(); showCellTypes(); });
 $e("sc-dialog").addEventListener("click", e => { if (e.target === $e("sc-dialog")) $e("sc-dialog").close(); });
 
 // ---------------------------------------------------------------- differential expression
