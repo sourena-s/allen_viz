@@ -712,7 +712,7 @@
   <div id="sc-tip" hidden></div>
   <form method="dialog" class="sc-form">
     <div class="sc-head"><h2 id="sc-title" hidden></h2>
-      <div class="row sc-toggle sc-detail-row"><span class="sc-tg"><input type="text" id="sc-gene" class="gene-box" placeholder="Gene" aria-label="Gene shown in the cells window" autocomplete="off" spellcheck="false" title="Show another gene (Enter): a name, or with * for several (rad* starts with, *rad ends with, *rad* contains); co-expression and differential results stay"></span><span class="sc-seg" role="radiogroup" aria-label="Rows"><button type="button" data-v="brief" role="radio" title="Hippocampal subfields by markers, cell classes per region, dissections">Brief</button><button type="button" data-v="siletti" role="radio" title="Siletti clusters">Siletti</button><button type="button" data-v="hpa" role="radio" title="Protein Atlas brain clusters (its neuronal and non-neuronal clusters), each nucleus assigned by marker-gene correlation">Protein Atlas</button></span><span hidden><input type="checkbox" id="sc-detail" autocomplete="off"></span><span hidden><input type="checkbox" id="sc-hpa" autocomplete="off"></span><span class="sc-tg"><input type="checkbox" id="sc-coexp" autocomplete="off"><label for="sc-coexp" title="The 100 genes whose mean expression across the hippocampal formation, dentate, parahippocampal and amygdala cell groups (clusters in the detailed view, dissection x supercluster in the brief) correlates best with this gene (r after the name)">co-expressed</label></span><span class="sc-tg"><input type="checkbox" id="sc-diff" autocomplete="off"><label for="sc-diff" title="Click rows: once yellow (foreground), again blue (background), again clear. Then Calculate: the 100 genes most raised in the foreground relative to the background appear as columns on the right">differential</label></span><span class="sc-tg"><button type="button" class="corr-btn" id="sc-diff-run" hidden title="Rank the genes for the yellow (foreground) vs blue (background) rows">Calculate</button><button type="button" class="corr-btn" id="sc-diff-sub" hidden title="Subcellular location images (Human Protein Atlas) of the differential genes">sub</button></span></div>
+      <div class="row sc-toggle sc-detail-row"><span class="sc-tg"><input type="text" id="sc-gene" class="gene-box" placeholder="Gene" aria-label="Gene shown in the cells window" autocomplete="off" spellcheck="false" title="Show another gene (Enter), or add it as more columns (Ctrl+Enter): a name, or with * for several (rad* starts with, *rad ends with, *rad* contains); co-expression and differential results stay"></span><span class="sc-seg" role="radiogroup" aria-label="Rows"><button type="button" data-v="brief" role="radio" title="Hippocampal subfields by markers, cell classes per region, dissections">Brief</button><button type="button" data-v="siletti" role="radio" title="Siletti clusters">Siletti</button><button type="button" data-v="hpa" role="radio" title="Protein Atlas brain clusters (its neuronal and non-neuronal clusters), each nucleus assigned by marker-gene correlation">Protein Atlas</button></span><span hidden><input type="checkbox" id="sc-detail" autocomplete="off"></span><span hidden><input type="checkbox" id="sc-hpa" autocomplete="off"></span><span class="sc-tg"><input type="checkbox" id="sc-coexp" autocomplete="off"><label for="sc-coexp" title="The 100 genes whose mean expression across the hippocampal formation, dentate, parahippocampal and amygdala cell groups (clusters in the detailed view, dissection x supercluster in the brief) correlates best with this gene (r after the name)">co-expressed</label></span><span class="sc-tg"><input type="checkbox" id="sc-diff" autocomplete="off"><label for="sc-diff" title="Click rows: once yellow (foreground), again blue (background), again clear. Then Calculate: the 100 genes most raised in the foreground relative to the background appear as columns on the right">differential</label></span><span class="sc-tg"><button type="button" class="corr-btn" id="sc-diff-run" hidden title="Rank the genes for the yellow (foreground) vs blue (background) rows">Calculate</button><button type="button" class="corr-btn" id="sc-diff-sub" hidden title="Subcellular location images (Human Protein Atlas) of the differential genes">sub</button></span></div>
 
       <button class="rb-btn sc-zb" type="button" id="sc-zoom-out" aria-label="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
       <button class="rb-btn sc-zb" type="button" id="sc-zoom-in" aria-label="Zoom in"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button>
@@ -3918,7 +3918,13 @@ async function renderCellTypes() {
   const multi = scView.multi?.length > 1 ? scView.multi : null;
   const mVals = multi ? rows.map(r => (r.n ? multi.map(name => rowOf(r, name)) : null)) : [];
   const mRange = multi ? multi.map((_, j) => { const vs = mVals.filter(Boolean).map(v => v[j]?.lin).filter(v => v != null); return [Math.min(...vs), Math.max(...vs)]; }) : [];
-  const nBase = multi ? 2 * multi.length : 3;
+  // Genes added with Ctrl+Enter: three more columns each (expression, Allen, count) after the main ones
+  const added = multi ? [] : (scView.added ?? []).filter(a => a.name !== scView.g.name);
+  const aVals = rows.map(r => (r.n ? added.map(a => rowOf(r, a.name)) : null));
+  const aRange = added.map((_, j) => { const vs = aVals.filter(Boolean).map(v => v[j]?.lin).filter(v => v != null); return [Math.min(...vs), Math.max(...vs)]; });
+  const aAllen = added.map(() => new Map());   // keys (structures) -> Allen z of that gene's probe
+  const allenFor = (j, where) => { const m = aAllen[j]; if (!m.has(where)) m.set(where, added[j].probe ? allenZ(where.split(", "), added[j].probe) : null); return m.get(where); };
+  const nBase = multi ? 2 * multi.length : 3 + 3 * added.length;
   const coCi = nBase + (detailed ? 1 : 0);
   let lastGrp = null;
   const lines = [], cells = [];
@@ -3950,7 +3956,18 @@ async function renderCellTypes() {
     const mN = secMaxN[r.secI];
     cells.push({ li, ci: nc, bar: r.n / mN, fill: "rgba(255,255,255,0.35)", bar2: r.n * r.frac / mN, fill2: "#3cb371",
       text: `${r.n.toLocaleString()} (${Math.round(r.frac * 100)}%)`, tip: `${r.n.toLocaleString()} nuclei, ${Math.round(r.n * r.frac).toLocaleString()} (${(r.frac * 100).toFixed(1)}%) expressing ${scView.g.name}` });
-    if (detailed && r.markers) cells.push({ li, ci: 3, label: r.markers });
+    added.forEach((a, j) => {
+      const v = aVals[rows.indexOf(r)]?.[j], c0 = 3 + 3 * j; if (!v) return;
+      cells.push({ li, ci: c0, size: sqSize(stretch(v.lin, aRange[j])), fill: scColour(stretch(v.lin, aRange[j])), tip: `${r.tip}\n${a.name}: ${(v.frac * 100).toFixed(0)}% of ${r.n.toLocaleString()} nuclei, ${v.lin.toFixed(2)} counts per 10k (log mean ${v.mean.toFixed(2)})` });
+      if (r.grp && r.grp !== rows[rows.indexOf(r) - 1]?.grp) {
+        const g = groupAllen.get(r.grp), z = g?.where ? allenFor(j, g.where) : null, span = rows.filter(x => x.grp === r.grp).length;
+        if (z?.z != null) cells.push({ li, ci: c0 + 1, span, stripes: z.vals.map(ribbonColour), tip: `Allen microarray, ${a.name}: ${z.n} samples in ${g.where}, mean z ${z.z >= 0 ? "+" : ""}${z.z.toFixed(2)}` });
+      }
+      if (!detailed && r.allenWhere && r.allen) { const z = allenFor(j, r.allenWhere); if (z?.z != null) cells.push({ li, ci: c0 + 1, size: 0.9, fill: ribbonColour(z.z), tip: `Allen microarray, ${a.name}: mean z ${z.z >= 0 ? "+" : ""}${z.z.toFixed(2)} over ${z.n} samples in ${r.allenWhere}` }); }
+      cells.push({ li, ci: c0 + 2, bar: r.n / mN, fill: "rgba(255,255,255,0.35)", bar2: r.n * v.frac / mN, fill2: "#3cb371",
+        text: `${r.n.toLocaleString()} (${Math.round(v.frac * 100)}%)`, tip: `${r.n.toLocaleString()} nuclei, ${Math.round(r.n * v.frac).toLocaleString()} (${(v.frac * 100).toFixed(1)}%) expressing ${a.name}` });
+    });
+    if (detailed && r.markers) cells.push({ li, ci: nBase, label: r.markers });
     }
     // Extra columns: each on its own range (linear means)
     const ev = exRows[rows.indexOf(r)];
@@ -3963,8 +3980,9 @@ async function renderCellTypes() {
   { const st = diff ? `Differential: ${diff.note}` : ""; $e("sc-status").textContent = st; $e("sc-status").title = st; }
   $e("sc-sub").textContent = `${diff ? `Differential: ${diff.note} ` : ""}${scView.hpa ? "Protein Atlas brain clusters (c-numbers as on proteinatlas.org: brain neurons, and non-neuronal clusters marked so), each nucleus of these dissections assigned to the cluster whose expression profile it correlates with best over ~1,450 marker genes (an approximation of the Protein Atlas assignment), grouped by cell type, in c-number order. " : ""}${scView.hpa ? "Rows" : detailed ? "Siletti clusters, grouped by subfield (canonical markers) or cell class, sorted by share expressing" : "Hippocampal subfields by canonical markers (CA1: FIBCD1/FNDC1; CA2: PCP4; DG: PROX1), other cell classes per region"}, then each dissection (all its nuclei; dissections mix neighbouring fields). The subiculum has no cluster or canonical marker of its own in these data (its nuclei fall into CA1-type clusters), so it appears only as a dissection row. Colour: mean expression of ${scView.g.name} in counts per 10k (linear, no log), from pale (lowest row) to red (highest row), square area likewise, stretched separately for the by-markers rows and the by-dissection rows; co-expressed columns each over their own range. Bars: nuclei (grey, linear) and those expressing the gene (green).${detailed ? " Allen: the probe highlighted in the ribbon, every sample of the Allen structures matching each subfield, class or dissection (the ribbon turned on its side, its colours), from your loaded donors." : " Allen: mean z of the probe highlighted in the ribbon in each marker subfield's Allen structures, in the ribbon's colours."}${detailed ? " Hover a cluster for where it was dissected." : ""} (Ex) excitatory, (In) inhibitory.`;
   drawGrid({ cols: [...(multi
-      ? multi.flatMap((name, j) => [{ label: name, gene: name, vert: true, gap: j ? 10 : 0 }, { label: "Nuclei count (% expressing)", w: 84, vert: true, gap: 2 }])
-      : [{ label: `${scView.g.name} snRNA-seq expression (Siletti, mean counts per 10k)` }, { label: `${scView.g.name} (Allen expression z-score)`, gap: 6 }, { label: "Nuclei count (% expressing)", w: 190, gap: 10, plain: true }]),
+      ? multi.flatMap((name, j) => [{ label: name, gene: name, vert: true, gap: j ? 10 : 0 }, { label: "Count (% Exp.)", w: 84, vert: true, gap: 2 }])
+      : [{ label: `${scView.g.name} (snRNA-seq)`, lv: 0 }, { label: `${scView.g.name} (Allen)`, lv: 1, gap: 6 }, { label: "Count (% Exp.)", w: 190, gap: 10, plain: true },
+         ...added.flatMap(a => [{ label: `${a.name} (snRNA-seq)`, gene: a.name, lv: 0, gap: 14 }, { label: `${a.name} (Allen)`, lv: 1, gap: 6 }, { label: "Count (% Exp.)", w: 190, gap: 10, plain: true }])]),
       ...(detailed ? [{ label: "Markers ([canonical] then cluster-specific)", w: 360, gap: 8, plain: !multi, vert: !!multi }] : []),
       ...extra.map((c, j) => ({ label: c.label, gene: c.name, pct: c.pct, pctOf: c.pctOf, sep: c.sep, vert: true, gap: j === 0 || (c.diff && !extra[j - 1].diff) || c.sep ? 8 : 0 }))],
     lines, cells, labelW: Math.max(150, ...lines.filter(l => l.label).map(l => 18 + l.label.length * 6.4 + (l.sub ? 6 + l.sub.length * 5.6 : 0))), cw: 22, rh: detailed ? 17 : 20, flatLabels: true,
@@ -3980,8 +3998,7 @@ const ALLEN_OF_FIELD = { CA1: ["CA1"], CA2: ["CA2"], CA34: ["CA3", "CA4"], DG: [
 const ALLEN_HIPP = ["CA1", "CA2", "CA3", "CA4", "DG", "S"], ALLEN_AMY = ["LA", "BLA", "BMA", "CeA", "COMA", "ATZ"];
 // Mean Allen z-score of the probe highlighted in the ribbon over the loaded donors' samples in
 // those structures (z within each donor, as in the ribbon); null without data there
-function allenZ(keys) {
-  const probe = scProbe();
+function allenZ(keys, probe = scProbe()) {
   if (!probe || !expr.byDonor.size) return null;
   const set = new Set(keys);
   if (!allenZ.cols) { allenZ.cols = true; for (const c of donorClouds) c.userData.items.forEach((s, j) => (s.column = j)); }
@@ -4021,7 +4038,10 @@ function drawGrid(spec) {
   // Horizontal column labels, stacked (last column lowest) and joined to their column by an L
   const pctH = cols.some(c => c.pct != null) ? 34 : 0;   // vertical bars under the labels (share expressing)
   const vertH = Math.max(0, ...cols.filter(c => c.vert).map(c => c.label.length * 6.2 + 14 + pctH));
-  const top = spec.flatLabels ? Math.max(16 * cols.filter(c => !c.plain && !c.vert).length + 30, vertH) : spec.top;
+  // Label levels: a column's lv (repeated per gene block), else its rank among the labelled columns
+  const lvOf = (c, ci) => c.lv ?? ci;
+  const nLv = Math.max(0, ...cols.map((c, ci) => (!c.plain && !c.vert ? lvOf(c, ci) + 1 : 0)));
+  const top = spec.flatLabels ? Math.max(16 * nLv + 30, vertH) : spec.top;
   const xs = []; let x = labelW;
   const ws = cols.map(c => c.w ?? cw);
   cols.forEach((c, i) => { x += c.gap ?? 0; xs.push(x); x += ws[i]; });
@@ -4062,7 +4082,7 @@ function drawGrid(spec) {
       svg.append(t); return t;
     }
     if (spec.flatLabels) {
-      const ly = 16 * (ci + 1);
+      const ly = 16 * (lvOf(c, ci) + 1);
       svg.append(svgEl("polyline", { points: `${cx},${leadEnd} ${cx},${ly - 4} ${cx + 6},${ly - 4}`, fill: "none", stroke: "var(--muted)", "stroke-width": 0.8 }));
       const t = svgEl("text", { class: "col", x: cx + 9, y: ly }, c.label);
       svg.append(t); return t;
@@ -4239,6 +4259,16 @@ $e("sc-gene").addEventListener("keydown", async e => {
   const hits = !Q ? [] : region.genes.filter(g => match(g) && !g.startsWith("ENSG")).sort((a, b) => (b.toUpperCase() === Q) - (a.toUpperCase() === Q) || a.localeCompare(b, undefined, { numeric: true })).slice(0, 40);
   const scName = hits.length ? hits[0].toUpperCase() : (table?.bySynonym.get(Q) ?? []).find(a => region.geneIndex.has(a));
   if (!scName) { $e("sc-sub").textContent = `"${q}" is not in the single-nucleus data.`; return; }
+  const allenOf = async name => { if (!expr.bySymbol?.size) return null; const a = expr.bySymbol.has(name) ? name : [...expr.bySymbol.keys()].find(k => k.toUpperCase() === name.toUpperCase()) ?? await resolveAlias(name); return a ? expr.bySymbol.get(a)?.[0] ?? null : null; };
+  // Ctrl/Cmd+Enter: add the gene(s) as three more columns to the right instead of replacing
+  if (e.ctrlKey || e.metaKey) {
+    const names = hits.length ? hits : [region.genes[region.geneIndex.get(scName)]];
+    scView.added ??= [];
+    for (const name of names) if (name !== scView.g?.name && !scView.added.some(a => a.name === name)) scView.added.push({ name, probe: await allenOf(name) });
+    $e("sc-gene").value = scView.g?.name ?? "";
+    renderCellTypes();
+    return;
+  }
   scView.multi = hits.length > 1 ? hits : null;
   const allen = expr.bySymbol?.size ? (expr.bySymbol.has(q) ? q : [...expr.bySymbol.keys()].find(k => k.toUpperCase() === Q) ?? await resolveAlias(q)) : null;
   scView.sym = allen ?? region.genes[region.geneIndex.get(scName)];
@@ -4271,7 +4301,7 @@ $e("sc-diff-run").addEventListener("click", () => {
   setBusy("Ranking genes…"); setTimeout(() => { renderCellTypes(); setBusy(null); }, 30);
 });
 // Each opening of the cells window starts fresh: brief view, no co-expression
-$e("cells-btn").addEventListener("click", () => { scView.multi = null; scView.sym = undefined; scView.probe = undefined; scView.coAnchor = null; $e("sc-detail").checked = false; $e("sc-hpa").checked = false; $e("sc-coexp").checked = false; $e("sc-diff").checked = false; scView.marks = new Map(); scView.diffRes = null; showCellTypes(); });
+$e("cells-btn").addEventListener("click", () => { scView.multi = null; scView.added = []; scView.sym = undefined; scView.probe = undefined; scView.coAnchor = null; $e("sc-detail").checked = false; $e("sc-hpa").checked = false; $e("sc-coexp").checked = false; $e("sc-diff").checked = false; scView.marks = new Map(); scView.diffRes = null; showCellTypes(); });
 // A click outside the window does not close it (close button or Escape); the ? button shows the descriptions
 $e("sc-help-btn").addEventListener("click", () => { const h = $e("sc-help"); h.hidden = !h.hidden; $e("sc-help-btn").setAttribute("aria-expanded", !h.hidden); });
 $e("sc-plot").addEventListener("pointerdown", () => { $e("sc-help").hidden = true; $e("sc-help-btn").setAttribute("aria-expanded", false); });
