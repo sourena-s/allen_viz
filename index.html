@@ -200,6 +200,9 @@
   #sub-note { font-size: 11.5px; color: var(--muted); }
   #sub-grid a.ph { text-decoration: none; }
   #sub-grid .sub-stat { color: #ffd600; }
+  #sub-grid .sub-pct { position: relative; height: 14px; margin-top: 4px; background: rgba(255,255,255,0.35); border-radius: 2px; overflow: hidden; }
+  #sub-grid .sub-pct i { position: absolute; left: 0; top: 0; bottom: 0; background: #3cb371; }
+  #sub-grid .sub-pct span { position: relative; font-size: 10px; padding-left: 4px; line-height: 14px; color: #fff; text-shadow: 0 0 2px #000; }
   #sub-grid figure { margin: 0; font-size: 11px; }
   #sub-grid figcaption { padding: 3px 0; }
   #sub-grid figcaption b { font-size: 12px; }
@@ -366,6 +369,11 @@
   .sc-toggle { flex: none; font-size: 12px; }
   .sc-zr { align-self: flex-start; }
   .sc-detail-row { flex: 1; gap: 6px; font-size: 11.5px; }
+  /* The toggles and buttons wrap onto more lines rather than widening the window (narrow screens) */
+  .sc-detail-row { flex-wrap: wrap; min-width: 0; row-gap: 4px; }
+  .sc-head { min-width: 0; }
+  .sc-tg { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  #sc-dialog .sc-form { min-width: 0; }
   .sc-detail-row input[type=checkbox] { transform: scale(0.75); transform-origin: left center; margin-right: -6px; }
   #sc-plot .mk { fill: var(--muted); }
   #sc-plot { overflow: auto; max-height: calc(100dvh - 190px); touch-action: pan-x pan-y; }
@@ -676,7 +684,7 @@
   <div id="sc-tip" hidden></div>
   <form method="dialog" class="sc-form">
     <div class="sc-head"><h2 id="sc-title" hidden></h2>
-      <div class="row sc-toggle sc-detail-row"><input type="checkbox" id="sc-detail" autocomplete="off"><label for="sc-detail">Detailed (Siletti clusters)</label><input type="checkbox" id="sc-coexp" autocomplete="off"><label for="sc-coexp" title="The 100 genes whose mean expression across the hippocampal formation, dentate, parahippocampal and amygdala cell groups (clusters in the detailed view, dissection x supercluster in the brief) correlates best with this gene (r after the name)">co-expressed</label><input type="checkbox" id="sc-diff" autocomplete="off"><label for="sc-diff" title="Click rows: once yellow (foreground), again blue (background), again clear. Then Calculate: the 100 genes most raised in the foreground relative to the background appear as columns on the right">differential</label><button type="button" class="corr-btn" id="sc-diff-run" hidden title="Rank the genes for the yellow (foreground) vs blue (background) rows">Calculate</button><button type="button" class="corr-btn" id="sc-diff-sub" hidden title="Subcellular location images (Human Protein Atlas) of the differential genes">S</button></div>
+      <div class="row sc-toggle sc-detail-row"><span class="sc-tg"><input type="checkbox" id="sc-detail" autocomplete="off"><label for="sc-detail">Detailed (Siletti clusters)</label></span><span class="sc-tg"><input type="checkbox" id="sc-coexp" autocomplete="off"><label for="sc-coexp" title="The 100 genes whose mean expression across the hippocampal formation, dentate, parahippocampal and amygdala cell groups (clusters in the detailed view, dissection x supercluster in the brief) correlates best with this gene (r after the name)">co-expressed</label></span><span class="sc-tg"><input type="checkbox" id="sc-diff" autocomplete="off"><label for="sc-diff" title="Click rows: once yellow (foreground), again blue (background), again clear. Then Calculate: the 100 genes most raised in the foreground relative to the background appear as columns on the right">differential</label></span><span class="sc-tg"><button type="button" class="corr-btn" id="sc-diff-run" hidden title="Rank the genes for the yellow (foreground) vs blue (background) rows">Calculate</button><button type="button" class="corr-btn" id="sc-diff-sub" hidden title="Subcellular location images (Human Protein Atlas) of the differential genes">S</button></span></div>
 
       <button class="rb-btn sc-zb" type="button" id="sc-zoom-out" aria-label="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
       <button class="rb-btn sc-zb" type="button" id="sc-zoom-in" aria-label="Zoom in"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button>
@@ -3044,7 +3052,7 @@ async function pool(items, n, fn) {
 // items: [{ sym, stat }] (stat: extra caption line, e.g. differential statistics); default the ribbon's genes
 async function openSubcellularGrid(items) {
   if (!Array.isArray(items)) items = [...new Set((ribbon.rows ?? []).map(r => symbolOf(r.id)).filter(Boolean))].map(sym => ({ sym }));
-  const syms = items.map(it => it.sym), statOf = new Map(items.map(it => [it.sym, it.stat]));
+  const syms = items.map(it => it.sym), statOf = new Map(items.map(it => [it.sym, it.stat])), pctOf = new Map(items.map(it => [it.sym, it.pct]));
   const dlg = $e("sub-dialog"), grid = $e("sub-grid"), bar = $e("sub-progress"), note = $e("sub-note");
   const run = (openSubcellularGrid.run ?? 0) + 1; openSubcellularGrid.run = run;
   const live = () => dlg.open && openSubcellularGrid.run === run;
@@ -3070,8 +3078,13 @@ async function openSubcellularGrid(items) {
     const a = Object.assign(document.createElement("a"), { href: `https://www.proteinatlas.org/${d.ensg}-${shownName(sym)}/subcellular`, target: "_blank", rel: "noopener", className: "ph", textContent: "image…" });
     const cap = document.createElement("figcaption");
     cap.append(Object.assign(document.createElement("b"), { textContent: shownName(sym) }), Object.assign(document.createElement("div"), { textContent: hpaWhere(d) }));
+    let bar = null;
+    if (pctOf.get(sym) != null) {   // share of the foreground nuclei expressing it: grey track, green fill
+      const pc = pctOf.get(sym); bar = Object.assign(document.createElement("div"), { className: "sub-pct", title: "Share of the foreground nuclei expressing the gene (any count)" });
+      bar.append(Object.assign(document.createElement("i"), { style: `width: ${(pc * 100).toFixed(1)}%` }), Object.assign(document.createElement("span"), { textContent: `${(pc * 100).toFixed(0)}% of foreground nuclei` }));
+    }
     if (statOf.get(sym)) cap.append(Object.assign(document.createElement("div"), { className: "sub-stat", textContent: statOf.get(sym) }));
-    fig.append(a, cap);
+    fig.append(...[a, bar, cap].filter(Boolean));
     return [sym, { fig, a }];
   }));
   grid.replaceChildren(...nuc.map(sym => figs.get(sym).fig));
@@ -4110,7 +4123,7 @@ $e("sc-coexp").addEventListener("change", () => showCellTypes());
 $e("sc-diff").addEventListener("change", () => { if (!$e("sc-diff").checked) { scView.marks = new Map(); scView.diffRes = null; } showCellTypes(); });
 $e("sc-diff-sub").addEventListener("click", () => {
   const L = scView.diffRes?.list ?? [];
-  openSubcellularGrid(L.map(g => ({ sym: g.name, stat: `${g.d >= 0 ? "+" : ""}${g.d.toFixed(2)} SD · foreground ${g.mf.toFixed(2)} vs background ${g.mb.toFixed(2)} counts per 10k (${g.mb > 0 ? `${(g.mf / g.mb).toFixed(1)}×` : "background 0"})` })));
+  openSubcellularGrid(L.map(g => ({ sym: g.name, pct: g.pct, stat: `${g.d >= 0 ? "+" : ""}${g.d.toFixed(2)} SD · foreground ${g.mf.toFixed(2)} vs background ${g.mb.toFixed(2)} counts per 10k (${g.mb > 0 ? `${(g.mf / g.mb).toFixed(1)}×` : "background 0"})` })));
 });
 $e("sc-diff-run").addEventListener("click", () => { scView.diffRun = true; setBusy("Ranking genes…"); setTimeout(() => { renderCellTypes(); setBusy(null); }, 30); });
 // Each opening of the cells window starts fresh: brief view, no co-expression
