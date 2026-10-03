@@ -3,7 +3,7 @@ d = pd.read_csv('hpa/brain_cl.tsv', sep='\t', header=None, names=['ens','sym','t
 d['key'] = np.where(d.tis=='brain neurons','N','G') + d.cl
 meta = pd.read_csv('hpa/brain_clusters.tsv', sep='\t', header=None, names=['tis','cl','ct','detail','cls','n','inc','rel'])
 meta['key'] = np.where(meta.tis=='brain neurons','N','G') + meta.cl
-meta = meta[meta.inc=='yes']
+# all clusters, also those the Protein Atlas leaves out of its aggregation (few cells, e.g. c-89 CALB2+ RELN+)
 M = d.pivot_table(index='ens', columns='key', values='ncpm', aggfunc='first').fillna(0)
 M = M[[k for k in meta.key if k in M.columns]]
 L = np.log1p(M / 100)          # log1p(counts per 10k)
