@@ -3053,7 +3053,7 @@ async function pool(items, n, fn) {
 // items: [{ sym, stat }] (stat: extra caption line, e.g. differential statistics); default the ribbon's genes
 async function openSubcellularGrid(items, onNuc) {
   if (!Array.isArray(items)) items = [...new Set((ribbon.rows ?? []).map(r => symbolOf(r.id)).filter(Boolean))].map(sym => ({ sym }));
-  const syms = items.map(it => it.sym), statOf = new Map(items.map(it => [it.sym, it.stat])), pctOf = new Map(items.map(it => [it.sym, it.pct]));
+  const syms = items.map(it => it.sym), statOf = new Map(items.map(it => [it.sym, it.stat])), pctOf = new Map(items.map(it => [it.sym, it.pct])), pctWhat = new Map(items.map(it => [it.sym, it.pctWhat ?? "foreground nuclei"]));
   const dlg = $e("sub-dialog"), grid = $e("sub-grid"), bar = $e("sub-progress"), note = $e("sub-note");
   const run = (openSubcellularGrid.run ?? 0) + 1; openSubcellularGrid.run = run;
   const live = () => dlg.open && openSubcellularGrid.run === run;
@@ -3082,8 +3082,8 @@ async function openSubcellularGrid(items, onNuc) {
     cap.append(Object.assign(document.createElement("b"), { textContent: shownName(sym) }), Object.assign(document.createElement("div"), { textContent: hpaWhere(d) }));
     let bar = null;
     if (pctOf.get(sym) != null) {   // share of the foreground nuclei expressing it: grey track, green fill
-      const pc = pctOf.get(sym); bar = Object.assign(document.createElement("div"), { className: "sub-pct", title: "Share of the foreground nuclei expressing the gene (any count)" });
-      bar.append(Object.assign(document.createElement("i"), { style: `width: ${(pc * 100).toFixed(1)}%` }), Object.assign(document.createElement("span"), { textContent: `${(pc * 100).toFixed(0)}% of foreground nuclei` }));
+      const pc = pctOf.get(sym); bar = Object.assign(document.createElement("div"), { className: "sub-pct", title: `Share of ${pctWhat.get(sym)} expressing the gene (any count)` });
+      bar.append(Object.assign(document.createElement("i"), { style: `width: ${(pc * 100).toFixed(1)}%` }), Object.assign(document.createElement("span"), { textContent: `${(pc * 100).toFixed(0)}% of ${pctWhat.get(sym)}` }));
     }
     if (statOf.get(sym)) cap.append(Object.assign(document.createElement("div"), { className: "sub-stat", textContent: statOf.get(sym) }));
     fig.append(...[a, bar, cap].filter(Boolean));
@@ -3679,7 +3679,10 @@ const DIFF_SC_TOP = 100;
 function scDifferential(rows, detailed, region, clusters) {
   const fg = [], bg = [], all = [];
   for (const r of rows) if (r.n && r.key) { all.push(r); const m = scView.marks.get(r.key); if (m === "fg") fg.push(all.length - 1); else if (m === "bg") bg.push(all.length - 1); }
-  if (!fg.length || !bg.length) return { list: [], note: "" };
+  if (!fg.length) return { list: [], note: "" };
+  // No blue rows: every other row is the background (global average without the foreground)
+  const globalBg = !bg.length;
+  if (globalBg) for (let a = 0; a < all.length; a++) if (!fg.includes(a)) bg.push(a);
   const data = detailed ? clusters : region, nG = region.groups.length, nC = clusters.clusters.length;
   // Each row's units: [data, unit, weight]; brief marker rows draw on the clusters file
   if (!region.toCl) { region.toCl = new Int32Array(region.genes.length).fill(-1); region.genes.forEach((g, i) => { const j = clusters.geneIndex.get(g.toUpperCase()); if (j !== undefined) region.toCl[i] = j; }); }
@@ -3709,7 +3712,7 @@ function scDifferential(rows, detailed, region, clusters) {
     const d = (mf / fg.length - mb / bg.length) / sd;
     if (best.length < DIFF_SC_TOP || d > best[best.length - 1].d) { best.push({ name: data.genes[i], d, mf: mf / fg.length, mb: mb / bg.length, pct: fgF / fgW }); best.sort((p, q) => q.d - p.d); if (best.length > DIFF_SC_TOP) best.pop(); }
   }
-  return { list: best, note: `the ${best.length} genes most raised in the ${fg.length} yellow row${fg.length > 1 ? "s" : ""} relative to the ${bg.length} blue row${bg.length > 1 ? "s" : ""} (linear means standardised across all rows, as the Allen differential; score after each name, in SD). Turn differential on again for a new search.` };
+  return { list: best, note: `the ${best.length} genes most raised in the ${fg.length} yellow row${fg.length > 1 ? "s" : ""} relative to ${globalBg ? `all ${bg.length} other rows (no blue rows marked)` : `the ${bg.length} blue row${bg.length > 1 ? "s" : ""}`} (linear means standardised across all rows, as the Allen differential; score after each name, in SD). Turn differential on again for a new search.` };
 }
 // A gene's linear mean (counts per 10k) in unit k; the log mean where a file has no linear block
 const scLin = (data, gi, k) => data.lin ? data.lin[gi * data.nU + k] / 255 * data.lmax[gi] : data.body[gi * data.nU * 2 + k] / 255 * data.max[gi];
@@ -3848,10 +3851,10 @@ async function renderCellTypes() {
   // Marking (row clicks mark foreground/background) while "differential" is on; Calculate ends it and
   // turns the toggle off. Results and marked rows stay until the next differential search
   const marking = $e("sc-diff").checked;
-  const diff = marking ? { list: [], note: `click rows to mark the foreground (yellow, ${nFg} so far) and, clicking again, the background (blue, ${nBg}); a third click clears. Then press Calculate.` }
+  const diff = marking ? { list: [], note: `click rows to mark the foreground (yellow, ${nFg} so far) and, clicking again, the background (blue, ${nBg}); a third click clears. Then press Calculate (no blue rows: all other rows are the background).` }
     : scView.diffRes?.list.length ? { ...scView.diffRes, note: scView.diffRes.note + (scView.diffRes.nucN != null ? ` After Sub: the ${scView.diffRes.nucN} genes with a nuclear (nucl*) Protein Atlas location first, by share of foreground nuclei expressing them, then (dashed line) the rest by score.` : "") } : null;
   $e("sc-diff-run").hidden = !marking;
-  $e("sc-diff-run").disabled = !(nFg && nBg);
+  $e("sc-diff-run").disabled = !nFg;
   // Sub: always shown; active once a differential search has results
   $e("sc-diff-sub").hidden = false;
   $e("sc-diff-sub").disabled = !(diff?.list.length || co);
@@ -3859,15 +3862,21 @@ async function renderCellTypes() {
   // Co-expressed columns; after Sub, the nucl* genes first, a dashed line, then the rest (r order kept)
   const coKey = co ? `${detailed}|${scView.coAnchor}` : null;
   const coNuc = scView.coNuc?.key === coKey ? scView.coNuc.set : null;
+  const coPct = new Map();   // share of the nuclei of the rows shown expressing each co-expressed gene
+  if (co) for (const c of co.list) {
+    const name = coData.genes[c.i]; let f = 0, w = 0;
+    for (const r of rows) if (r.n && (!coIn || coIn.has(r.k))) { const v = rowOf(r, name); if (v) { f += v.frac * r.n; w += r.n; } }
+    coPct.set(name, w ? f / w : 0);
+  }
   const coCols = !co ? [] : !coNuc ? co.list : (() => {
-    const a = co.list.filter(c => coNuc.has(coData.genes[c.i])), b = co.list.filter(c => !coNuc.has(coData.genes[c.i]));
+    const a = co.list.filter(c => coNuc.has(coData.genes[c.i])).sort((p, q) => coPct.get(coData.genes[q.i]) - coPct.get(coData.genes[p.i])), b = co.list.filter(c => !coNuc.has(coData.genes[c.i]));
     return [...a, ...b.map((c, j) => (j === 0 && a.length ? { ...c, sep: true } : c))];
   })();
-  scView.coShown = co ? { key: coKey, list: co.list.map(c => ({ name: coData.genes[c.i], r: c.r })) } : null;
+  scView.coShown = co ? { key: coKey, list: co.list.map(c => ({ name: coData.genes[c.i], r: c.r, pct: coPct.get(coData.genes[c.i]) })) } : null;
   // Extra columns on the right: co-expressed genes, then differential genes, each on its own range
   const extra = [
-    ...coCols.map(({ i, r: rr, sep }) => ({ name: coData.genes[i], sep, label: `${coData.genes[i]} ${rr.toFixed(2)}`, why: `r = ${rr.toFixed(2)} with ${scView.coAnchor}`, only: coIn })),
-    ...(diff?.list ?? []).map(({ name, d, pct }, j) => ({ name, pct, sep: diff.nucN != null && j === diff.nucN && j > 0, label: `${name} ${d >= 0 ? "+" : ""}${d.toFixed(1)}`, why: `foreground minus background, ${d.toFixed(2)} SD of the gene across the rows`, diff: true })),
+    ...coCols.map(({ i, r: rr, sep }) => ({ name: coData.genes[i], sep, pct: coPct.get(coData.genes[i]), pctOf: "the nuclei of the rows shown", label: `${coData.genes[i]} ${rr.toFixed(2)}`, why: `r = ${rr.toFixed(2)} with ${scView.coAnchor}`, only: coIn })),
+    ...(diff?.list ?? []).map(({ name, d, pct }, j) => ({ name, pct, pctOf: "the foreground nuclei", sep: diff.nucN != null && j === diff.nucN && j > 0, label: `${name} ${d >= 0 ? "+" : ""}${d.toFixed(1)}`, why: `foreground minus background, ${d.toFixed(2)} SD of the gene across the rows`, diff: true })),
   ];
   const exRows = rows.map(r => (r.n ? extra.map(c => (!c.only || c.only.has(r.k) ? rowOf(r, c.name) : null)) : null));
   const exRange = extra.map((_, j) => { const vs = exRows.filter(Boolean).map(v => v[j]?.lin).filter(v => v != null); return [Math.min(...vs), Math.max(...vs)]; });
@@ -3903,7 +3912,7 @@ async function renderCellTypes() {
   $e("sc-sub").textContent = `${diff ? `Differential: ${diff.note} ` : ""}${detailed ? "Siletti clusters, grouped by subfield (canonical markers) or cell class, sorted by share expressing" : "Hippocampal subfields by canonical markers (CA1: FIBCD1/FNDC1; CA2: PCP4; DG: PROX1), other cell classes per region"}, then each dissection (all its nuclei; dissections mix neighbouring fields). The subiculum has no cluster or canonical marker of its own in these data (its nuclei fall into CA1-type clusters), so it appears only as a dissection row. Colour: mean expression of ${scView.g.name} in counts per 10k (linear, no log), from pale (lowest row) to red (highest row), square area likewise, stretched separately for the by-markers rows and the by-dissection rows; co-expressed columns each over their own range. Bars: nuclei (grey, linear) and those expressing the gene (green).${detailed ? " Allen: the probe highlighted in the ribbon, every sample of the Allen structures matching each subfield, class or dissection (the ribbon turned on its side, its colours), from your loaded donors." : " Allen: mean z of the probe highlighted in the ribbon in each marker subfield's Allen structures, in the ribbon's colours."}${detailed ? " Hover a cluster for where it was dissected." : ""} (Ex) excitatory, (In) inhibitory.`;
   drawGrid({ cols: [{ label: `${scView.g.name} snRNA-seq expression (Siletti, mean counts per 10k)` }, { label: `${scView.g.name} (Allen expression z-score)`, gap: 6 }, { label: "Nuclei count (% expressing)", w: 190, gap: 10, plain: true },
       ...(detailed ? [{ label: "Markers ([canonical] then cluster-specific)", w: 360, gap: 8, plain: true }] : []),
-      ...extra.map((c, j) => ({ label: c.label, gene: c.name, pct: c.pct, sep: c.sep, vert: true, gap: j === 0 || (c.diff && !extra[j - 1].diff) || c.sep ? 8 : 0 }))],
+      ...extra.map((c, j) => ({ label: c.label, gene: c.name, pct: c.pct, pctOf: c.pctOf, sep: c.sep, vert: true, gap: j === 0 || (c.diff && !extra[j - 1].diff) || c.sep ? 8 : 0 }))],
     lines, cells, labelW: Math.max(150, ...lines.filter(l => l.label).map(l => 18 + l.label.length * 6.4 + (l.sub ? 6 + l.sub.length * 5.6 : 0))), cw: 22, rh: detailed ? 17 : 20, flatLabels: true,
     // Differential mode: a click on a row cycles it foreground -> background -> clear
     onRow: marking ? li => { const k = lines[li]?.key; if (!k) return; const m = scView.marks.get(k);
@@ -3987,7 +3996,7 @@ function drawGrid(spec) {
       if (c.pct != null) {   // share of the foreground nuclei expressing the gene: grey track, green fill
         const y0 = top - 6 - pctH + 4, h = pctH - 6;
         const bg = svgEl("rect", { x: cx - 5, y: y0, width: 10, height: h, fill: "rgba(255,255,255,0.35)", rx: 1 });
-        bg.dataset.tip = `${c.gene}: ${(c.pct * 100).toFixed(1)}% of the foreground nuclei express it (any count)`;
+        bg.dataset.tip = `${c.gene}: ${(c.pct * 100).toFixed(1)}% of ${c.pctOf ?? "the foreground nuclei"} express it (any count)`;
         svg.append(bg, svgEl("rect", { x: cx - 5, y: y0 + h * (1 - c.pct), width: 10, height: h * c.pct, fill: "#3cb371", rx: 1, "pointer-events": "none" }));
       }
       const ty = top - 10 - (c.pct != null ? pctH : 0);
@@ -4174,7 +4183,7 @@ $e("sc-diff-sub").addEventListener("click", () => {
   // No differential result: the co-expressed genes (nucl* ones then marked in the same way)
   if (!scView.diffRes?.list.length && scView.coShown) {
     const { key, list } = scView.coShown;
-    openSubcellularGrid(list.map(c => ({ sym: c.name, stat: `r = ${c.r.toFixed(2)} with ${scView.coAnchor}` })),
+    openSubcellularGrid(list.map(c => ({ sym: c.name, pct: c.pct, pctWhat: "nuclei (rows shown)", stat: `r = ${c.r.toFixed(2)} with ${scView.coAnchor}` })),
       set => { if (scView.coShown?.key === key) { scView.coNuc = { key, set }; renderCellTypes(); } });
     return;
   }
