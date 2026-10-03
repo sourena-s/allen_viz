@@ -685,7 +685,7 @@
   <div id="sc-tip" hidden></div>
   <form method="dialog" class="sc-form">
     <div class="sc-head"><h2 id="sc-title" hidden></h2>
-      <div class="row sc-toggle sc-detail-row"><span class="sc-tg"><input type="text" id="sc-gene" class="gene-box" placeholder="Gene" aria-label="Gene shown in the cells window" autocomplete="off" spellcheck="false" title="Show another gene (Enter); co-expression and differential results stay"></span><span class="sc-tg"><input type="checkbox" id="sc-detail" autocomplete="off"><label for="sc-detail">Detailed (Siletti clusters)</label></span><span class="sc-tg"><input type="checkbox" id="sc-coexp" autocomplete="off"><label for="sc-coexp" title="The 100 genes whose mean expression across the hippocampal formation, dentate, parahippocampal and amygdala cell groups (clusters in the detailed view, dissection x supercluster in the brief) correlates best with this gene (r after the name)">co-expressed</label></span><span class="sc-tg"><input type="checkbox" id="sc-diff" autocomplete="off"><label for="sc-diff" title="Click rows: once yellow (foreground), again blue (background), again clear. Then Calculate: the 100 genes most raised in the foreground relative to the background appear as columns on the right">differential</label></span><span class="sc-tg"><button type="button" class="corr-btn" id="sc-diff-run" hidden title="Rank the genes for the yellow (foreground) vs blue (background) rows">Calculate</button><button type="button" class="corr-btn" id="sc-diff-sub" hidden title="Subcellular location images (Human Protein Atlas) of the differential genes">Sub</button></span></div>
+      <div class="row sc-toggle sc-detail-row"><span class="sc-tg"><input type="text" id="sc-gene" class="gene-box" placeholder="Gene" aria-label="Gene shown in the cells window" autocomplete="off" spellcheck="false" title="Show another gene (Enter); co-expression and differential results stay"></span><span class="sc-tg"><input type="checkbox" id="sc-detail" autocomplete="off"><label for="sc-detail">Detailed (Siletti clusters)</label></span><span class="sc-tg"><input type="checkbox" id="sc-hpa" autocomplete="off"><label for="sc-hpa" title="Rows: the Protein Atlas brain clusters (its 95 neuronal and 32 non-neuronal clusters, from the same Siletti data), each nucleus assigned to the closest cluster by marker-gene correlation">Protein Atlas clusters</label></span><span class="sc-tg"><input type="checkbox" id="sc-coexp" autocomplete="off"><label for="sc-coexp" title="The 100 genes whose mean expression across the hippocampal formation, dentate, parahippocampal and amygdala cell groups (clusters in the detailed view, dissection x supercluster in the brief) correlates best with this gene (r after the name)">co-expressed</label></span><span class="sc-tg"><input type="checkbox" id="sc-diff" autocomplete="off"><label for="sc-diff" title="Click rows: once yellow (foreground), again blue (background), again clear. Then Calculate: the 100 genes most raised in the foreground relative to the background appear as columns on the right">differential</label></span><span class="sc-tg"><button type="button" class="corr-btn" id="sc-diff-run" hidden title="Rank the genes for the yellow (foreground) vs blue (background) rows">Calculate</button><button type="button" class="corr-btn" id="sc-diff-sub" hidden title="Subcellular location images (Human Protein Atlas) of the differential genes">Sub</button></span></div>
 
       <button class="rb-btn sc-zb" type="button" id="sc-zoom-out" aria-label="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
       <button class="rb-btn sc-zb" type="button" id="sc-zoom-in" aria-label="Zoom in"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button>
@@ -715,6 +715,7 @@
     <p class="cite">Hawrylycz MJ, Lein ES, Guillozet-Bongaarts AL, et al. (2012). An anatomically comprehensive atlas of the adult human transcriptome. <i>Nature</i>, 489, 391–399. <a href="https://doi.org/10.1038/nature11405" target="_blank" rel="noopener">doi:10.1038/nature11405</a></p>
     <p class="cite">© 2010 Allen Institute for Brain Science. Allen Human Brain Atlas. Available from: <a href="https://human.brain-map.org/" target="_blank" rel="noopener">human.brain-map.org</a></p>
     <p class="cite">Single-nucleus cell types (the "cells" view): Siletti K, et al. Transcriptomic diversity of cell types across the adult human brain. <i>Science</i> 382, eadd7046 (2023). Data: Human Brain Cell Atlas v1.0 via CELLxGENE Census (release 2025-01-30), CC BY 4.0; aggregated here per dissection and supercluster.</p>
+    <p class="cite">Protein Atlas brain clusters (the "Protein Atlas clusters" rows): cluster names and expression profiles from the Human Protein Atlas single cell type data (brain neurons and non-neurons, based on Siletti et al. 2023), <a href="https://www.proteinatlas.org/humanproteome/single+cell" target="_blank" rel="noopener">proteinatlas.org</a>, CC BY-SA 4.0; nuclei assigned to them here by marker-gene correlation.</p>
     <p class="cite">Subcellular location images and annotations (the gene menu and the "S" view) are retrieved live from the Human Protein Atlas, <a href="https://www.proteinatlas.org/" target="_blank" rel="noopener">proteinatlas.org</a> (Thul PJ, et al. A subcellular map of the human proteome. <i>Science</i> 356, eaal3321 (2017)), licensed CC BY-SA 4.0.</p>
     <p>The original data are provided by the Allen Institute for Brain Science. This website does not own the underlying Allen Institute data and does not host or redistribute the expression files: they are downloaded from the Allen Institute by the visitor and processed only in the visitor's browser. Expression values shown here may have been processed, reformatted, aggregated or visualised.</p>
     <p>Use of Allen Institute content is subject to the Allen Institute <a href="https://alleninstitute.org/terms-of-use/" target="_blank" rel="noopener">Terms of Use</a> and <a href="https://alleninstitute.org/citation-policy/" target="_blank" rel="noopener">Citation Policy</a>. The Allen Institute and Allen Human Brain Atlas names, trademarks and logos remain the property of the Allen Institute or their respective owners. This website is not affiliated with or endorsed by the Allen Institute.</p>
@@ -3571,7 +3572,8 @@ async function showCellTypes() {
   setBusy("Loading single-nucleus data…");
   let region, clusters;
   try {
-    [region, clusters] = await Promise.all([loadSingleCell("assets/siletti_hipamy"), loadSingleCell("assets/siletti_clusters")]);
+    [region, clusters] = await Promise.all([loadSingleCell("assets/siletti_hipamy"), loadSingleCell($e("sc-hpa").checked ? "assets/siletti_hpa" : "assets/siletti_clusters")]);
+    scView.hpa = $e("sc-hpa").checked;
     await loadHgnc().catch(() => null);
   } catch (err) { setBusy(null); setExprStatus([`Single-nucleus data: ${err.message}`]); return; }
   setBusy(null);
@@ -3642,7 +3644,7 @@ function coUnits(data, detailed) {
   return data.groups.map(([d, , n], k) => (d !== BNST && n >= 50 ? k : -1)).filter(k => k >= 0);
 }
 function coExpressed(data, gi, detailed, top = CO_TOP) {
-  const key = `${detailed}|${gi}`;
+  const key = `${detailed}|${data.nU}|${gi}`;   // the file (clusters or Protein Atlas) by its unit count
   if (coExpressed.key === key) return coExpressed.out;
   const nU = detailed ? data.clusters.length : data.groups.length, ks = coUnits(data, detailed);
   const m = ks.length, body = data.body;
@@ -3769,7 +3771,10 @@ async function renderCellTypes() {
     byClassRows("Parahippocampal gyrus", d => d >= 11 && d <= 13, false, ["PHG"]);
     byClassRows("Amygdala", d => d >= 14, false, ALLEN_AMY);
   } else if (crow) {
-    const groupsOf = [...MARKER_FIELDS.map(f => ({ name: `Subfield by markers: ${f.label}`, color: f.color, field: f.key, test: c => markerField(c) === f.key })),
+    // Protein Atlas clusters: grouped by its cell type (excitatory, inhibitory neurons, then the others)
+    const HPA_ORDER = ["Brain excitatory neurons", "Brain inhibitory neurons"], HPA_COL = { "Brain excitatory neurons": "#0a84ff", "Brain inhibitory neurons": "#9b3fe6" };
+    const hpaTypes = scView.hpa ? [...new Set(clusters.clusters.map(c => c.sc))].sort((a, b) => ((HPA_ORDER.indexOf(a) + 1) || 9) - ((HPA_ORDER.indexOf(b) + 1) || 9) || a.localeCompare(b)) : [];
+    const groupsOf = scView.hpa ? hpaTypes.map(t => ({ name: t, color: HPA_COL[t] ?? "#3cb371", test: c => c.sc === t })) : [...MARKER_FIELDS.map(f => ({ name: `Subfield by markers: ${f.label}`, color: f.color, field: f.key, test: c => markerField(c) === f.key })),
       ...SC_CLASSES.map(cls => ({ name: cls.name, color: cls.color, test: c => !markerField(c) && clsOf(c.sc) === cls }))];
     for (const gr of groupsOf) {
       const ks = clusters.clusters.map((c, k) => (gr.test(c) ? k : -1)).filter(k => k >= 0).sort((a, b) => crow[nC + b] - crow[nC + a] || crow[b] - crow[a]);
@@ -3792,7 +3797,7 @@ async function renderCellTypes() {
         const where = c.where.map((w, d) => [w, d]).filter(([w]) => w).sort((a, b) => b[0] - a[0]).slice(0, 5).map(([w, d]) => {
           return `  ${data_label(d)} ${Math.round(w / 2.55)}% of nuclei`;
         }).join("\n");
-        rows.push({ k, label: withTag(c.name, ntTag(c.nt)), sub: c.sc, markers: `${canon}${c.markers.map(m => `${m}+`).join(" ")}`, bar: gr.color, ...v, grp: gr.name,
+        rows.push({ k, label: scView.hpa ? c.name : withTag(c.name, ntTag(c.nt)), sub: scView.hpa ? c.mtg : c.sc, markers: `${canon}${c.markers.map(m => `${m}+`).join(" ")}`, bar: gr.color, ...v, grp: gr.name,
           tip: `${c.name} (${c.sc}${c.nt ? `, ${c.nt}` : ""}${c.mtg ? `, like cortical ${c.mtg}` : ""})\nMarkers: ${c.markers.join(", ") || "–"}\nWhere dissected:\n${where}` });
       }
     }
@@ -3909,7 +3914,7 @@ async function renderCellTypes() {
         tip: `${c.name} (${c.why})\n${r.label}: ${v.lin.toFixed(2)} counts per 10k (log mean ${v.mean.toFixed(2)}), ${Math.round(v.frac * 100)}% of nuclei with any count` });
     });
   }
-  $e("sc-sub").textContent = `${diff ? `Differential: ${diff.note} ` : ""}${detailed ? "Siletti clusters, grouped by subfield (canonical markers) or cell class, sorted by share expressing" : "Hippocampal subfields by canonical markers (CA1: FIBCD1/FNDC1; CA2: PCP4; DG: PROX1), other cell classes per region"}, then each dissection (all its nuclei; dissections mix neighbouring fields). The subiculum has no cluster or canonical marker of its own in these data (its nuclei fall into CA1-type clusters), so it appears only as a dissection row. Colour: mean expression of ${scView.g.name} in counts per 10k (linear, no log), from pale (lowest row) to red (highest row), square area likewise, stretched separately for the by-markers rows and the by-dissection rows; co-expressed columns each over their own range. Bars: nuclei (grey, linear) and those expressing the gene (green).${detailed ? " Allen: the probe highlighted in the ribbon, every sample of the Allen structures matching each subfield, class or dissection (the ribbon turned on its side, its colours), from your loaded donors." : " Allen: mean z of the probe highlighted in the ribbon in each marker subfield's Allen structures, in the ribbon's colours."}${detailed ? " Hover a cluster for where it was dissected." : ""} (Ex) excitatory, (In) inhibitory.`;
+  $e("sc-sub").textContent = `${diff ? `Differential: ${diff.note} ` : ""}${scView.hpa ? "Protein Atlas brain clusters (c-numbers as on proteinatlas.org: brain neurons, and non-neuronal clusters marked so), each nucleus of these dissections assigned to the cluster whose expression profile it correlates with best over ~1,400 marker genes (an approximation of the Protein Atlas assignment), grouped by cell type and sorted by share expressing. " : ""}${scView.hpa ? "Rows" : detailed ? "Siletti clusters, grouped by subfield (canonical markers) or cell class, sorted by share expressing" : "Hippocampal subfields by canonical markers (CA1: FIBCD1/FNDC1; CA2: PCP4; DG: PROX1), other cell classes per region"}, then each dissection (all its nuclei; dissections mix neighbouring fields). The subiculum has no cluster or canonical marker of its own in these data (its nuclei fall into CA1-type clusters), so it appears only as a dissection row. Colour: mean expression of ${scView.g.name} in counts per 10k (linear, no log), from pale (lowest row) to red (highest row), square area likewise, stretched separately for the by-markers rows and the by-dissection rows; co-expressed columns each over their own range. Bars: nuclei (grey, linear) and those expressing the gene (green).${detailed ? " Allen: the probe highlighted in the ribbon, every sample of the Allen structures matching each subfield, class or dissection (the ribbon turned on its side, its colours), from your loaded donors." : " Allen: mean z of the probe highlighted in the ribbon in each marker subfield's Allen structures, in the ribbon's colours."}${detailed ? " Hover a cluster for where it was dissected." : ""} (Ex) excitatory, (In) inhibitory.`;
   drawGrid({ cols: [{ label: `${scView.g.name} snRNA-seq expression (Siletti, mean counts per 10k)` }, { label: `${scView.g.name} (Allen expression z-score)`, gap: 6 }, { label: "Nuclei count (% expressing)", w: 190, gap: 10, plain: true },
       ...(detailed ? [{ label: "Markers ([canonical] then cluster-specific)", w: 360, gap: 8, plain: true }] : []),
       ...extra.map((c, j) => ({ label: c.label, gene: c.name, pct: c.pct, pctOf: c.pctOf, sep: c.sep, vert: true, gap: j === 0 || (c.diff && !extra[j - 1].diff) || c.sep ? 8 : 0 }))],
@@ -4159,7 +4164,8 @@ $e("sc-zr").addEventListener("input", e => { scView.zrManual = true; setScZr(+e.
 $e("sc-max").addEventListener("click", () => $e("sc-max").setAttribute("aria-pressed", $e("sc-dialog").classList.toggle("max")));
 $e("sc-dialog").addEventListener("close", () => ($e("sc-tip").hidden = true));
 $e("sc-zoom-out").addEventListener("click", () => setScZoom(scView.zoom / 1.25));
-$e("sc-detail").addEventListener("change", () => { scView.marks = new Map(); scView.diffRes = null; showCellTypes(); });
+$e("sc-hpa").addEventListener("change", () => { if ($e("sc-hpa").checked) $e("sc-detail").checked = true; scView.marks = new Map(); scView.diffRes = null; showCellTypes(); });
+$e("sc-detail").addEventListener("change", () => { if (!$e("sc-detail").checked) $e("sc-hpa").checked = false; scView.marks = new Map(); scView.diffRes = null; showCellTypes(); });
 $e("sc-coexp").addEventListener("change", () => { scView.coAnchor = null; showCellTypes(); });
 // Gene box: Enter shows that gene (its Allen probe too, when Allen has it); other results stay
 $e("sc-gene").addEventListener("keydown", async e => {
@@ -4203,7 +4209,7 @@ $e("sc-diff-run").addEventListener("click", () => {
   setBusy("Ranking genes…"); setTimeout(() => { renderCellTypes(); setBusy(null); }, 30);
 });
 // Each opening of the cells window starts fresh: brief view, no co-expression
-$e("cells-btn").addEventListener("click", () => { scView.sym = undefined; scView.probe = undefined; scView.coAnchor = null; $e("sc-detail").checked = false; $e("sc-coexp").checked = false; $e("sc-diff").checked = false; scView.marks = new Map(); scView.diffRes = null; showCellTypes(); });
+$e("cells-btn").addEventListener("click", () => { scView.sym = undefined; scView.probe = undefined; scView.coAnchor = null; $e("sc-detail").checked = false; $e("sc-hpa").checked = false; $e("sc-coexp").checked = false; $e("sc-diff").checked = false; scView.marks = new Map(); scView.diffRes = null; showCellTypes(); });
 $e("sc-dialog").addEventListener("click", e => { if (e.target === $e("sc-dialog")) $e("sc-dialog").close(); });
 
 // ---------------------------------------------------------------- differential expression
