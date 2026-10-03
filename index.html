@@ -387,6 +387,12 @@
   #tour .tour-btns button[data-a="end"] { margin-left: auto; }
   @keyframes tour-pulse { 50% { box-shadow: 0 0 0 9px rgba(255,214,0,0.08); } }
   @keyframes tour-bob { to { translate: 0 6px; } }
+  #ribbon-edit { width: min(520px, calc(100vw - 16px)); max-height: calc(100dvh - 16px); padding: 0; border-radius: 4px; color: var(--ink); background: #3a3f46; border: 1px solid #555; }
+  #ribbon-edit::backdrop { background: rgba(20, 28, 38, 0.3); }
+  #ribbon-edit ol { max-height: 60dvh; overflow: auto; margin: 0; padding-left: 28px; font-size: 12px; }
+  #ribbon-edit li { display: flex; align-items: center; gap: 6px; padding: 2px 0; cursor: grab; }
+  #ribbon-edit li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #ribbon-edit li button { font: 12px var(--sans); color: var(--ink); background: rgba(255,255,255,0.1); border: 1px solid var(--edge); border-radius: 3px; padding: 0 6px; cursor: pointer; }
   .sc-seg { display: inline-flex; border: 1px solid var(--edge); border-radius: 5px; overflow: hidden; }
   .sc-seg button { font: 12px var(--sans); color: var(--ink); background: transparent; border: 0; padding: 3px 9px; cursor: pointer; }
   .sc-seg button + button { border-left: 1px solid var(--edge); }
@@ -686,6 +692,7 @@
     <label class="zsym" title="Colour range: z from minus to plus this value">z
       <input type="range" id="z-sym" min="0.5" max="6" step="0.1" value="2" aria-label="Colour range, z"><span id="z-sym-val" class="rm-value">±2.0</span></label>
     <div class="rb-tools">
+      <button class="rb-btn" id="ribbon-png" type="button" aria-label="Save as PNG" title="Save the ribbon as a PNG (choose, remove and reorder rows first)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 19h14"/></svg></button>
       <button class="rb-btn" id="ribbon-upright" type="button" aria-pressed="false" aria-label="Maximise the ribbon upright (whole screen)" title="Whole screen, upright">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M8 7l4-4 4 4M8 17l4 4 4-4"/></svg></button>
       <button class="rb-btn" id="ribbon-orient" type="button" aria-pressed="false" aria-label="Maximise the ribbon">
@@ -716,6 +723,7 @@
 
       <button class="rb-btn sc-zb" type="button" id="sc-zoom-out" aria-label="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
       <button class="rb-btn sc-zb" type="button" id="sc-zoom-in" aria-label="Zoom in"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button>
+      <button class="rb-btn" type="button" id="sc-png" aria-label="Save as PNG" title="Save the table as a PNG"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 19h14"/></svg></button>
       <button class="rb-btn sc-help-btn" type="button" id="sc-help-btn" aria-expanded="false" aria-controls="sc-help" title="What the rows, columns and colours show; sources">?</button>
       <button class="rb-btn" type="button" id="sc-max" aria-pressed="false" aria-label="Maximise" title="Maximise / restore">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path class="max" d="M14 4h6v6M10 20H4v-6M20 4l-6.5 6.5M4 20l6.5-6.5"/><path class="restore" d="M4 14h6v6M20 10h-6V4M14 10l6.5-6.5M10 14l-6.5 6.5"/></svg></button>
@@ -2138,6 +2146,14 @@ searchBox.addEventListener("keydown", e => {
   if (e.key === "ArrowDown") { e.preventDefault(); if (suggestList.hidden) showSuggestions(SUGGEST_LIMIT); moveActive(1); }
   else if (e.key === "ArrowUp") { e.preventDefault(); moveActive(-1); }
   else if (e.key === "Escape") hideSuggestions();
+  else if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && expr.byDonor.size && ribbon.rows?.length) {
+    // Ctrl/Cmd+Enter: the gene's probes are added as rows under the current ones
+    e.preventDefault(); hideSuggestions();
+    const add = probesFor(boxQuery()).filter(id => !ribbon.rows.some(r => r.id === id));
+    const ids = [...ribbon.rows.map(r => r.id), ...add];
+    expr.corr = { query: "list", all: ids, ids, r: expr.corr?.r ?? new Map(), keep: true };
+    searchBox.value = ""; renderRibbon();
+  }
   else if (e.key === "Enter") {
     e.preventDefault();
     if (!expr.byDonor.size) {   // nothing to search in yet
@@ -3181,8 +3197,7 @@ function fitRowHeight() {
 // times faster than one fillRect per cell, which matters while dragging the colour range
 const cellLine = document.createElement("canvas"), cellLineCtx = cellLine.getContext("2d");
 let rgbLut = null;
-function drawCells(ctx, dpr) {
-  const W = ribbonCanvas.width;
+function drawCells(ctx, dpr, W = ribbonCanvas.width) {
   if (!W || !ribbon.rows.length) return;
   if (!rgbLut || rgbLut.stops !== paletteStops) {
     rgbLut = new Uint8Array(256 * 3); rgbLut.stops = paletteStops;
@@ -4400,6 +4415,97 @@ function tourTick() {
 }
 function tourStart() { tourEnd(); tourGo(0); tour.timer = setInterval(tourTick, 300); }
 $e("tour-open").addEventListener("click", tourStart);
+// ---------------------------------------------------------------- figures as PNG
+const PNG_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 19h14"/></svg>';
+function downloadCanvas(cv, name) {
+  cv.toBlob(b => { const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(b), download: name }); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }, "image/png");
+}
+// Cells window: the plot's SVG with its styles written in, at 2x, on the window's background
+function saveScPng() {
+  const svg = document.querySelector("#sc-plot svg"); if (!svg) return;
+  const cs = getComputedStyle(document.documentElement), ink = cs.getPropertyValue("--ink").trim() || "#eee", muted = cs.getPropertyValue("--muted").trim() || "#aaa";
+  const [w, h] = scView.svgSize ?? [svg.viewBox.baseVal.width, svg.viewBox.baseVal.height];
+  const c = svg.cloneNode(true);
+  c.setAttribute("xmlns", "http://www.w3.org/2000/svg"); c.setAttribute("width", w); c.setAttribute("height", h);
+  const st = document.createElementNS("http://www.w3.org/2000/svg", "style");
+  st.textContent = `svg { font: 10.5px ${getComputedStyle(svg).fontFamily}; } text { fill: ${ink}; } .mk, .col { fill: ${muted}; } .sec { font-weight: 600; font-size: 11px; } text.hl, text.hl tspan { fill: #ffe600; font-weight: 700; }`;
+  const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+  Object.entries({ x: 0, y: 0, width: w, height: h, fill: "#3a3f46" }).forEach(([k, v]) => bg.setAttribute(k, v));
+  c.prepend(st, bg);
+  c.querySelectorAll("text").forEach(t => { const f = t.style.fill; if (f) t.setAttribute("fill", f); });
+  c.querySelectorAll("[stroke^='var(']").forEach(el => el.setAttribute("stroke", muted));   // leader lines
+  const img = new Image(), url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(c)], { type: "image/svg+xml" }));
+  img.onload = () => {
+    const k = 2, cv = Object.assign(document.createElement("canvas"), { width: Math.ceil(w * k), height: Math.ceil(h * k) });
+    const ctx = cv.getContext("2d"); ctx.scale(k, k); ctx.drawImage(img, 0, 0, w, h); URL.revokeObjectURL(url);
+    downloadCanvas(cv, `${scView.g?.name ?? "cells"}_single_nucleus.png`);
+  };
+  img.src = url;
+}
+// Ribbon: every row (not only those in view) with its name, under the structure labels
+function saveRibbonPng() {
+  const rows = ribbon.rows; if (!rows?.length) return;
+  const dpr = Math.min(2, 32000 / Math.max(1, ribbon.width)), RH = ROW_H + ROW_GAP, total = rows.length * RH - ROW_GAP;
+  const labelW = 170, headH = 34, W = labelW + ribbon.width + 10, H = headH + total + 10;
+  const cv = Object.assign(document.createElement("canvas"), { width: Math.ceil(W * dpr), height: Math.ceil(H * dpr) });
+  const ctx = cv.getContext("2d");
+  ctx.scale(dpr, dpr); ctx.fillStyle = "#3a3f46"; ctx.fillRect(0, 0, W, H);
+  // cells: drawn by the ribbon's own routine on a canvas holding all rows
+  const cells = Object.assign(document.createElement("canvas"), { width: Math.ceil(ribbon.width * dpr), height: Math.ceil(total * dpr) });
+  const save = [ribbon.y0, ribbon.viewH]; ribbon.y0 = 0; ribbon.viewH = total;
+  try { drawCells(cells.getContext("2d"), dpr, cells.width); } finally { [ribbon.y0, ribbon.viewH] = save; }
+  ctx.drawImage(cells, labelW, headH, ribbon.width, total);
+  // structure labels: divisions on the first line, structures on the second
+  ctx.textBaseline = "middle"; ctx.font = "600 11px sans-serif";
+  for (const sp of ribbon.spans) {
+    const x0 = labelW + ribbon.xs[sp.from], x1 = labelW + ribbon.xs[sp.to], y = sp.cls === "dlabel" ? 9 : 25;
+    ctx.fillStyle = sp.color ?? "#999"; ctx.fillRect(x0, y + 7, Math.max(0, x1 - x0 - 1), sp.cls === "dlabel" ? 2 : 1);
+    ctx.save(); ctx.beginPath(); ctx.rect(x0, 0, Math.max(0, x1 - x0), headH); ctx.clip();
+    ctx.fillStyle = "#e8e8e8"; ctx.font = sp.cls === "dlabel" ? "600 11px sans-serif" : "10px sans-serif"; ctx.fillText(sp.text, x0 + 1, y); ctx.restore();
+  }
+  ctx.font = "11px sans-serif"; ctx.fillStyle = "#e8e8e8";
+  rows.forEach((r, i) => { const y = headH + i * RH + ROW_H / 2; ctx.save(); ctx.beginPath(); ctx.rect(0, y - RH / 2, labelW - 6, RH); ctx.clip(); ctx.fillText(symbolOf(r.id) && !r.name.startsWith(symbolOf(r.id)) ? `${symbolOf(r.id)} · ${r.name}` : r.name, 4, y); ctx.restore(); });
+  downloadCanvas(cv, `${expr.gene || "allen"}_ribbon.png`);
+}
+// Ribbon export: first a list of the rows to remove or reorder (drag, or the arrows), then the PNG
+const ribEd = Object.assign(document.createElement("dialog"), { id: "ribbon-edit" });
+ribEd.innerHTML = `<form method="dialog" class="sc-form"><div class="sc-head"><h2>Rows of the figure</h2><button value="close" class="corr-btn">cancel</button></div>
+  <p class="sub">Drag rows (or use the arrows) to reorder them; × removes a row. The ribbon shows the result; Save PNG downloads it.</p>
+  <ol id="ribbon-edit-list"></ol><div class="sc-head"><button type="button" class="corr-btn" id="ribbon-edit-apply">Apply</button><button type="button" class="corr-btn" id="ribbon-edit-png">Save PNG</button></div></form>`;
+document.body.append(ribEd);
+function ribEdFill() {
+  const ol = $e("ribbon-edit-list");
+  ol.replaceChildren(...ribbon.rows.map(r => {
+    const li = Object.assign(document.createElement("li"), { draggable: true }); li.dataset.id = r.id;
+    li.append(Object.assign(document.createElement("span"), { textContent: r.name }));
+    for (const [t, a] of [["↑", "up"], ["↓", "down"], ["×", "del"]]) li.append(Object.assign(document.createElement("button"), { type: "button", textContent: t, className: "re-" + a }));
+    return li;
+  }));
+}
+$e("ribbon-edit-list").addEventListener("click", e => {
+  const li = e.target.closest("li"), b = e.target.closest("button"); if (!li || !b) return;
+  if (b.classList.contains("re-up") && li.previousElementSibling) li.parentNode.insertBefore(li, li.previousElementSibling);
+  if (b.classList.contains("re-down") && li.nextElementSibling) li.parentNode.insertBefore(li.nextElementSibling, li);
+  if (b.classList.contains("re-del")) li.remove();
+});
+let ribDrag = null;
+$e("ribbon-edit-list").addEventListener("dragstart", e => { ribDrag = e.target.closest("li"); });
+$e("ribbon-edit-list").addEventListener("dragover", e => {
+  e.preventDefault(); const li = e.target.closest("li"); if (!li || !ribDrag || li === ribDrag) return;
+  const r = li.getBoundingClientRect(); li.parentNode.insertBefore(ribDrag, e.clientY > r.top + r.height / 2 ? li.nextSibling : li);
+});
+function ribEdApply() {
+  const ids = [...$e("ribbon-edit-list").children].map(li => li.dataset.id);
+  if (!ids.length) return;
+  expr.corr = { query: "list", all: ids, ids, r: expr.corr?.r ?? new Map(), keep: true };
+  if (!ids.some(id => expr.chosen?.has(id))) expr.chosen = new Set(ids.slice(0, 1));
+  searchBox.value = ""; renderRibbon();
+}
+$e("ribbon-edit-apply").addEventListener("click", ribEdApply);
+$e("ribbon-edit-png").addEventListener("click", () => { ribEdApply(); ribEd.close(); requestAnimationFrame(() => setTimeout(saveRibbonPng, 50)); });
+$e("ribbon-png").addEventListener("click", () => { if (!ribbon.rows?.length) return; ribEdFill(); ribEd.showModal(); });
+$e("sc-png").addEventListener("click", saveScPng);
+
 
 
 // ---------------------------------------------------------------- differential expression
