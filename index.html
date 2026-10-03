@@ -3852,7 +3852,10 @@ async function renderCellTypes() {
     : scView.diffRes?.list.length ? { ...scView.diffRes, note: scView.diffRes.note + (scView.diffRes.nucN != null ? ` After Sub: the ${scView.diffRes.nucN} genes with a nuclear (nucl*) Protein Atlas location first, by share of foreground nuclei expressing them, then (dashed line) the rest by score.` : "") } : null;
   $e("sc-diff-run").hidden = !marking;
   $e("sc-diff-run").disabled = !(nFg && nBg);
-  $e("sc-diff-sub").hidden = !(diff?.list.length);
+  // Sub: always shown; active once a differential search has results
+  $e("sc-diff-sub").hidden = false;
+  $e("sc-diff-sub").disabled = !(diff?.list.length);
+  $e("sc-diff-sub").title = diff?.list.length ? "Subcellular location images (Human Protein Atlas) of the differential genes" : "Run a differential search first (differential, mark rows, Calculate)";
   // Extra columns on the right: co-expressed genes, then differential genes, each on its own range
   const extra = [
     ...(co ? co.list.map(({ i, r: rr }) => ({ name: coData.genes[i], label: `${coData.genes[i]} ${rr.toFixed(2)}`, why: `r = ${rr.toFixed(2)} with ${scView.coAnchor}`, only: coIn })) : []),
