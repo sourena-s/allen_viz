@@ -373,6 +373,20 @@
   .sc-detail-row { flex-wrap: wrap; min-width: 0; row-gap: 4px; }
   .sc-head { min-width: 0; }
   #sc-gene { width: 9ch; height: 22px; box-sizing: border-box; padding: 0 5px; font: 12px var(--sans); color: var(--ink); background: rgba(255,255,255,0.1); border: 1px solid var(--edge); border-radius: 4px; }
+  #tour { position: fixed; inset: 0; z-index: 100; pointer-events: none; }
+  #tour .tour-ring { position: fixed; border: 3px solid #ffd600; border-radius: 6px; box-shadow: 0 0 0 4px rgba(255,214,0,0.25); animation: tour-pulse 1.2s infinite; }
+  #tour .tour-arrow { position: fixed; width: 28px; height: 44px; fill: #ffd600; filter: drop-shadow(0 1px 2px #000); animation: tour-bob 0.9s infinite alternate; }
+  #tour [hidden] { display: none; }
+  #tour .tour-card { position: fixed; pointer-events: auto; box-sizing: border-box; padding: 12px 14px; border-radius: 8px; background: #22262b; color: var(--ink); border: 1px solid #ffd600; box-shadow: 0 6px 24px rgba(0,0,0,0.5); font: 13px/1.4 var(--sans); }
+  #tour h3 { margin: 2px 0 6px; font-size: 15px; }
+  #tour p { margin: 0 0 6px; }
+  #tour .tour-step { font-size: 11px; color: #ffd600; }
+  #tour .tour-goal { color: var(--muted); font-size: 12px; }
+  #tour .tour-btns { display: flex; gap: 8px; margin-top: 6px; }
+  #tour .tour-btns button { font: 12px var(--sans); padding: 4px 10px; border-radius: 4px; border: 1px solid var(--edge); background: rgba(255,255,255,0.1); color: var(--ink); cursor: pointer; }
+  #tour .tour-btns button[data-a="end"] { margin-left: auto; }
+  @keyframes tour-pulse { 50% { box-shadow: 0 0 0 9px rgba(255,214,0,0.08); } }
+  @keyframes tour-bob { to { translate: 0 6px; } }
   .sc-seg { display: inline-flex; border: 1px solid var(--edge); border-radius: 5px; overflow: hidden; }
   .sc-seg button { font: 12px var(--sans); color: var(--ink); background: transparent; border: 0; padding: 3px 9px; cursor: pointer; }
   .sc-seg button + button { border-left: 1px solid var(--edge); }
@@ -536,6 +550,7 @@
   <div>
     <h1>Allen Human Brain Atlas samples</h1>
     <p class="sub" id="summary">Loading…</p>
+    <button class="text-button" id="tour-open" type="button" title="A guided example analysis (FNDC1): Allen, single cells, co-expression, subcellular location, differential">Tutorial</button>
   </div>
 
   <div class="group">
@@ -4245,6 +4260,102 @@ $e("sc-diff-run").addEventListener("click", () => {
 // Each opening of the cells window starts fresh: brief view, no co-expression
 $e("cells-btn").addEventListener("click", () => { scView.multi = null; scView.sym = undefined; scView.probe = undefined; scView.coAnchor = null; $e("sc-detail").checked = false; $e("sc-hpa").checked = false; $e("sc-coexp").checked = false; $e("sc-diff").checked = false; scView.marks = new Map(); scView.diffRes = null; showCellTypes(); });
 $e("sc-dialog").addEventListener("click", e => { if (e.target === $e("sc-dialog")) $e("sc-dialog").close(); });
+// ---------------------------------------------------------------- tutorial
+// A guided walk-through: an arrow points at the control to use, a card says what to do and why;
+// each step moves on by itself once it is done (or with Next for steps that only explain)
+const tour = { i: -1, el: null };
+function tourTarget(sel) { return typeof sel === "function" ? sel() : sel ? document.querySelector(sel) : null; }
+function scRowText(re) { return [...document.querySelectorAll("#sc-plot text")].find(t => re.test(t.textContent) && !t.classList.contains("col")); }
+const TOUR = [
+  { title: "Welcome", text: "This tour runs one example analysis through the site, using FNDC1, a marker gene of hippocampal CA1 pyramidal neurons. Each step points at what to click or type; the step moves on by itself once you have done it.", goal: "See how a gene is expressed across the brain (Allen microarrays), in single cell types (Siletti single-nucleus RNA-seq), what it is co-expressed with, where its protein sits in the cell, and which genes separate CA1 from the dentate gyrus.", next: true },
+  { title: "1 · Load the Allen data", target: () => (expr.byDonor.size ? null : $e("dl-open")), before: () => setPanelOpen(true),
+    text: "Press Download donor data… and load at least one donor (or Choose files… if you already have a donor's MicroarrayExpression.csv and Probes.csv). The files are read in your browser only.",
+    goal: "The Allen Human Brain Atlas measured ~20,000 genes in ~3,700 tissue samples from 6 donors; every dot in the 3D brain is one sample.", done: () => expr.byDonor.size > 0 },
+  { title: "2 · Look up FNDC1", target: "#gene-input", before: () => setPanelOpen(false),
+    text: "Type FNDC1 in the gene box and press Enter.", goal: "The brain dots and the ribbon below are coloured by FNDC1's z-score: red where it is higher than the donor's average, blue where lower.",
+    done: () => [...(expr.chosen ?? [])].some(id => symbolOf(id) === "FNDC1") },
+  { title: "3 · The ribbon", target: "#ribbon", next: true,
+    text: "Each column is a tissue sample, grouped by structure (cortex, hippocampus, …); each row a microarray probe. Look at the Hippocampus block: FNDC1 is red in CA1 and much weaker in the dentate gyrus (DG).",
+    goal: "Allen gives anatomy at the level of dissected structures, not cell types." },
+  { title: "4 · Single cells", target: "#cells-btn",
+    text: "Press cells to open the single-nucleus view of FNDC1.", goal: "Siletti et al. (2023) sequenced ~690,000 nuclei from the hippocampus, parahippocampal gyrus and amygdala: which cell types express FNDC1?",
+    done: () => $e("sc-dialog").open && !!document.querySelector("#sc-plot svg") },
+  { title: "5 · Brief view", target: () => scRowText(/^CA1 \(FIBCD1/), next: true,
+    text: "Rows are cell types per region. The square's colour and size give FNDC1's mean expression; the bar the nuclei (grey) and those expressing it (green). The CA1 row is the strongest; the second column is the Allen z-score of the same structures.",
+    goal: "Confirm that the CA1 signal in the Allen tissue comes from CA1 pyramidal neurons." },
+  { title: "6 · Siletti clusters", target: '.sc-seg button[data-v="siletti"]',
+    text: "Switch the rows to Siletti, the atlas's own clusters.", goal: "Finer cell types: which CA1 sub-clusters carry FNDC1, with their marker genes.",
+    done: () => $e("sc-detail").checked && !$e("sc-hpa").checked && /Subfield by markers/.test($e("sc-plot").textContent) },
+  { title: "7 · Co-expression", target: () => $e("sc-coexp").closest(".sc-tg"),
+    text: "Tick co-expressed. The 100 genes whose expression across these clusters best follows FNDC1's appear as columns on the right (scroll right); r after each name.",
+    goal: "Genes co-expressed across cell types often share a cell type or a function: a first list of FNDC1's partners.", done: () => !!scView.coShown },
+  { title: "8 · Subcellular location", target: "#sc-diff-sub",
+    text: "Press Sub. The Human Protein Atlas is asked where each co-expressed gene's protein sits in the cell; those found in the nucleus get their immunofluorescence image.",
+    goal: "Narrow the list to nuclear proteins (e.g. transcription regulators) and see the staining.", done: () => $e("sub-dialog").open },
+  { title: "9 · Images", target: () => ($e("sub-dialog").open ? $e("sub-dialog").querySelector("button[value=close]") : null),
+    text: "Each tile: the image (click it for the gene's Protein Atlas page), its locations and its correlation with FNDC1. When you have looked, close this window.",
+    goal: "Back in the table, the nuclear genes now come first, before the dashed line.", done: () => !$e("sub-dialog").open },
+  { title: "10 · Differential: CA1 vs dentate gyrus", target: '.sc-seg button[data-v="brief"]',
+    text: "Switch the rows back to Brief.", goal: "Next: which genes are most raised in CA1 neurons compared with dentate gyrus granule cells?",
+    done: () => !$e("sc-detail").checked && /Hippocampal neurons, subfield by markers/.test($e("sc-plot").textContent) },
+  { title: "11 · Differential mode", target: () => $e("sc-diff").closest(".sc-tg"),
+    text: "Turn on differential.", goal: "In this mode a click on a row marks it: once yellow (foreground), twice blue (background).", done: () => $e("sc-diff").checked },
+  { title: "12 · Foreground: CA1", target: () => scRowText(/^CA1 \(FIBCD1/),
+    text: "Click the CA1 row once: it turns yellow.", goal: "The cell type whose genes we want.", done: () => [...scView.marks].some(([k, m]) => /\|CA1 \(FIBCD1/.test(k) && m === "fg") || [...scView.marks.values()].includes("fg") },
+  { title: "13 · Background: dentate gyrus", target: () => scRowText(/^Dentate gyrus granule/),
+    text: "Click the Dentate gyrus granule row twice: it turns blue.", goal: "The cell type to compare against.", done: () => [...scView.marks.values()].includes("bg") },
+  { title: "14 · Calculate", target: "#sc-diff-run",
+    text: "Press Calculate.", goal: "Each gene's expression is standardised across all rows; the score is the yellow rows' mean minus the blue rows' (in SDs, as the Allen differential). The top 100 appear on the right, with a bar under each name: the share of CA1 nuclei expressing it.",
+    done: () => !!scView.diffRes?.list.length },
+  { title: "15 · Results", target: "#sc-diff-sub", next: true,
+    text: "Scroll right to the differential columns. Click a gene's name for GeneCards and the Protein Atlas, a square for its values; Sub again gives their subcellular images, nuclear genes first.",
+    goal: "A ranked list of CA1-versus-dentate genes, with how widely each is expressed in CA1 and where its protein goes." },
+  { title: "Done", text: "That is the whole loop: Allen anatomy → single-nucleus cell types → co-expression → protein location → differential. Try your own genes, the Protein Atlas rows (its own brain clusters), or wildcards in the gene box (rad*).", next: true, last: true },
+];
+function tourShow() {
+  const s = TOUR[tour.i];
+  if (!tour.el) {
+    tour.el = Object.assign(document.createElement("div"), { id: "tour" });
+    tour.el.innerHTML = `<div class="tour-ring"></div><svg class="tour-arrow" viewBox="0 0 40 60"><path d="M20 58 L4 34 H14 V2 H26 V34 H36 Z"/></svg>
+      <div class="tour-card"><div class="tour-step"></div><h3></h3><p class="tour-text"></p><p class="tour-goal"></p>
+      <div class="tour-btns"><button type="button" data-a="back">Back</button><button type="button" data-a="next">Next</button><button type="button" data-a="end">End tour</button></div></div>`;
+    tour.el.addEventListener("click", e => { const a = e.target.dataset?.a; if (a === "end") tourEnd(); if (a === "next") tourGo(tour.i + 1); if (a === "back") tourGo(tour.i - 1); });
+  }
+  const q = sel => tour.el.querySelector(sel);
+  q(".tour-step").textContent = `Tutorial · ${tour.i + 1} / ${TOUR.length}`;
+  q("h3").textContent = s.title; q(".tour-text").textContent = s.text; q(".tour-goal").textContent = s.goal ? `Goal: ${s.goal}` : "";
+  q('[data-a="next"]').textContent = s.last ? "Finish" : s.next ? "Next" : "Skip step";
+  q('[data-a="back"]').disabled = tour.i === 0;
+}
+function tourGo(i) {
+  if (i >= TOUR.length) return tourEnd();
+  tour.i = Math.max(0, i); TOUR[tour.i].before?.(); tourShow(); tourTick();
+}
+function tourEnd() { clearInterval(tour.timer); tour.timer = null; tour.el?.remove(); tour.i = -1; }
+function tourTick() {
+  const s = TOUR[tour.i]; if (!s) return;
+  if (s.done?.()) { tourGo(tour.i + 1); return; }
+  // Shown inside the topmost open window (a modal window covers everything outside it)
+  const host = [...document.querySelectorAll("dialog[open]")].pop() ?? document.body;
+  if (tour.el.parentElement !== host) host.append(tour.el);
+  const t = tourTarget(s.target), ring = tour.el.querySelector(".tour-ring"), arrow = tour.el.querySelector(".tour-arrow"), card = tour.el.querySelector(".tour-card");
+  const r = t?.getBoundingClientRect();
+  const visible = r && r.width + r.height > 0;
+  ring.hidden = arrow.hidden = !visible;
+  const cw = Math.min(340, innerWidth - 24);
+  card.style.width = `${cw}px`;
+  if (visible) {
+    if (r.bottom < 0 || r.top > innerHeight) t.scrollIntoView({ block: "center", behavior: "smooth" });
+    Object.assign(ring.style, { left: `${r.left - 4}px`, top: `${r.top - 4}px`, width: `${r.width + 8}px`, height: `${r.height + 8}px` });
+    const below = r.top < innerHeight / 2, ax = Math.min(innerWidth - 30, Math.max(10, r.left + r.width / 2 - 14));
+    Object.assign(arrow.style, { left: `${ax}px`, top: below ? `${r.bottom + 6}px` : `${r.top - 50}px`, transform: below ? "rotate(180deg)" : "" });
+    const ch = card.offsetHeight, cy = below ? Math.min(innerHeight - ch - 8, r.bottom + 56) : Math.max(8, r.top - 56 - ch);
+    Object.assign(card.style, { left: `${Math.min(innerWidth - cw - 12, Math.max(12, r.left + r.width / 2 - cw / 2))}px`, top: `${cy}px` });
+  } else Object.assign(card.style, { left: `${(innerWidth - cw) / 2}px`, top: `${Math.max(8, innerHeight / 2 - card.offsetHeight / 2)}px` });
+}
+function tourStart() { tourEnd(); tourGo(0); tour.timer = setInterval(tourTick, 300); }
+$e("tour-open").addEventListener("click", tourStart);
+
 
 // ---------------------------------------------------------------- differential expression
 // Target vs background structure: for every probe, the mean z-score (z within each donor) of
