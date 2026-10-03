@@ -441,6 +441,13 @@
   #sc-dialog .sc-form { position: relative; }
   .sc-help { position: absolute; z-index: 5; right: 12px; top: 48px; width: min(560px, calc(100% - 24px)); max-height: 70%; overflow: auto; box-sizing: border-box; padding: 10px 14px; border-radius: 6px; background: #22262b; border: 1px solid var(--edge); box-shadow: 0 6px 24px rgba(0,0,0,0.5); }
   .sc-help[hidden] { display: none; }
+  .sc-tg { position: relative; }
+  .sc-zpop { position: absolute; z-index: 6; left: 0; top: calc(100% + 6px); padding: 8px 10px; border-radius: 6px; background: #22262b; border: 1px solid var(--edge); box-shadow: 0 6px 20px rgba(0,0,0,0.5); white-space: nowrap; }
+  .sc-zpop[hidden] { display: none; }
+  .sc-zbtn[aria-expanded="true"] { background: rgba(255,255,255,0.22); }
+  #sc-diff-sub { font: 12px var(--sans); padding: 3px 9px; border-radius: 5px; height: auto; background: transparent; border: 1px solid var(--edge); color: var(--ink); }
+  #sc-diff-sub:not(:disabled):hover { background: rgba(255,255,255,0.12); }
+  body.phone #sc-diff-sub { font-size: 13px; padding: 6px 10px; }
   .sc-zrow { display: flex; align-items: center; gap: 14px; min-width: 0; }
   .sc-status { flex: 1; min-width: 0; font-size: 11.5px; color: #ffd600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sc-help-btn { font: 600 14px var(--sans); color: var(--ink); }
@@ -764,7 +771,8 @@
   <div id="sc-tip" hidden></div>
   <form method="dialog" class="sc-form">
     <div class="sc-head"><h2 id="sc-title" hidden></h2>
-      <div class="row sc-toggle sc-detail-row"><span class="sc-tg"><input type="text" id="sc-gene" class="gene-box" placeholder="Gene" aria-label="Gene shown in the cells window" autocomplete="off" spellcheck="false" title="Show another gene (Enter), or add it as more columns (Ctrl+Enter): a name, or with * for several (rad* starts with, *rad ends with, *rad* contains); co-expression and differential results stay"></span><span class="sc-seg" role="radiogroup" aria-label="Rows"><button type="button" data-v="brief" role="radio" title="Hippocampal subfields by markers, cell classes per region, dissections">Brief</button><button type="button" data-v="siletti" role="radio" title="Siletti clusters">Siletti</button><button type="button" data-v="hpa" role="radio" title="Protein Atlas brain clusters (its neuronal and non-neuronal clusters), each nucleus assigned by marker-gene correlation">Protein Atlas</button></span><span hidden><input type="checkbox" id="sc-detail" autocomplete="off"></span><span hidden><input type="checkbox" id="sc-hpa" autocomplete="off"></span><span class="sc-tg"><input type="checkbox" id="sc-coexp" autocomplete="off"><label for="sc-coexp" title="The 100 genes whose mean expression across the hippocampal formation, dentate, parahippocampal and amygdala cell groups (clusters in the detailed view, dissection x supercluster in the brief) correlates best with this gene (r after the name)">co-expressed</label></span><span class="sc-tg"><input type="checkbox" id="sc-diff" autocomplete="off"><label for="sc-diff" title="Click rows: once yellow (foreground), again blue (background), again clear. Then Calculate: the 100 genes most raised in the foreground relative to the background appear as columns on the right">differential</label></span><span class="sc-tg"><button type="button" class="corr-btn" id="sc-diff-run" hidden title="Rank the genes for the yellow (foreground) vs blue (background) rows">Calculate</button><button type="button" class="corr-btn" id="sc-diff-sub" hidden title="Subcellular location images (Human Protein Atlas) of the differential genes">sub</button></span></div>
+      <div class="row sc-toggle sc-detail-row"><span class="sc-tg"><input type="text" id="sc-gene" class="gene-box" placeholder="Gene" aria-label="Gene shown in the cells window" autocomplete="off" spellcheck="false" title="Show another gene (Enter), or add it as more columns (Ctrl+Enter): a name, or with * for several (rad* starts with, *rad ends with, *rad* contains); co-expression and differential results stay"><button type="button" class="rb-btn sc-zbtn" id="sc-zbtn" aria-expanded="false" title="Colour range of the Allen z-scores" aria-label="Allen colour range"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16M4 16h16"/><circle cx="9" cy="8" r="2.2"/><circle cx="15" cy="16" r="2.2"/></svg></button><span class="sc-zpop" id="sc-zpop" hidden><label class="zsym sc-zr" title="Colour range of the Allen z-scores: from minus to plus this value">Allen z
+      <input type="range" id="sc-zr" min="0.5" max="6" step="0.1" value="2" aria-label="Allen colour range, z"><span id="sc-zr-val" class="rm-value">±2.0</span></label></span></span><span class="sc-seg" role="radiogroup" aria-label="Rows"><button type="button" data-v="brief" role="radio" title="Hippocampal subfields by markers, cell classes per region, dissections">Brief</button><button type="button" data-v="siletti" role="radio" title="Siletti clusters">Siletti</button><button type="button" data-v="hpa" role="radio" title="Protein Atlas brain clusters (its neuronal and non-neuronal clusters), each nucleus assigned by marker-gene correlation">Protein Atlas</button></span><span hidden><input type="checkbox" id="sc-detail" autocomplete="off"></span><span hidden><input type="checkbox" id="sc-hpa" autocomplete="off"></span><span class="sc-tg"><input type="checkbox" id="sc-coexp" autocomplete="off"><label for="sc-coexp" title="The 200 genes whose mean expression across the hippocampal formation, dentate, parahippocampal and amygdala cell groups (clusters in the detailed view, dissection x supercluster in the brief) correlates best with this gene (r after the name)">co-expressed</label></span><span class="sc-tg"><input type="checkbox" id="sc-diff" autocomplete="off"><label for="sc-diff" id="sc-diff-lbl" title="Click rows: once yellow (foreground), again blue (background), again clear. Then calculate: the 200 genes most raised in the foreground relative to the background appear as columns on the right">differential</label></span><span class="sc-tg"><button type="button" class="corr-btn" id="sc-diff-run" hidden title="Rank the genes for the yellow (foreground) vs blue (background) rows">Calculate</button><button type="button" class="corr-btn" id="sc-diff-sub" hidden title="Subcellular location images (Human Protein Atlas) of the differential genes">subcellular</button></span></div>
 
       <button class="rb-btn sc-zb" type="button" id="sc-zoom-out" aria-label="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
       <button class="rb-btn sc-zb" type="button" id="sc-zoom-in" aria-label="Zoom in"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button>
@@ -775,8 +783,7 @@
       <button class="rb-btn" value="close" aria-label="Close" title="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
 
     <div class="sc-zrow">
-    <label class="zsym sc-zr" title="Colour range of the Allen z-scores: from minus to plus this value">Allen z
-      <input type="range" id="sc-zr" min="0.5" max="6" step="0.1" value="2" aria-label="Allen colour range, z"><span id="sc-zr-val" class="rm-value">±2.0</span></label><span id="sc-status" class="sc-status"></span></div>
+<span id="sc-status" class="sc-status"></span></div>
     <div id="sc-plot"></div>
     <div class="sc-legend" id="sc-legend"></div>
     <div id="sc-help" class="sc-help" hidden>
@@ -3733,7 +3740,7 @@ function markerField(c) {
 // view) or the dissection x supercluster groups (brief view). Means: linear (counts per 10k, no
 // log), stored per gene as bytes of its maximum; r does not depend on that scale. Unnamed (Ensembl-only) genes and genes in
 // fewer than 10% of the nuclei of every unit are skipped.
-const CO_TOP = 100;
+const CO_TOP = 200;
 function coUnits(data, detailed) {
   const BNST = data.labels.indexOf("Bed nucleus (BNST)");
   if (detailed) return data.clusters.map((c, k) => {
@@ -3776,7 +3783,7 @@ function coExpressed(data, gi, detailed, top = CO_TOP) {
 // shown (z = (value - mean) / SD, rows weighted equally); score = mean z of the foreground rows
 // minus that of the background rows. Named genes detected (any count) in at least 10% of the
 // nuclei of some foreground row; the top 100 by score.
-const DIFF_SC_TOP = 100;
+const DIFF_SC_TOP = 200;
 function scDifferential(rows, detailed, region, clusters) {
   const fg = [], bg = [], all = [];
   for (const r of rows) if (r.n && r.key) { all.push(r); const m = scView.marks.get(r.key); if (m === "fg") fg.push(all.length - 1); else if (m === "bg") bg.push(all.length - 1); }
@@ -3960,7 +3967,8 @@ async function renderCellTypes() {
   const marking = $e("sc-diff").checked;
   const diff = marking ? { list: [], note: `click rows to mark the foreground (yellow, ${nFg} so far) and, clicking again, the background (blue, ${nBg}); a third click clears. Then press Calculate (no blue rows: all other rows are the background).` }
     : scView.diffRes?.list.length ? { ...scView.diffRes, note: scView.diffRes.note + (scView.diffRes.nucN != null ? ` After Sub: the ${scView.diffRes.nucN} genes with a nuclear (nucl*) Protein Atlas location first, by share of foreground nuclei expressing them, then (dashed line) the rest by score.` : "") } : null;
-  $e("sc-diff-run").hidden = !marking;
+  $e("sc-diff-run").hidden = true;   // the differential button itself reads calculate while marking
+  $e("sc-diff-lbl").textContent = marking ? "calculate" : "differential";
   $e("sc-diff-run").disabled = !nFg;
   // Sub: always shown; active once a differential search has results
   $e("sc-coexp").disabled = scView.noGene && !scView.coAnchor;   // co-expression needs a gene
@@ -4357,6 +4365,13 @@ $e("sc-gene").addEventListener("keydown", async e => {
   scView.zrKey = null;
   await showCellTypes();
 });
+// While marking, the (yellow) differential button reads calculate: with a yellow row it ranks the
+// genes; without any it cancels the search
+$e("sc-diff-lbl").addEventListener("click", e => {
+  if (!$e("sc-diff").checked) return;
+  if (![...(scView.marks?.values() ?? [])].includes("fg")) return;   // nothing marked: the click turns it off
+  e.preventDefault(); $e("sc-diff-run").click();
+});
 $e("sc-diff").addEventListener("change", () => { scView.marks = new Map(); scView.diffRes = null; showCellTypes(); });   // on: a new search; off: cancelled
 // Cells "sub": the first press looks everything up (the button counts) and reorders the columns,
 // nucl* genes first; then the button reads "view sub" and opens the images
@@ -4370,7 +4385,7 @@ function scSubRun(items, onNuc) {
 }
 function scSubLabel() {
   const b = $e("sc-diff-sub"), st = scView.sub?.key === scView.subKey ? scView.sub : null;
-  b.textContent = st?.state === "ready" ? "view sub" : st?.state === "loading" ? `sub ${Math.min(99, Math.round(st.done / Math.max(1, st.total) * 100))}%` : "sub";
+  b.textContent = st?.state === "ready" ? "view subcellular" : st?.state === "loading" ? `subcellular ${Math.min(99, Math.round(st.done / Math.max(1, st.total) * 100))}%` : "subcellular";
 }
 $e("sc-diff-sub").addEventListener("click", () => {
   // No differential result: the co-expressed genes (nucl* ones then marked in the same way)
@@ -4398,6 +4413,12 @@ $e("sc-diff-run").addEventListener("click", () => {
 // Each opening of the cells window starts fresh: brief view, no co-expression
 $e("cells-btn").addEventListener("click", () => { scView.selKey = null; scView.multi = null; scView.added = []; scView.sym = undefined; scView.probe = undefined; scView.coAnchor = null; $e("sc-detail").checked = false; $e("sc-hpa").checked = false; $e("sc-coexp").checked = false; $e("sc-diff").checked = false; scView.marks = new Map(); scView.diffRes = null; showCellTypes(); });
 // A click outside the window does not close it (close button or Escape); the ? button shows the descriptions
+// Allen z: the slider shows from its icon and goes away shortly after use (or a click elsewhere)
+{ const pop = $e("sc-zpop"), btn = $e("sc-zbtn"); let t;
+  const show = v => { pop.hidden = !v; btn.setAttribute("aria-expanded", v); clearTimeout(t); };
+  btn.addEventListener("click", () => show(pop.hidden));
+  $e("sc-zr").addEventListener("input", () => { clearTimeout(t); t = setTimeout(() => show(false), 1500); });
+  document.addEventListener("pointerdown", e => { if (!pop.hidden && !pop.contains(e.target) && e.target !== btn && !btn.contains(e.target)) show(false); }); }
 $e("sc-help-btn").addEventListener("click", () => { const h = $e("sc-help"); h.hidden = !h.hidden; $e("sc-help-btn").setAttribute("aria-expanded", !h.hidden); });
 $e("sc-plot").addEventListener("pointerdown", () => { $e("sc-help").hidden = true; $e("sc-help-btn").setAttribute("aria-expanded", false); });
 // ---------------------------------------------------------------- tutorial
@@ -4426,11 +4447,11 @@ const TOUR = [
   { title: "6 · Siletti clusters", target: '.sc-seg button[data-v="siletti"]',
     text: "Switch the rows to Siletti, the atlas's own clusters.", goal: "Finer cell types: which CA1 sub-clusters carry FNDC1, with their marker genes.",
     done: () => $e("sc-detail").checked && !$e("sc-hpa").checked && /Subfield by markers/.test($e("sc-plot").textContent) },
-  { title: "7 · Co-expression", target: () => $e("sc-coexp").closest(".sc-tg"),
-    text: "Tick co-expressed. The 100 genes whose expression across these clusters best follows FNDC1's appear as columns on the right (scroll right); r after each name.",
+  { title: "7 · Co-expression", target: 'label[for="sc-coexp"]',
+    text: "Press co-expressed. The 200 genes whose expression across these clusters best follows FNDC1's appear as columns on the right (scroll right); r after each name.",
     goal: "Genes co-expressed across cell types often share a cell type or a function: a first list of FNDC1's partners.", done: () => !!scView.coShown },
   { title: "8 · Subcellular location", target: "#sc-diff-sub",
-    text: "Press sub. The Human Protein Atlas is asked where each co-expressed gene's protein sits in the cell (the button counts up); the columns are then reordered, nuclear genes first. Then press view sub.",
+    text: "Press subcellular. The Human Protein Atlas is asked where each co-expressed gene's protein sits in the cell (the button counts up); the columns are then reordered, nuclear genes first. Then press view subcellular.",
     goal: "Narrow the list to nuclear proteins (e.g. transcription regulators) and see the staining (images of the nuclear ones).", done: () => $e("sub-dialog").open },
   { title: "9 · Images", target: () => ($e("sub-dialog").open ? $e("sub-dialog").querySelector("button[value=close]") : null),
     text: "Each tile: the image (click it for the gene's Protein Atlas page), its locations and its correlation with FNDC1. When you have looked, close this window.",
@@ -4438,17 +4459,17 @@ const TOUR = [
   { title: "10 · Differential: CA1 vs dentate gyrus", target: '.sc-seg button[data-v="brief"]',
     text: "Switch the rows back to Brief.", goal: "Next: which genes are most raised in CA1 neurons compared with dentate gyrus granule cells?",
     done: () => !$e("sc-detail").checked && /Hippocampal neurons, subfield by markers/.test($e("sc-plot").textContent) },
-  { title: "11 · Differential mode", target: () => $e("sc-diff").closest(".sc-tg"),
-    text: "Turn on differential.", goal: "In this mode a click on a row marks it: once yellow (foreground), twice blue (background).", done: () => $e("sc-diff").checked },
+  { title: "11 · Differential mode", target: "#sc-diff-lbl",
+    text: "Press differential.", goal: "In this mode a click on a row marks it: once yellow (foreground), twice blue (background).", done: () => $e("sc-diff").checked },
   { title: "12 · Foreground: CA1", target: () => scRowText(/^CA1 \(FIBCD1/),
     text: "Click the CA1 row once: it turns yellow.", goal: "The cell type whose genes we want.", done: () => [...scView.marks].some(([k, m]) => /\|CA1 \(FIBCD1/.test(k) && m === "fg") || [...scView.marks.values()].includes("fg") },
   { title: "13 · Background: dentate gyrus", target: () => scRowText(/^Dentate gyrus granule/),
     text: "Click the Dentate gyrus granule row twice: it turns blue.", goal: "The cell type to compare against.", done: () => [...scView.marks.values()].includes("bg") },
-  { title: "14 · Calculate", target: "#sc-diff-run",
-    text: "Press Calculate.", goal: "Each gene's expression is standardised across all rows; the score is the yellow rows' mean minus the blue rows' (in SDs, as the Allen differential). The top 100 appear on the right, with a bar under each name: the share of CA1 nuclei expressing it.",
+  { title: "14 · Calculate", target: "#sc-diff-lbl",
+    text: "Press calculate (the same button, now yellow).", goal: "Each gene's expression is standardised across all rows; the score is the yellow rows' mean minus the blue rows' (in SDs, as the Allen differential). The top 200 appear on the right, with a bar under each name: the share of CA1 nuclei expressing it.",
     done: () => !!scView.diffRes?.list.length },
   { title: "15 · Results", target: "#sc-diff-sub", next: true,
-    text: "Scroll right to the differential columns. Click a gene's name for GeneCards and the Protein Atlas, a square for its values; sub again gives their subcellular images, nuclear genes first.",
+    text: "Scroll right to the differential columns. Click a gene's name for GeneCards and the Protein Atlas, a square for its values; subcellular again gives their subcellular images, nuclear genes first.",
     goal: "A ranked list of CA1-versus-dentate genes, with how widely each is expressed in CA1 and where its protein goes." },
   { title: "Done", text: "That is the whole loop: Allen anatomy → single-nucleus cell types → co-expression → protein location → differential. Try your own genes, the Protein Atlas rows (its own brain clusters), or wildcards in the gene box (rad*).", next: true, last: true },
 ];
