@@ -393,6 +393,16 @@
   #ribbon-edit li { display: flex; align-items: center; gap: 6px; padding: 2px 0; cursor: grab; }
   #ribbon-edit li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #ribbon-edit li button { font: 12px var(--sans); color: var(--ink); background: rgba(255,255,255,0.1); border: 1px solid var(--edge); border-radius: 3px; padding: 0 6px; cursor: pointer; }
+  /* co-expressed / differential: push buttons (lit while on) rather than switches */
+  #sc-coexp, #sc-diff { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+  label[for="sc-coexp"], label[for="sc-diff"] { font: 12px var(--sans); color: var(--ink); padding: 3px 9px; border: 1px solid var(--edge); border-radius: 5px; cursor: pointer; background: transparent; white-space: nowrap; }
+  #sc-coexp:checked + label, #sc-diff:checked + label { background: #ffd600; color: #222; border-color: #ffd600; font-weight: 600; }
+  #sc-coexp:disabled + label { opacity: 0.4; cursor: default; }
+  #sc-coexp:focus-visible + label, #sc-diff:focus-visible + label { outline: 2px solid #ffd600; outline-offset: 1px; }
+  .sc-seg button { white-space: nowrap; }
+  body.phone #sc-dialog .sc-head { flex-wrap: wrap; row-gap: 6px; }
+  body.phone #sc-dialog .sc-detail-row { flex: 1 1 100%; order: 2; }
+  body.phone .sc-seg button, body.phone label[for="sc-coexp"], body.phone label[for="sc-diff"] { font-size: 13px; padding: 6px 10px; color: #fff; }
   .sc-seg { display: inline-flex; border: 1px solid var(--edge); border-radius: 5px; overflow: hidden; }
   .sc-seg button { font: 12px var(--sans); color: var(--ink); background: transparent; border: 0; padding: 3px 9px; cursor: pointer; }
   .sc-seg button + button { border-left: 1px solid var(--edge); }
@@ -556,6 +566,40 @@
   body.phone #ribbon-tip { max-width: calc(100vw - 24px); }
 </style>
 
+<!-- Entry password (a light lock for a static site: the page source is public). The password is
+     checked by its SHA-256; a cookie holding a derived token (not the password) skips it for a year -->
+<div id="gate" hidden><form id="gate-form"><h2>ALGEBRA</h2><p>Please enter the password to continue.</p>
+  <input type="password" id="gate-pw" autocomplete="current-password" aria-label="Password">
+  <button type="submit">Enter</button><p id="gate-err" hidden>Incorrect password.</p></form></div>
+<style>
+  #gate { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; background: #1b1e22; font-family: sans-serif; color: #eee; }
+  #gate[hidden] { display: none; }
+  #gate form { display: flex; flex-direction: column; gap: 10px; width: min(320px, calc(100vw - 32px)); }
+  #gate h2 { margin: 0; letter-spacing: 0.1em; }
+  #gate input, #gate button { font: 15px sans-serif; padding: 9px 10px; border-radius: 6px; border: 1px solid #555; background: #2a2e34; color: #eee; }
+  #gate button { cursor: pointer; background: #3a4048; }
+  #gate-err { color: #ff6b6b; margin: 0; }
+  html.gated body > *:not(#gate) { visibility: hidden; }
+</style>
+<script>
+(() => {
+  const PW = "6d94dbce26c24120682e8d1e6541c4310ef27b88b12b2932f8d904e047b19409", TOKEN = "b30c23297f10cd7bbb0e55063b435803ea99ba90402246b61e1ebb962eb86cd2";
+  if (document.cookie.split("; ").includes("algebra-auth=" + TOKEN)) return;
+  document.documentElement.classList.add("gated");
+  const gate = document.getElementById("gate"); gate.hidden = false;
+  setTimeout(() => document.getElementById("gate-pw").focus(), 0);
+  const hex = async t => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t)))].map(b => b.toString(16).padStart(2, "0")).join("");
+  document.getElementById("gate-form").addEventListener("submit", async e => {
+    e.preventDefault();
+    const v = document.getElementById("gate-pw").value;
+    if (await hex(v) !== PW) { document.getElementById("gate-err").hidden = false; return; }
+    document.cookie = `algebra-auth=${await hex("algebra-gate|" + v)}; Max-Age=31536000; Path=/; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}`;
+    gate.remove(); document.documentElement.classList.remove("gated");
+    dispatchEvent(new Event("resize"));
+  });
+})();
+</script>
+
 <div id="stage"></div>
 
 <div id="scrim" aria-hidden="true"></div>
@@ -564,6 +608,7 @@
   <div>
     <h1>Allen Human Brain Atlas samples</h1>
     <p class="sub" id="summary">Loading…</p>
+    <button class="text-button" id="cells-open" type="button" title="Single-nucleus cell types of the hippocampus, parahippocampal gyrus and amygdala (Siletti et al. 2023); search a gene in its own box">Single-cell atlas</button>
     <button class="text-button" id="tour-open" type="button" title="A guided example analysis (FNDC1): Allen, single cells, co-expression, subcellular location, differential">Tutorial</button>
   </div>
 
@@ -688,7 +733,7 @@
 <section id="ribbon" class="glass" hidden aria-label="Expression z-score of every sample, one row per probe">
   <div class="ribbon-head">
     <input type="text" class="title gene-box" id="gene-input" role="combobox" aria-autocomplete="list" aria-expanded="false"
-           aria-controls="gene-suggestions" aria-label="Gene or probe" placeholder="Gene" autocomplete="off" spellcheck="false"><button type="button" class="corr-btn" id="corr-btn" disabled title="The 20 probes most correlated with the highlighted row">corr</button><button type="button" class="corr-btn" id="cells-btn" disabled title="Cell types expressing this gene in hippocampal and amygdala subregions (single-nucleus RNA-seq, Siletti et al. 2023)">cells</button><button type="button" class="corr-btn" id="sub-btn" title="Subcellular location images (Human Protein Atlas) of every gene in the ribbon">sub</button><span class="probe zval" id="ribbon-probe" hidden></span>
+           aria-controls="gene-suggestions" aria-label="Gene or probe" placeholder="Gene" autocomplete="off" spellcheck="false"><button type="button" class="corr-btn" id="corr-btn" disabled title="The 20 probes most correlated with the highlighted row">corr</button><button type="button" class="corr-btn" id="cells-btn" title="Cell types expressing this gene in hippocampal and amygdala subregions (single-nucleus RNA-seq, Siletti et al. 2023)">cells</button><button type="button" class="corr-btn" id="sub-btn" title="Subcellular location images (Human Protein Atlas) of every gene in the ribbon">sub</button><span class="probe zval" id="ribbon-probe" hidden></span>
     <label class="zsym" title="Colour range: z from minus to plus this value">z
       <input type="range" id="z-sym" min="0.5" max="6" step="0.1" value="2" aria-label="Colour range, z"><span id="z-sym-val" class="rm-value">±2.0</span></label>
     <div class="rb-tools">
@@ -3594,7 +3639,7 @@ function scGeneFor(data) {
   for (const [k, list] of hgnc?.bySynonym ?? []) if (k === sym.toUpperCase()) for (const a of list) { const i = data.geneIndex.get(a); if (i !== undefined) return { i, name: data.genes[i], allen: sym }; }
   return { i: -1, name: shownName(sym), allen: sym };
 }
-function updateCellsButton() { $e("cells-btn").disabled = !(chosenProbes().length && symbolOf(chosenProbes()[0])); }
+function updateCellsButton() { $e("cells-btn").disabled = false; }   // without a gene the window opens with its rows only
 // Excitatory (Ex) / inhibitory (In) tags: clusters by Siletti's neurotransmitter annotation
 // (GABA or glycine: inhibitory; otherwise VGLUT1-3: excitatory), superclusters by their type
 const SC_INHIB = new Set(["MGE interneuron", "CGE interneuron", "LAMP5-LHX6 and Chandelier", "Medium spiny neuron", "Eccentric medium spiny neuron", "Cerebellar inhibitory", "Midbrain-derived inhibitory"]);
@@ -3630,8 +3675,10 @@ async function showCellTypes() {
   setBusy(null);
   const id0 = scProbe();
   if (id0 && symbolOf(id0)) await currentSymbol(symbolOf(id0));   // search by the gene's current symbol first
-  const gR = scGeneFor(region), gC = scGeneFor(clusters);
-  if (!gR) return;
+  let gR = scGeneFor(region), gC = scGeneFor(clusters);
+  // No gene chosen yet: the rows of a gene present everywhere (MALAT1) give the structure; no gene columns
+  scView.noGene = !gR;
+  if (!gR) { const ph = d => ({ i: d.geneIndex.get("MALAT1") ?? 0, name: "", allen: null }); gR = ph(region); gC = ph(clusters); }
   const g = gC?.i >= 0 ? gC : gR;
   $e("sc-title").textContent = "";   // the gene is named in the column labels
   // Allen colour range: once per gene, the largest |z| over every Allen sample either view can
@@ -3886,7 +3933,7 @@ async function renderCellTypes() {
 
   const coData = detailed ? clusters : region, coG = detailed ? gC : gR;
   // Co-expression stays with the gene it was started for (a gene searched in the window keeps it)
-  if (!$e("sc-coexp").checked) scView.coAnchor = null; else if (!scView.coAnchor && coG?.i >= 0) scView.coAnchor = coData.genes[coG.i];
+  if (!$e("sc-coexp").checked) scView.coAnchor = null; else if (!scView.coAnchor && coG?.i >= 0 && !scView.noGene) scView.coAnchor = coData.genes[coG.i];
   const coGi = scView.coAnchor ? coData.geneIndex.get(scView.coAnchor.toUpperCase()) : undefined;
   const co = coGi !== undefined ? coExpressed(coData, coGi, detailed) : null;
   const coIn = co && detailed ? new Set(co.ks) : null;
@@ -3916,6 +3963,7 @@ async function renderCellTypes() {
   $e("sc-diff-run").hidden = !marking;
   $e("sc-diff-run").disabled = !nFg;
   // Sub: always shown; active once a differential search has results
+  $e("sc-coexp").disabled = scView.noGene && !scView.coAnchor;   // co-expression needs a gene
   $e("sc-diff-sub").hidden = false;
   $e("sc-diff-sub").disabled = !(diff?.list.length || co);
   // Which result sub works on: its key keeps the looked-up state until that result changes
@@ -3940,7 +3988,8 @@ async function renderCellTypes() {
   const exRows = rows.map(r => (r.n ? extra.map(c => (!c.only || c.only.has(r.k) ? rowOf(r, c.name) : null)) : null));
   const exRange = extra.map((_, j) => { const vs = exRows.filter(Boolean).map(v => v[j]?.lin).filter(v => v != null); return [Math.min(...vs), Math.max(...vs)]; });
   // Several genes (gene box prefix search): per gene a square column and a nuclei-bar column, no Allen
-  const multi = scView.multi?.length > 1 ? scView.multi : null;
+  // No gene yet (window opened before any search): rows only, no gene columns
+  const multi = scView.noGene ? [] : scView.multi?.length > 1 ? scView.multi : null;
   const mVals = multi ? rows.map(r => (r.n ? multi.map(name => rowOf(r, name)) : null)) : [];
   const mRange = multi ? multi.map((_, j) => { const vs = mVals.filter(Boolean).map(v => v[j]?.lin).filter(v => v != null); return [Math.min(...vs), Math.max(...vs)]; }) : [];
   // Genes added with Ctrl+Enter: three more columns each (expression, Allen, count) after the main ones
@@ -4446,6 +4495,7 @@ function tourTick() {
 }
 function tourStart() { tourEnd(); tourGo(0); tour.timer = setInterval(tourTick, 300); }
 $e("tour-open").addEventListener("click", tourStart);
+$e("cells-open").addEventListener("click", () => { setPanelOpen(false); $e("cells-btn").click(); });
 // ---------------------------------------------------------------- figures as PNG
 const PNG_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 19h14"/></svg>';
 function downloadCanvas(cv, name) {
