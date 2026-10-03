@@ -4241,7 +4241,7 @@ function drawGrid(spec) {
     const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(svg.getScreenCTM().inverse());
     if (pt.y < top) return;
     // A click on the row labels selects the row too (as its first column)
-    const li = Math.floor((pt.y - top) / rh), ci = pt.x < xs[0] ? null : xs.findIndex((x0, i) => pt.x >= x0 && pt.x < x0 + ws[i]);
+    const li = Math.floor((pt.y - top) / rh), ci = !xs.length || pt.x < xs[0] ? null : xs.findIndex((x0, i) => pt.x >= x0 && pt.x < x0 + ws[i]);
     if (li < 0 || li >= lines.length || lines[li].sec || ci === -1) { select(null); return; }
     if (spec.onRow) { spec.onRow(li); return; }
     if (scView.sel?.li === li && scView.sel?.ci === ci) select(null); else select(li, ci);
