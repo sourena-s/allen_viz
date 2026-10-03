@@ -3050,7 +3050,7 @@ async function pool(items, n, fn) {
   await Promise.all(Array.from({ length: n }, async () => { while (next < items.length) await fn(items[next++]); }));
 }
 // items: [{ sym, stat }] (stat: extra caption line, e.g. differential statistics); default the ribbon's genes
-async function openSubcellularGrid(items) {
+async function openSubcellularGrid(items, onNuc) {
   if (!Array.isArray(items)) items = [...new Set((ribbon.rows ?? []).map(r => symbolOf(r.id)).filter(Boolean))].map(sym => ({ sym }));
   const syms = items.map(it => it.sym), statOf = new Map(items.map(it => [it.sym, it.stat])), pctOf = new Map(items.map(it => [it.sym, it.pct]));
   const dlg = $e("sub-dialog"), grid = $e("sub-grid"), bar = $e("sub-progress"), note = $e("sub-note");
@@ -3070,6 +3070,7 @@ async function openSubcellularGrid(items) {
   });
   if (!live()) return;
   const nuc = syms.filter(sym => { const d = found.get(sym); return d && [...d.main, ...d.extra].some(l => /nucl/i.test(l)); });
+  onNuc?.(new Set(nuc));   // the caller may reorder by it (cells differential)
   // 2: images of the nucl* genes
   bar.max = Math.max(1, nuc.length); bar.value = 0;
   note.textContent = `${nuc.length} of ${syms.length} genes in a nuclear compartment; retrieving images…`;
@@ -3833,7 +3834,7 @@ async function renderCellTypes() {
   if (scView.diffRun) { scView.diffRun = false; scView.diffRes = scDifferential(rows, detailed, region, clusters); scView.diffMarks = JSON.stringify([...scView.marks]); }
   const nFg = [...scView.marks.values()].filter(m => m === "fg").length, nBg = scView.marks.size - nFg;
   const diff = !$e("sc-diff").checked ? null : scView.diffRes?.list.length
-    ? { ...scView.diffRes, note: scView.diffRes.note + (scView.diffMarks !== JSON.stringify([...scView.marks]) ? " The marked rows have changed since: press Calculate to update." : "") }
+    ? { ...scView.diffRes, note: scView.diffRes.note + (scView.diffRes.nucN != null ? ` Ordered by Protein Atlas location: the ${scView.diffRes.nucN} with a nuclear (nucl*) location first, then the rest (dashed line).` : "") + (scView.diffMarks !== JSON.stringify([...scView.marks]) ? " The marked rows have changed since: press Calculate to update." : "") }
     : { list: [], note: `click rows to mark the foreground (yellow, ${nFg} so far) and, clicking again, the background (blue, ${nBg}); a third click clears. Then press Calculate.` };
   // Marking mode (row clicks mark rows) until Calculate; then rows select as usual, "Mark rows" resumes
   $e("sc-diff-run").hidden = !$e("sc-diff").checked;
@@ -3843,7 +3844,7 @@ async function renderCellTypes() {
   // Extra columns on the right: co-expressed genes, then differential genes, each on its own range
   const extra = [
     ...(co ? co.list.map(({ i, r: rr }) => ({ name: coData.genes[i], label: `${coData.genes[i]} ${rr.toFixed(2)}`, why: `r = ${rr.toFixed(2)} with ${scView.g.name}`, only: coIn })) : []),
-    ...(diff?.list ?? []).map(({ name, d, pct }) => ({ name, pct, label: `${name} ${d >= 0 ? "+" : ""}${d.toFixed(1)}`, why: `foreground minus background, ${d.toFixed(2)} SD of the gene across the rows`, diff: true })),
+    ...(diff?.list ?? []).map(({ name, d, pct }, j) => ({ name, pct, sep: diff.nucN != null && j === diff.nucN && j > 0, label: `${name} ${d >= 0 ? "+" : ""}${d.toFixed(1)}`, why: `foreground minus background, ${d.toFixed(2)} SD of the gene across the rows`, diff: true })),
   ];
   const exRows = rows.map(r => (r.n ? extra.map(c => (!c.only || c.only.has(r.k) ? rowOf(r, c.name) : null)) : null));
   const exRange = extra.map((_, j) => { const vs = exRows.filter(Boolean).map(v => v[j]?.lin).filter(v => v != null); return [Math.min(...vs), Math.max(...vs)]; });
@@ -3879,7 +3880,7 @@ async function renderCellTypes() {
   $e("sc-sub").textContent = `${diff ? `Differential: ${diff.note} ` : ""}${detailed ? "Siletti clusters, grouped by subfield (canonical markers) or cell class, sorted by share expressing" : "Hippocampal subfields by canonical markers (CA1: FIBCD1/FNDC1; CA2: PCP4; DG: PROX1), other cell classes per region"}, then each dissection (all its nuclei; dissections mix neighbouring fields). The subiculum has no cluster or canonical marker of its own in these data (its nuclei fall into CA1-type clusters), so it appears only as a dissection row. Colour: mean expression of ${scView.g.name} in counts per 10k (linear, no log), from pale (lowest row) to red (highest row), square area likewise, stretched separately for the by-markers rows and the by-dissection rows; co-expressed columns each over their own range. Bars: nuclei (grey, linear) and those expressing the gene (green).${detailed ? " Allen: the probe highlighted in the ribbon, every sample of the Allen structures matching each subfield, class or dissection (the ribbon turned on its side, its colours), from your loaded donors." : " Allen: mean z of the probe highlighted in the ribbon in each marker subfield's Allen structures, in the ribbon's colours."}${detailed ? " Hover a cluster for where it was dissected." : ""} (Ex) excitatory, (In) inhibitory.`;
   drawGrid({ cols: [{ label: `${scView.g.name} snRNA-seq expression (Siletti, mean counts per 10k)` }, { label: `${scView.g.name} (Allen expression z-score)`, gap: 6 }, { label: "Nuclei count (% expressing)", w: 190, gap: 10, plain: true },
       ...(detailed ? [{ label: "Markers ([canonical] then cluster-specific)", w: 360, gap: 8, plain: true }] : []),
-      ...extra.map((c, j) => ({ label: c.label, gene: c.name, pct: c.pct, vert: true, gap: j === 0 || (c.diff && !extra[j - 1].diff) ? 8 : 0 }))],
+      ...extra.map((c, j) => ({ label: c.label, gene: c.name, pct: c.pct, sep: c.sep, vert: true, gap: j === 0 || (c.diff && !extra[j - 1].diff) || c.sep ? 8 : 0 }))],
     lines, cells, labelW: Math.max(150, ...lines.filter(l => l.label).map(l => 18 + l.label.length * 6.4 + (l.sub ? 6 + l.sub.length * 5.6 : 0))), cw: 22, rh: detailed ? 17 : 20, flatLabels: true,
     // Differential mode: a click on a row cycles it foreground -> background -> clear
     onRow: $e("sc-diff").checked && scView.marking ? li => { const k = lines[li]?.key; if (!k) return; const m = scView.marks.get(k);
@@ -3957,6 +3958,7 @@ function drawGrid(spec) {
       svg.append(t, svgEl("line", { x1: xs[ci] + 8, x2: xs[ci] + 8, y1: top - 3, y2: leadEnd, stroke: "var(--muted)", "stroke-width": 0.8 }));   // points down to the column
       return t;
     }
+    if (c.sep) svg.append(svgEl("line", { x1: xs[ci] - 4, x2: xs[ci] - 4, y1: 4, y2: top + lines.length * rh, stroke: "#ffd600", "stroke-width": 1.5, "stroke-dasharray": "4 3" }));   // nucl* | rest
     if (c.vert) {   // vertical text over its column, a short tick down to it
       svg.append(svgEl("line", { x1: cx, x2: cx, y1: top - 8, y2: leadEnd, stroke: "var(--muted)", "stroke-width": 0.8 }));
       if (c.pct != null) {   // share of the foreground nuclei expressing the gene: grey track, green fill
@@ -4130,7 +4132,14 @@ $e("sc-coexp").addEventListener("change", () => showCellTypes());
 $e("sc-diff").addEventListener("change", () => { scView.marking = $e("sc-diff").checked; if (!$e("sc-diff").checked) { scView.marks = new Map(); scView.diffRes = null; } showCellTypes(); });
 $e("sc-diff-sub").addEventListener("click", () => {
   const L = scView.diffRes?.list ?? [];
-  openSubcellularGrid(L.map(g => ({ sym: g.name, pct: g.pct, stat: `${g.d >= 0 ? "+" : ""}${g.d.toFixed(2)} SD · foreground ${g.mf.toFixed(2)} vs background ${g.mb.toFixed(2)} counts per 10k (${g.mb > 0 ? `${(g.mf / g.mb).toFixed(1)}×` : "background 0"})` })));
+  // Differential columns reordered once the locations are known: nucl* genes first, then the rest
+  const reorder = nucSet => {
+    if (scView.diffRes?.list !== L) return;
+    const a = L.filter(g => nucSet.has(g.name)), b = L.filter(g => !nucSet.has(g.name));
+    scView.diffRes = { ...scView.diffRes, list: [...a, ...b], nucN: a.length };
+    renderCellTypes();
+  };
+  openSubcellularGrid(L.map(g => ({ sym: g.name, pct: g.pct, stat: `${g.d >= 0 ? "+" : ""}${g.d.toFixed(2)} SD · foreground ${g.mf.toFixed(2)} vs background ${g.mb.toFixed(2)} counts per 10k (${g.mb > 0 ? `${(g.mf / g.mb).toFixed(1)}×` : "background 0"})` })), reorder);
 });
 $e("sc-diff-run").addEventListener("click", () => {
   if (!scView.marking) { scView.marking = true; renderCellTypes(); return; }
