@@ -373,6 +373,10 @@
   .sc-detail-row { flex-wrap: wrap; min-width: 0; row-gap: 4px; }
   .sc-head { min-width: 0; }
   #sc-gene { width: 9ch; height: 22px; box-sizing: border-box; padding: 0 5px; font: 12px var(--sans); color: var(--ink); background: rgba(255,255,255,0.1); border: 1px solid var(--edge); border-radius: 4px; }
+  .sc-seg { display: inline-flex; border: 1px solid var(--edge); border-radius: 5px; overflow: hidden; }
+  .sc-seg button { font: 12px var(--sans); color: var(--ink); background: transparent; border: 0; padding: 3px 9px; cursor: pointer; }
+  .sc-seg button + button { border-left: 1px solid var(--edge); }
+  .sc-seg button[aria-checked="true"] { background: rgba(255,255,255,0.22); font-weight: 600; }
   .sc-tg { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
   #sc-dialog .sc-form { min-width: 0; }
   .sc-detail-row input[type=checkbox] { transform: scale(0.75); transform-origin: left center; margin-right: -6px; }
@@ -685,7 +689,7 @@
   <div id="sc-tip" hidden></div>
   <form method="dialog" class="sc-form">
     <div class="sc-head"><h2 id="sc-title" hidden></h2>
-      <div class="row sc-toggle sc-detail-row"><span class="sc-tg"><input type="text" id="sc-gene" class="gene-box" placeholder="Gene" aria-label="Gene shown in the cells window" autocomplete="off" spellcheck="false" title="Show another gene (Enter): a name, or with * for several (rad* starts with, *rad ends with, *rad* contains); co-expression and differential results stay"></span><span class="sc-tg"><input type="checkbox" id="sc-detail" autocomplete="off"><label for="sc-detail">Detailed (Siletti clusters)</label></span><span class="sc-tg"><input type="checkbox" id="sc-hpa" autocomplete="off"><label for="sc-hpa" title="Rows: the Protein Atlas brain clusters (its 95 neuronal and 32 non-neuronal clusters, from the same Siletti data), each nucleus assigned to the closest cluster by marker-gene correlation">Protein Atlas clusters</label></span><span class="sc-tg"><input type="checkbox" id="sc-coexp" autocomplete="off"><label for="sc-coexp" title="The 100 genes whose mean expression across the hippocampal formation, dentate, parahippocampal and amygdala cell groups (clusters in the detailed view, dissection x supercluster in the brief) correlates best with this gene (r after the name)">co-expressed</label></span><span class="sc-tg"><input type="checkbox" id="sc-diff" autocomplete="off"><label for="sc-diff" title="Click rows: once yellow (foreground), again blue (background), again clear. Then Calculate: the 100 genes most raised in the foreground relative to the background appear as columns on the right">differential</label></span><span class="sc-tg"><button type="button" class="corr-btn" id="sc-diff-run" hidden title="Rank the genes for the yellow (foreground) vs blue (background) rows">Calculate</button><button type="button" class="corr-btn" id="sc-diff-sub" hidden title="Subcellular location images (Human Protein Atlas) of the differential genes">Sub</button></span></div>
+      <div class="row sc-toggle sc-detail-row"><span class="sc-tg"><input type="text" id="sc-gene" class="gene-box" placeholder="Gene" aria-label="Gene shown in the cells window" autocomplete="off" spellcheck="false" title="Show another gene (Enter): a name, or with * for several (rad* starts with, *rad ends with, *rad* contains); co-expression and differential results stay"></span><span class="sc-seg" role="radiogroup" aria-label="Rows"><button type="button" data-v="brief" role="radio" title="Hippocampal subfields by markers, cell classes per region, dissections">Brief</button><button type="button" data-v="siletti" role="radio" title="Siletti clusters">Siletti</button><button type="button" data-v="hpa" role="radio" title="Protein Atlas brain clusters (its neuronal and non-neuronal clusters), each nucleus assigned by marker-gene correlation">Protein Atlas</button></span><span hidden><input type="checkbox" id="sc-detail" autocomplete="off"></span><span hidden><input type="checkbox" id="sc-hpa" autocomplete="off"></span><span class="sc-tg"><input type="checkbox" id="sc-coexp" autocomplete="off"><label for="sc-coexp" title="The 100 genes whose mean expression across the hippocampal formation, dentate, parahippocampal and amygdala cell groups (clusters in the detailed view, dissection x supercluster in the brief) correlates best with this gene (r after the name)">co-expressed</label></span><span class="sc-tg"><input type="checkbox" id="sc-diff" autocomplete="off"><label for="sc-diff" title="Click rows: once yellow (foreground), again blue (background), again clear. Then Calculate: the 100 genes most raised in the foreground relative to the background appear as columns on the right">differential</label></span><span class="sc-tg"><button type="button" class="corr-btn" id="sc-diff-run" hidden title="Rank the genes for the yellow (foreground) vs blue (background) rows">Calculate</button><button type="button" class="corr-btn" id="sc-diff-sub" hidden title="Subcellular location images (Human Protein Atlas) of the differential genes">Sub</button></span></div>
 
       <button class="rb-btn sc-zb" type="button" id="sc-zoom-out" aria-label="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
       <button class="rb-btn sc-zb" type="button" id="sc-zoom-in" aria-label="Zoom in"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button>
@@ -3594,6 +3598,7 @@ async function showCellTypes() {
   }
   Object.assign(scView, { region, clusters, gR, gC, g, detailed, sel: null, token: (scView.token ?? 0) + 1 });
   if (document.activeElement !== $e("sc-gene")) $e("sc-gene").value = g.name;
+  syncScSeg();
   if (gR.i < 0 && !(gC?.i >= 0)) {
     $e("sc-sub").textContent = `${g.name} is not detected in this single-nucleus dataset.`;
     $e("sc-plot").replaceChildren(); $e("sc-legend").replaceChildren();
@@ -4180,6 +4185,15 @@ $e("sc-zr").addEventListener("input", e => { scView.zrManual = true; setScZr(+e.
 $e("sc-max").addEventListener("click", () => $e("sc-max").setAttribute("aria-pressed", $e("sc-dialog").classList.toggle("max")));
 $e("sc-dialog").addEventListener("close", () => ($e("sc-tip").hidden = true));
 $e("sc-zoom-out").addEventListener("click", () => setScZoom(scView.zoom / 1.25));
+// Rows: one three-way choice (Brief / Siletti clusters / Protein Atlas clusters), kept in the two
+// hidden checkboxes the rest of the code reads
+function syncScSeg() { const v = $e("sc-hpa").checked ? "hpa" : $e("sc-detail").checked ? "siletti" : "brief"; document.querySelectorAll(".sc-seg button").forEach(b => b.setAttribute("aria-checked", b.dataset.v === v)); }
+document.querySelectorAll(".sc-seg button").forEach(b => b.addEventListener("click", () => {
+  const v = b.dataset.v;
+  if ((v === "hpa") === $e("sc-hpa").checked && (v !== "brief") === $e("sc-detail").checked) return;
+  $e("sc-detail").checked = v !== "brief"; $e("sc-hpa").checked = v === "hpa";
+  scView.marks = new Map(); scView.diffRes = null; syncScSeg(); showCellTypes();
+}));
 $e("sc-hpa").addEventListener("change", () => { if ($e("sc-hpa").checked) $e("sc-detail").checked = true; scView.marks = new Map(); scView.diffRes = null; showCellTypes(); });
 $e("sc-detail").addEventListener("change", () => { if (!$e("sc-detail").checked) $e("sc-hpa").checked = false; scView.marks = new Map(); scView.diffRes = null; showCellTypes(); });
 $e("sc-coexp").addEventListener("change", () => { scView.coAnchor = null; showCellTypes(); });
