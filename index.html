@@ -3703,7 +3703,7 @@ function scDifferential(rows, detailed, region, clusters) {
     const d = (mf / fg.length - mb / bg.length) / sd;
     if (best.length < DIFF_SC_TOP || d > best[best.length - 1].d) { best.push({ name: data.genes[i], d, mf: mf / fg.length, mb: mb / bg.length, pct: fgF / fgW }); best.sort((p, q) => q.d - p.d); if (best.length > DIFF_SC_TOP) best.pop(); }
   }
-  return { list: best, note: `the ${best.length} genes most raised in the ${fg.length} yellow row${fg.length > 1 ? "s" : ""} relative to the ${bg.length} blue row${bg.length > 1 ? "s" : ""} (linear means standardised across all rows, as the Allen differential; score after each name, in SD). Change the marked rows and press Calculate again to update.` };
+  return { list: best, note: `the ${best.length} genes most raised in the ${fg.length} yellow row${fg.length > 1 ? "s" : ""} relative to the ${bg.length} blue row${bg.length > 1 ? "s" : ""} (linear means standardised across all rows, as the Allen differential; score after each name, in SD). Press Mark rows to change the yellow and blue rows, then Calculate again.` };
 }
 // A gene's linear mean (counts per 10k) in unit k; the log mean where a file has no linear block
 const scLin = (data, gi, k) => data.lin ? data.lin[gi * data.nU + k] / 255 * data.lmax[gi] : data.body[gi * data.nU * 2 + k] / 255 * data.max[gi];
@@ -3835,8 +3835,10 @@ async function renderCellTypes() {
   const diff = !$e("sc-diff").checked ? null : scView.diffRes?.list.length
     ? { ...scView.diffRes, note: scView.diffRes.note + (scView.diffMarks !== JSON.stringify([...scView.marks]) ? " The marked rows have changed since: press Calculate to update." : "") }
     : { list: [], note: `click rows to mark the foreground (yellow, ${nFg} so far) and, clicking again, the background (blue, ${nBg}); a third click clears. Then press Calculate.` };
+  // Marking mode (row clicks mark rows) until Calculate; then rows select as usual, "Mark rows" resumes
   $e("sc-diff-run").hidden = !$e("sc-diff").checked;
-  $e("sc-diff-run").disabled = !(nFg && nBg);
+  $e("sc-diff-run").textContent = scView.marking ? "Calculate" : "Mark rows";
+  $e("sc-diff-run").disabled = scView.marking && !(nFg && nBg);
   $e("sc-diff-sub").hidden = !(diff?.list.length);
   // Extra columns on the right: co-expressed genes, then differential genes, each on its own range
   const extra = [
@@ -3880,7 +3882,7 @@ async function renderCellTypes() {
       ...extra.map((c, j) => ({ label: c.label, gene: c.name, pct: c.pct, vert: true, gap: j === 0 || (c.diff && !extra[j - 1].diff) ? 8 : 0 }))],
     lines, cells, labelW: Math.max(150, ...lines.filter(l => l.label).map(l => 18 + l.label.length * 6.4 + (l.sub ? 6 + l.sub.length * 5.6 : 0))), cw: 22, rh: detailed ? 17 : 20, flatLabels: true,
     // Differential mode: a click on a row cycles it foreground -> background -> clear
-    onRow: $e("sc-diff").checked ? li => { const k = lines[li]?.key; if (!k) return; const m = scView.marks.get(k);
+    onRow: $e("sc-diff").checked && scView.marking ? li => { const k = lines[li]?.key; if (!k) return; const m = scView.marks.get(k);
       if (!m) scView.marks.set(k, "fg"); else if (m === "fg") scView.marks.set(k, "bg"); else scView.marks.delete(k); renderCellTypes(); } : null });
   $e("sc-legend").replaceChildren();   // colour and square area both give the expression (stated in the caption)
 }
@@ -4036,14 +4038,19 @@ function drawGrid(spec) {
     const y0 = top + li * rh;
     selG.append(svgEl("rect", { x: 4.5, y: y0 + 0.5, width: x - 5, height: rh - 1, fill: "none", stroke: "#ffe600", "stroke-width": 1.5 }));
     rowText[li]?.classList.add("hl");
+    // and a vertical outline down the clicked column, its label lit (not for the row-label area)
+    if (ci != null && ci >= 0 && !(cols[ci]?.plain)) {
+      selG.append(svgEl("rect", { x: xs[ci] + 0.5, y: top + 0.5, width: ws[ci] - 1, height: lines.length * rh - 1, fill: "none", stroke: "#ffe600", "stroke-width": 1.5 }));
+      colText[ci]?.classList.add("hl");
+    }
   };
   svg.addEventListener("click", e => {
     if (scView.pinched) return;
     const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(svg.getScreenCTM().inverse());
     if (pt.y < top) return;
     // A click on the row labels selects the row too (as its first column)
-    const li = Math.floor((pt.y - top) / rh), ci = pt.x < xs[0] ? 0 : xs.findIndex((x0, i) => pt.x >= x0 && pt.x < x0 + ws[i]);
-    if (li < 0 || li >= lines.length || lines[li].sec || ci < 0) { select(null); return; }
+    const li = Math.floor((pt.y - top) / rh), ci = pt.x < xs[0] ? null : xs.findIndex((x0, i) => pt.x >= x0 && pt.x < x0 + ws[i]);
+    if (li < 0 || li >= lines.length || lines[li].sec || ci === -1) { select(null); return; }
     if (spec.onRow) { spec.onRow(li); return; }
     if (scView.sel?.li === li && scView.sel?.ci === ci) select(null); else select(li, ci);
   });
@@ -4118,14 +4125,16 @@ $e("sc-zr").addEventListener("input", e => { scView.zrManual = true; setScZr(+e.
 $e("sc-max").addEventListener("click", () => $e("sc-max").setAttribute("aria-pressed", $e("sc-dialog").classList.toggle("max")));
 $e("sc-dialog").addEventListener("close", () => ($e("sc-tip").hidden = true));
 $e("sc-zoom-out").addEventListener("click", () => setScZoom(scView.zoom / 1.25));
-$e("sc-detail").addEventListener("change", () => { scView.marks = new Map(); scView.diffRes = null; showCellTypes(); });
+$e("sc-detail").addEventListener("change", () => { scView.marks = new Map(); scView.diffRes = null; scView.marking = $e("sc-diff").checked; showCellTypes(); });
 $e("sc-coexp").addEventListener("change", () => showCellTypes());
-$e("sc-diff").addEventListener("change", () => { if (!$e("sc-diff").checked) { scView.marks = new Map(); scView.diffRes = null; } showCellTypes(); });
+$e("sc-diff").addEventListener("change", () => { scView.marking = $e("sc-diff").checked; if (!$e("sc-diff").checked) { scView.marks = new Map(); scView.diffRes = null; } showCellTypes(); });
 $e("sc-diff-sub").addEventListener("click", () => {
   const L = scView.diffRes?.list ?? [];
   openSubcellularGrid(L.map(g => ({ sym: g.name, pct: g.pct, stat: `${g.d >= 0 ? "+" : ""}${g.d.toFixed(2)} SD · foreground ${g.mf.toFixed(2)} vs background ${g.mb.toFixed(2)} counts per 10k (${g.mb > 0 ? `${(g.mf / g.mb).toFixed(1)}×` : "background 0"})` })));
 });
-$e("sc-diff-run").addEventListener("click", () => { scView.diffRun = true; setBusy("Ranking genes…"); setTimeout(() => { renderCellTypes(); setBusy(null); }, 30); });
+$e("sc-diff-run").addEventListener("click", () => {
+  if (!scView.marking) { scView.marking = true; renderCellTypes(); return; }
+  scView.marking = false; scView.diffRun = true; setBusy("Ranking genes…"); setTimeout(() => { renderCellTypes(); setBusy(null); }, 30); });
 // Each opening of the cells window starts fresh: brief view, no co-expression
 $e("cells-btn").addEventListener("click", () => { $e("sc-detail").checked = false; $e("sc-coexp").checked = false; $e("sc-diff").checked = false; scView.marks = new Map(); scView.diffRes = null; showCellTypes(); });
 $e("sc-dialog").addEventListener("click", e => { if (e.target === $e("sc-dialog")) $e("sc-dialog").close(); });
