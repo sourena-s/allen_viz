@@ -3099,23 +3099,26 @@ async function pool(items, n, fn) {
   await Promise.all(Array.from({ length: n }, async () => { while (next < items.length) await fn(items[next++]); }));
 }
 // items: [{ sym, stat }] (stat: extra caption line, e.g. differential statistics); default the ribbon's genes
-async function openSubcellularGrid(items, onNuc) {
+// opts.fetchOnly: look everything up (locations, image addresses, the images themselves into the
+// browser cache) without opening the window; opts.progress(done, total) reports it
+async function openSubcellularGrid(items, onNuc, opts = {}) {
   if (!Array.isArray(items)) items = [...new Set((ribbon.rows ?? []).map(r => symbolOf(r.id)).filter(Boolean))].map(sym => ({ sym }));
   const syms = items.map(it => it.sym), statOf = new Map(items.map(it => [it.sym, it.stat])), pctOf = new Map(items.map(it => [it.sym, it.pct])), pctWhat = new Map(items.map(it => [it.sym, it.pctWhat ?? "foreground nuclei"]));
   const dlg = $e("sub-dialog"), grid = $e("sub-grid"), bar = $e("sub-progress"), note = $e("sub-note");
   const run = (openSubcellularGrid.run ?? 0) + 1; openSubcellularGrid.run = run;
-  const live = () => dlg.open && openSubcellularGrid.run === run;
-  grid.replaceChildren();
+  const quiet = !!opts.fetchOnly, live = () => (quiet || dlg.open) && openSubcellularGrid.run === run;
+  let done = 0; const tick = total => opts.progress?.(++done, total);
+  if (!quiet) grid.replaceChildren();
   $e("sub-title").textContent = "Nuclear subcellular location · Human Protein Atlas";
   bar.hidden = false; bar.max = Math.max(1, syms.length); bar.value = 0;
   note.textContent = `Looking up the locations of ${syms.length} genes…`;
-  if (!dlg.open) dlg.showModal();
+  if (!quiet && !dlg.open) dlg.showModal();
   // 1: locations (text) of every gene
   const found = new Map(); let failed = 0;
   await pool(syms, 6, async sym => {
     if (!live()) return;
     try { const d = await hpaSubcellular(await currentSymbol(sym)); if (d) found.set(sym, d); } catch { failed++; }
-    bar.value++;
+    bar.value++; tick(syms.length * 2);
   });
   if (!live()) return;
   const nuc = syms.filter(sym => { const d = found.get(sym); return d && [...d.main, ...d.extra].some(l => /nucl/i.test(l)); });
@@ -3137,19 +3140,21 @@ async function openSubcellularGrid(items, onNuc) {
     fig.append(...[a, bar, cap].filter(Boolean));
     return [sym, { fig, a }];
   }));
-  grid.replaceChildren(...nuc.map(sym => figs.get(sym).fig));
+  if (!quiet) grid.replaceChildren(...nuc.map(sym => figs.get(sym).fig));
+  done = syms.length * 2 - nuc.length - 1; tick(syms.length * 2);
   await pool(nuc, 4, async sym => {
     if (!live()) return;
     const { a } = figs.get(sym);
     try {
       const src = await hpaImage(found.get(sym).ensg);
-      if (src) {
+      if (src && quiet) await new Promise(ok => { const im = new Image(); im.onload = im.onerror = ok; im.src = src; });   // into the browser cache
+      else if (src) {
         const img = Object.assign(document.createElement("img"), { src, alt: `${sym} immunofluorescence`, loading: "lazy" });
         img.addEventListener("error", () => { img.remove(); a.textContent = "image failed"; });
         a.className = ""; a.replaceChildren(img);
       } else a.textContent = "no image";
     } catch { a.textContent = "image not available"; }
-    bar.value++;
+    bar.value++; tick(syms.length * 2);
   });
   if (!live()) return;
   bar.hidden = true;
@@ -3901,7 +3906,7 @@ async function renderCellTypes() {
   scView.marks ??= new Map();
   { let sec = ""; for (const r of rows) { if (r.sec) sec = r.sec; else if (r.n) r.key = r.k != null ? `k${r.k}` : `${sec}|${r.label}`; } }
   // Differential: computed only on Calculate (scView.diffRun), kept until the next one
-  if (scView.diffRun) { scView.diffRun = false; scView.diffRes = scDifferential(rows, detailed, region, clusters); scView.diffMarks = JSON.stringify([...scView.marks]); }
+  if (scView.diffRun) { scView.diffRun = false; scView.diffRes = { ...scDifferential(rows, detailed, region, clusters), id: (scView.diffId = (scView.diffId ?? 0) + 1) }; scView.diffMarks = JSON.stringify([...scView.marks]); }
   const nFg = [...scView.marks.values()].filter(m => m === "fg").length, nBg = scView.marks.size - nFg;
   // Marking (row clicks mark foreground/background) while "differential" is on; Calculate ends it and
   // turns the toggle off. Results and marked rows stay until the next differential search
@@ -3913,6 +3918,9 @@ async function renderCellTypes() {
   // Sub: always shown; active once a differential search has results
   $e("sc-diff-sub").hidden = false;
   $e("sc-diff-sub").disabled = !(diff?.list.length || co);
+  // Which result sub works on: its key keeps the looked-up state until that result changes
+  scView.subKey = diff?.list.length ? `d${scView.diffRes.id}` : co ? `c${detailed}|${scView.coAnchor}` : null;
+  scSubLabel();
   $e("sc-diff-sub").title = diff?.list.length ? "Subcellular location images (Human Protein Atlas) of the differential genes" : co ? "Subcellular location images (Human Protein Atlas) of the co-expressed genes" : "Run a co-expression or differential search first";
   // Co-expressed columns; after Sub, the nucl* genes first, a dashed line, then the rest (r order kept)
   const coKey = co ? `${detailed}|${scView.coAnchor}` : null;
@@ -4292,11 +4300,25 @@ $e("sc-gene").addEventListener("keydown", async e => {
   await showCellTypes();
 });
 $e("sc-diff").addEventListener("change", () => { scView.marks = new Map(); scView.diffRes = null; showCellTypes(); });   // on: a new search; off: cancelled
+// Cells "sub": the first press looks everything up (the button counts) and reorders the columns,
+// nucl* genes first; then the button reads "view sub" and opens the images
+function scSubRun(items, onNuc) {
+  const key = scView.subKey;
+  if (scView.sub?.key === key && scView.sub.state === "ready") { openSubcellularGrid(items); return; }
+  if (scView.sub?.key === key && scView.sub.state === "loading") return;
+  scView.sub = { key, state: "loading", done: 0, total: items.length * 2 }; renderCellTypes();
+  openSubcellularGrid(items, onNuc, { fetchOnly: true, progress: (d, t) => { if (scView.sub?.key === key) { scView.sub.done = d; scView.sub.total = t; scSubLabel(); } } })
+    .then(() => { if (scView.sub?.key === key) { scView.sub.state = "ready"; scSubLabel(); } });
+}
+function scSubLabel() {
+  const b = $e("sc-diff-sub"), st = scView.sub?.key === scView.subKey ? scView.sub : null;
+  b.textContent = st?.state === "ready" ? "view sub" : st?.state === "loading" ? `sub ${Math.min(99, Math.round(st.done / Math.max(1, st.total) * 100))}%` : "sub";
+}
 $e("sc-diff-sub").addEventListener("click", () => {
   // No differential result: the co-expressed genes (nucl* ones then marked in the same way)
   if (!scView.diffRes?.list.length && scView.coShown) {
     const { key, list } = scView.coShown;
-    openSubcellularGrid(list.map(c => ({ sym: c.name, stat: `r = ${c.r.toFixed(2)} with ${scView.coAnchor}` })),
+    scSubRun(list.map(c => ({ sym: c.name, stat: `r = ${c.r.toFixed(2)} with ${scView.coAnchor}` })),
       set => { if (scView.coShown?.key === key) { scView.coNuc = { key, set }; renderCellTypes(); } });
     return;
   }
@@ -4309,7 +4331,7 @@ $e("sc-diff-sub").addEventListener("click", () => {
     scView.diffRes = { ...scView.diffRes, list: [...a, ...b], nucN: a.length };
     renderCellTypes();
   };
-  openSubcellularGrid(L.map(g => ({ sym: g.name, pct: g.pct, stat: `${g.d >= 0 ? "+" : ""}${g.d.toFixed(2)} SD · foreground ${g.mf.toFixed(2)} vs background ${g.mb.toFixed(2)} counts per 10k (${g.mb > 0 ? `${(g.mf / g.mb).toFixed(1)}×` : "background 0"})` })), reorder);
+  scSubRun(L.map(g => ({ sym: g.name, pct: g.pct, stat: `${g.d >= 0 ? "+" : ""}${g.d.toFixed(2)} SD · foreground ${g.mf.toFixed(2)} vs background ${g.mb.toFixed(2)} counts per 10k (${g.mb > 0 ? `${(g.mf / g.mb).toFixed(1)}×` : "background 0"})` })), reorder);
 });
 $e("sc-diff-run").addEventListener("click", () => {
   $e("sc-diff").checked = false; scView.diffRun = true;   // back to the default mode (row clicks select)
@@ -4350,8 +4372,8 @@ const TOUR = [
     text: "Tick co-expressed. The 100 genes whose expression across these clusters best follows FNDC1's appear as columns on the right (scroll right); r after each name.",
     goal: "Genes co-expressed across cell types often share a cell type or a function: a first list of FNDC1's partners.", done: () => !!scView.coShown },
   { title: "8 · Subcellular location", target: "#sc-diff-sub",
-    text: "Press sub. The Human Protein Atlas is asked where each co-expressed gene's protein sits in the cell; those found in the nucleus get their immunofluorescence image.",
-    goal: "Narrow the list to nuclear proteins (e.g. transcription regulators) and see the staining.", done: () => $e("sub-dialog").open },
+    text: "Press sub. The Human Protein Atlas is asked where each co-expressed gene's protein sits in the cell (the button counts up); the columns are then reordered, nuclear genes first. Then press view sub.",
+    goal: "Narrow the list to nuclear proteins (e.g. transcription regulators) and see the staining (images of the nuclear ones).", done: () => $e("sub-dialog").open },
   { title: "9 · Images", target: () => ($e("sub-dialog").open ? $e("sub-dialog").querySelector("button[value=close]") : null),
     text: "Each tile: the image (click it for the gene's Protein Atlas page), its locations and its correlation with FNDC1. When you have looked, close this window.",
     goal: "Back in the table, the nuclear genes now come first, before the dashed line.", done: () => !$e("sub-dialog").open },
