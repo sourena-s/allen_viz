@@ -3730,6 +3730,10 @@ async function renderCellTypes() {
   const clsOf = sc => SC_CLASSES[Math.min(classOf(sc), SC_CLASSES.length - 1)];
   const REGION_COLOR = { "Other cells in the hippocampus": "#0a84ff", "Parahippocampal gyrus": "#f28e00", "Amygdala": "#e6194b" };
   const byClassRows = (title, dTest, splitGlia, allenKeys) => {
+    // Rows leading each region: inhibitory first among the hippocampus's other cells; in the
+    // amygdala its excitatory neurons, then inhibitory
+    const lead = title === "Amygdala" ? ["Amygdala excitatory", "Inhibitory"] : title.startsWith("Other cells in the hippocampus") ? ["Inhibitory"] : [];
+    const first = r => { const i = lead.indexOf(r.key); return i < 0 ? lead.length : i; };
     const keys = new Map();
     region.groups.forEach(([d, c]) => {
       if (!dTest(d)) return;
@@ -3740,7 +3744,7 @@ async function renderCellTypes() {
       keys.get(key).scs.add(sc);
     });
     const out = [...keys].map(([key, { cls, scs }]) => ({ key, cls, scs, v: pool((d, sc) => dTest(d) && scs.has(sc)) }))
-      .filter(r => r.v && r.v.n >= 30).sort((a, b) => SC_CLASSES.indexOf(a.cls) - SC_CLASSES.indexOf(b.cls));
+      .filter(r => r.v && r.v.n >= 30).sort((a, b) => first(a) - first(b) || SC_CLASSES.indexOf(a.cls) - SC_CLASSES.indexOf(b.cls));
     if (!out.length) return;
     rows.push({ sec: title, color: REGION_COLOR[title] });
     const grp = title === "Amygdala" ? "rAMY" : title === "Parahippocampal gyrus" ? "rPHG" : null;
