@@ -4491,7 +4491,7 @@ $e("sc-gene").addEventListener("keydown", async e => {
     const names = hits.length ? hits : [region.genes[region.geneIndex.get(scName)]];
     scView.added ??= [];
     for (const name of names) if (name !== scView.g?.name && !scView.added.some(a => a.name === name)) scView.added.push({ name, probe: await allenOf(name) });
-    $e("sc-gene").value = scView.g?.name ?? "";
+    $e("sc-gene").value = "";   // ready for the next gene (kept when nothing was found)
     renderCellTypes();
     return;
   }
