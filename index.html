@@ -189,6 +189,11 @@
     background: rgba(62, 68, 77, 0.92); border: 1px solid var(--edge); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
   }
   #gene-menu[hidden] { display: none; }
+  #diff-ac { position: fixed; z-index: 9; max-height: 260px; overflow-y: auto; padding: 4px; border-radius: 6px; background: rgba(62, 68, 77, 0.96); border: 1px solid var(--edge); }
+  #diff-ac[hidden] { display: none; }
+  #diff-ac div { font: 12px var(--sans); color: var(--ink); padding: 5px 8px; border-radius: 4px; cursor: pointer; white-space: nowrap; }
+  #diff-ac div span { color: var(--muted); margin-left: 6px; font-size: 11px; }
+  #diff-ac div.on, #diff-ac div:hover { background: rgba(255, 255, 255, 0.14); }
   #gene-menu .gm-title { font: 10.5px var(--mono); color: var(--muted); padding: 3px 8px 5px; }
   #gene-menu a { font: 12px var(--mono); color: var(--ink); text-decoration: none; padding: 6px 8px; border-radius: 4px; }
   #gene-menu a:hover { background: rgba(255, 255, 255, 0.12); }
@@ -712,9 +717,9 @@
   <div class="group" id="diff-group">
     <span class="label">Differential expression</span>
     <label class="label" for="diff-target">Target structure</label>
-    <input type="text" id="diff-target" list="diff-structures" placeholder="e.g. hippocampus or CA1" autocomplete="off" spellcheck="false">
+    <input type="text" id="diff-target" placeholder="e.g. hippocampus or CA1" autocomplete="off" spellcheck="false">
     <label class="label" for="diff-bg">Background</label>
-    <input type="text" id="diff-bg" list="diff-structures" placeholder="e.g. temporal lobe, cerebellum, brain" autocomplete="off" spellcheck="false">
+    <input type="text" id="diff-bg" placeholder="any region: brain, cerebral cortex, cerebellum, CA1…" autocomplete="off" spellcheck="false">
     <datalist id="diff-structures"></datalist>
     <button class="text-button" id="diff-run" type="button">Find genes higher in target</button>
     <span class="hint" id="diff-note">Load donor data first. Structures follow the Allen Human Brain Atlas ontology.</span>
@@ -4790,7 +4795,7 @@ function setOntology(text) {
 }
 let diffStructures = null;   // [{ label, keys (lower case), test(sample) }]
 function structureList() {
-  if (diffStructures) return diffStructures;
+  if (diffStructures && diffStructures.nS === samples.length) return diffStructures;
   const list = [];
   if (ontology) {
     const members = new Map();   // ontology id -> number of samples under it
@@ -4815,6 +4820,8 @@ function structureList() {
       }
     }
   }
+  if (!ontology) for (const x of list) x.n ??= samples.filter(x.test).length;
+  list.nS = samples.length;
   return (diffStructures = list);
 }
 function fillDiffList() {
@@ -5048,9 +5055,40 @@ function hippocampalZ(ids) {
   return z;
 }
 $e("long-n").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); showLongGenes(); } });
+// Autocomplete for target and background: every structure with loaded samples (whole brain and
+// divisions down to single structures), names and acronyms; prefix matches first
+const diffAc = Object.assign(document.createElement("div"), { id: "diff-ac", hidden: true });
+document.body.append(diffAc);
+function diffAcShow(inp) {
+  const t = inp.value.trim().toLowerCase(), list = structureList();
+  const rank = x => { const l = x.label.toLowerCase();
+    return !t ? x.label.length / 1e3 : x.keys.includes(t) || l === t ? 0 : x.keys.some(k => k.startsWith(t)) ? 1 : l.split(/[\s(·,-]+/).some(w => w.startsWith(t)) ? 2 : l.includes(t) ? 3 : 9; };
+  const hits = list.map(x => [rank(x), x]).filter(([r]) => r < 9).sort((a, b) => a[0] - b[0] || a[1].label.length - b[1].label.length).slice(0, 30).map(([, x]) => x);
+  if (!hits.length) { diffAc.hidden = true; return; }
+  diffAc.replaceChildren(...hits.map((x, i) => { const d = document.createElement("div"); d.textContent = x.label; if (x.n) d.append(Object.assign(document.createElement("span"), { textContent: `${x.n} samples` }));
+    d.className = i ? "" : "on"; d.addEventListener("pointerdown", e => { e.preventDefault(); inp.value = x.label; diffAc.hidden = true; }); return d; }));
+  const r = inp.getBoundingClientRect();
+  Object.assign(diffAc.style, { left: `${r.left}px`, top: `${r.bottom + 2}px`, minWidth: `${r.width}px` });
+  diffAc.hidden = false; diffAc.input = inp;
+}
 for (const id of ["diff-target", "diff-bg"]) {
-  $e(id).addEventListener("focus", () => { if (!$e("diff-structures").options.length) fillDiffList(); });
-  $e(id).addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); findDifferential(); } });
+  const inp = $e(id);
+  inp.addEventListener("focus", () => diffAcShow(inp));
+  inp.addEventListener("input", () => diffAcShow(inp));
+  inp.addEventListener("blur", () => setTimeout(() => { if (diffAc.input === inp) diffAc.hidden = true; }, 100));
+  inp.addEventListener("keydown", e => {
+    const items = [...diffAc.children], i = items.findIndex(d => d.classList.contains("on"));
+    if (!diffAc.hidden && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+      e.preventDefault(); const j = Math.max(0, Math.min(items.length - 1, i + (e.key === "ArrowDown" ? 1 : -1)));
+      items.forEach((d, k) => d.classList.toggle("on", k === j)); items[j]?.scrollIntoView({ block: "nearest" }); return;
+    }
+    if (e.key === "Escape") { diffAc.hidden = true; return; }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (!diffAc.hidden && items[i]) { inp.value = items[i].firstChild.textContent; diffAc.hidden = true; if (id === "diff-target") { $e("diff-bg").focus(); return; } }
+      diffAc.hidden = true; findDifferential();
+    }
+  });
 }
 // Tap a division or subdivision label to highlight (or un-highlight) its samples in 3D
 $e("ribbon-axis").addEventListener("click", e => {
