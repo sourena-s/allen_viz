@@ -46,3 +46,13 @@ Requires `pip install cellxgene-census`; `cxopen.py` opens Census by its S3 path
    third of nuclei the second-best cluster is within 0.02 (mostly sibling clusters of one type).
 10. `packhpa.py`: clusters with at least 30 nuclei, in the clusters-file format, with the Protein
    Atlas names (`mtg` holds the detailed name, `sc` its cell type).
+
+## Reclustering the hippocampal principal neurons by human markers
+
+11. `rc1.py`: raw counts of ~3,000 informative genes (plus the subfield markers) for every nucleus of
+   Siletti's CA1-3, CA4 and dentate gyrus superclusters in the 11 hippocampal dissections
+   (150,623 nuclei).
+12. `rc2.py [resolution]`: counts per 10k (by each nucleus's total), log1p, scaled; PCA (50), kNN
+   (15), Leiden; each new cluster labelled DG (PROX1+, no CA1 marker), CA1 (FIBCD1+ or FNDC1+),
+   CA2 (RGS14+), subiculum (PCP4+ or FN1+, PROX1-), CA3 (HS3ST4+), in that order, a cluster
+   counting as positive when at least half its nuclei have any count.
