@@ -720,6 +720,14 @@
     <span class="hint" id="diff-note">Load donor data first. Structures follow the Allen Human Brain Atlas ontology.</span>
   </div>
 
+  <div class="group" id="hsub-group">
+    <span class="label">Hippocampal subfield markers</span>
+    <label class="label" for="hsub-target">Subfield (compared with the other hippocampal subfields only)</label>
+    <select id="hsub-target"><option value="CA1">CA1</option><option value="CA2">CA2</option><option value="CA3">CA3</option><option value="CA4">CA4</option><option value="DG">Dentate gyrus</option><option value="S">Subiculum</option></select>
+    <button class="text-button" id="hsub-run" type="button">Find subfield markers</button>
+    <span class="hint" id="hsub-note">Load donor data first. Markers: genes higher (A+) or lower (B−) in the subfield than in every other subfield, and A+ B− pairs.</span>
+  </div>
+
   <div class="group" id="long-group">
     <span class="label">Long genes</span>
     <label class="label" for="long-n">Number of longest protein-coding genes</label>
@@ -4880,6 +4888,76 @@ async function findDifferential() {
   } finally { setBusy(null); }
 }
 $e("diff-run").addEventListener("click", findDifferential);
+
+// ---------------------------------------------------------------- hippocampal subfield markers
+// Within the hippocampus only: each probe z-scored per donor over that donor's hippocampal samples,
+// then averaged per subfield (Allen CA1, CA2, CA3, CA4, DG, S). A gene's score for the chosen subfield
+// is its worst-case margin: the smallest difference between the subfield's mean z and that of any
+// other subfield (positive: higher than all; for negative markers, lower than all). Pairs "A+ B−"
+// score the difference zA − zB the same way (halved, so on the z scale) and are kept when they beat
+// both genes alone.
+const HSUB = ["CA1", "CA2", "CA3", "CA4", "DG", "S"];
+async function findSubfieldMarkers() {
+  const note = $e("hsub-note"), T = $e("hsub-target").value;
+  if (!expr.byDonor.size) { note.textContent = "Load donor data first."; return; }
+  const sets = [];
+  for (const c of donorClouds) {
+    const rows = expr.byDonor.get(c.userData.donor); if (!rows) continue;
+    const by = HSUB.map(() => []);
+    c.userData.items.forEach((s, j) => { const r = HSUB.indexOf(s.region ??= regionKey(s)); if (r >= 0) by[r].push(j); });
+    if (by.some(a => a.length)) sets.push({ rows, by });
+  }
+  const nR = HSUB.map((_, r) => sets.reduce((a, d) => a + d.by[r].length, 0)), ti = HSUB.indexOf(T);
+  if (!nR[ti]) { note.textContent = `No loaded samples in ${T}.`; return; }
+  const others = HSUB.map((_, r) => r).filter(r => r !== ti && nR[r]);
+  if (!others.length) { note.textContent = "No other hippocampal subfield has loaded samples."; return; }
+  setBusy("Comparing hippocampal subfields…");
+  await new Promise(r => setTimeout(r, 30));
+  try {
+    const ids = [...new Set(sets.flatMap(d => [...d.rows.keys()]))], means = new Map();
+    for (let k = 0; k < ids.length; k++) {
+      const id = ids[k], S = new Float64Array(HSUB.length), C = new Float64Array(HSUB.length);
+      for (const d of sets) {
+        const x = d.rows.get(id); if (!x) continue;
+        let sx = 0, sxx = 0, n = 0;
+        for (const a of d.by) for (const j of a) { sx += x[j]; sxx += x[j] * x[j]; n++; }
+        const mean = sx / n, sd = Math.sqrt(Math.max(0, sxx / n - mean * mean)); if (!(sd > 0)) continue;
+        d.by.forEach((a, r) => { for (const j of a) { S[r] += (x[j] - mean) / sd; C[r]++; } });
+      }
+      if (C[ti] && others.every(r => C[r])) means.set(id, HSUB.map((_, r) => S[r] / C[r]));
+      if (k % 4000 === 3999) { setBusy("Comparing hippocampal subfields…", k / ids.length); await new Promise(res => setTimeout(res, 0)); }
+    }
+    const margin = m => Math.min(...others.map(r => m[ti] - m[r]));
+    const pos = new Map(), neg = new Map();
+    for (const [id, m] of means) { pos.set(id, margin(m)); neg.set(id, -Math.max(...others.map(r => m[ti] - m[r]))); }
+    const bestBy = sc => { const b = new Map(); for (const [id, v] of sc) { const g = symbolOf(id) ?? id; if (!b.has(g) || v > sc.get(b.get(g))) b.set(g, id); } return [...b.values()].sort((a, b) => sc.get(b) - sc.get(a)); };
+    const P = bestBy(pos).slice(0, DIFF_TOP), N = bestBy(neg).slice(0, 40);
+    if (!P.length) { note.textContent = "No probes to compare."; return; }
+    // A+ B− pairs: top positives with top negatives
+    const pairs = [];
+    for (const a of P.slice(0, 20)) for (const b of N) {
+      if (symbolOf(a) === symbolOf(b)) continue;
+      const ma = means.get(a), mb = means.get(b), v = margin(ma.map((x, r) => (x - mb[r]) / 2));
+      if (v > pos.get(a) && v > neg.get(b)) pairs.push({ a, b, v });
+    }
+    pairs.sort((x, y) => y.v - x.v);
+    const nm = id => shownName(symbolOf(id) ?? id), f = v => `${v >= 0 ? "+" : ""}${v.toFixed(2)}`;
+    expr.corr = { query: `${T} markers (hippocampus)`, all: P, ids: P.slice(0, LIST_PAGE), r: pos, keep: true };
+    searchBox.value = "";
+    showProbeBox(expr.corr.query, expr.corr.ids);
+    expr.chosen = new Set([P[0]]);
+    autoZ(expr.corr.ids);
+    applyColouring();
+    const cmp = others.map(r => HSUB[r]).join(", ");
+    const msg = `${T} vs ${cmp} (${nR[ti]} ${T} samples; z within each donor's hippocampus). A+ (ribbon; numbers = smallest margin over any other subfield): ${P.slice(0, 8).map(id => `${nm(id)} ${f(pos.get(id))}`).join(", ")}. `
+      + `B− (lower than every other subfield): ${N.slice(0, 8).filter(id => neg.get(id) > 0).map(id => `${nm(id)} ${f(neg.get(id))}`).join(", ") || "none"}. `
+      + `A+ B− pairs: ${pairs.slice(0, 6).map(p => `${nm(p.a)}+ ${nm(p.b)}− ${f(p.v)}`).join(", ") || "none better than single genes"}.`;
+    note.textContent = msg; setScaleNote(msg);
+    setPanelOpen(false);
+    if (document.body.classList.contains("ribbon-min")) setRibbonMin(false);
+  } finally { setBusy(null); }
+}
+$e("hsub-run").addEventListener("click", findSubfieldMarkers);
 
 // ---------------------------------------------------------------- long genes
 // The N longest protein-coding genes (assets/gene_lengths.tsv.gz: HGNC-approved genes with a
