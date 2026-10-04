@@ -445,6 +445,9 @@
   #ribbon.editing .ribbon-names { width: auto; max-width: none; padding-left: 4px; padding-right: 8px; }
   .rname .gbar { flex: none; align-self: stretch; width: 5px; margin-right: 2px; background: #000; border-radius: 1px; cursor: pointer; }
   .rname .gbar.on { background: #ffd600; }
+  .rname .gband { flex: none; align-self: stretch; width: 6px; margin-right: 2px; background: #bfc4cc; cursor: pointer; }
+  .rname .gband.cont { margin-bottom: calc(-1 * var(--row-gap, 2px)); }
+  .rname .gband.off { background: none; box-shadow: inset 0 0 0 1px var(--muted); }
   .rname .re-btn { flex: none; width: 16px; height: 14px; padding: 0; margin-right: 2px; font: 9px/12px var(--sans); color: var(--ink); background: rgba(255,255,255,0.1); border: 1px solid var(--edge); border-radius: 3px; cursor: pointer; }
   .rname .re-tog.on { background: #ffd600; color: #222; border-color: #ffd600; font-weight: 700; }
   .rname.off > :not(.re-btn) { opacity: 0.35; text-decoration: line-through; }
@@ -3103,7 +3106,11 @@ function renderRibbon() {
   $e("ribbon-names").replaceChildren(...ribbon.rows.map(r => {
     const row = Object.assign(document.createElement("div"), { className: `rname${r.chosen && ribbon.multiGene ? " chosen" : ""}${ribbon.edit.on && ribbon.edit.off.has(r.id) ? " off" : ""}` });
     row.dataset.id = r.id;
-    if (ribbon.gRange?.size > 1 || (ribbon.gRange?.size && ribbon.activeGroup)) {   // per-gene range: a bar to pick the slider's gene
+    if (ribbon.edit.on) {   // figure editing: one continuous bar per gene's run of rows, in the PNG unless toggled off
+      const g = symbolOf(r.id) ?? r.id, i = ribbon.rows.indexOf(r), nx = ribbon.rows[i + 1], off = ribbon.edit.bandOff.has(g);
+      const band = Object.assign(document.createElement("span"), { className: `gband${nx && (symbolOf(nx.id) ?? nx.id) === g ? " cont" : ""}${off ? " off" : ""}`, title: `${g}: gene bar ${off ? "left out of" : "in"} the figure (click to ${off ? "include" : "leave out"})` });
+      band.dataset.band = g; row.append(band);
+    } else if (ribbon.gRange?.size > 1 || (ribbon.gRange?.size && ribbon.activeGroup)) {   // per-gene range: a bar to pick the slider's gene
       const g = symbolOf(r.id), bar = Object.assign(document.createElement("span"), { className: `gbar${g === ribbon.activeGroup ? " on" : ""}`, title: `${g}: click to set this gene's colour range with the slider (±${(ribbon.gRange.get(g) ?? +$e("z-sym").value).toFixed(1)})` });
       bar.dataset.sym = g; row.append(bar);
     }
@@ -4137,6 +4144,8 @@ async function renderCellTypes() {
   // Figure editing (PNG button): columns in the user's order; those toggled off are dimmed while
   // editing and left out otherwise (and in the PNG)
   const ce = scView.colEdit ??= { on: false, off: new Set(), order: null };
+  ce.bandOff ??= new Set();
+  for (const c of colsAll) { const m = c.key.match(/^(?:g|a):(.+?)(?::(?:ct|sn|al))?$/); c.grp = c.key.startsWith("m:") ? scView.g?.name : m ? m[1] : null; }
   let order = colsAll.map((_, i) => i);
   if (ce.order) { const pos = new Map(ce.order.map((k, i) => [k, i])); order.sort((a, b) => (pos.get(colsAll[a].key) ?? 1e6 + a) - (pos.get(colsAll[b].key) ?? 1e6 + b)); }
   if (!ce.on || scView.exporting) order = order.filter(i => !ce.off.has(colsAll[i].key));
@@ -4146,7 +4155,10 @@ async function renderCellTypes() {
   if (ce.order) { let n = 0; for (const c of colsF) if (!c.plain && !c.vert) c.lv = n++; }
   const cellsF = cells.filter(c => newCi.has(c.ci)).map(c => ({ ...c, ci: newCi.get(c.ci) }));
   scView.colKeys = colsF.map(c => c.key);
-  drawGrid({ cols: colsF, edit: ce.on && !scView.exporting,
+  drawGrid({ cols: colsF, edit: ce.on && !scView.exporting, bands: ce.on || scView.exporting ? ce.bandOff : null,
+    onBandToggle: g => { ce.bandOff.has(g) ? ce.bandOff.delete(g) : ce.bandOff.add(g); renderCellTypes(); },
+    onBandMove: (g, beforeKey) => { const keys = colsF.map(c => c.key), mine = keys.filter((k, i) => colsF[i].grp === g), rest = keys.filter((k, i) => colsF[i].grp !== g);
+      let at = beforeKey == null ? rest.length : rest.indexOf(beforeKey); if (at < 0) at = rest.length; rest.splice(at, 0, ...mine); ce.order = rest; renderCellTypes(); },
     onColToggle: ci => { const k = colsF[ci].key; ce.off.has(k) ? ce.off.delete(k) : ce.off.add(k); renderCellTypes(); },
     lines, cells: cellsF, labelW: Math.max(150, ...lines.filter(l => l.label).map(l => 18 + l.label.length * 6.4 + (l.sub ? 6 + l.sub.length * 5.6 : 0))), cw: 22, rh: detailed ? 17 : 20, flatLabels: true,
     // Differential mode: a click on a row cycles it foreground -> background -> clear
@@ -4206,7 +4218,11 @@ function drawGrid(spec) {
   // Label levels: a column's lv (repeated per gene block), else its rank among the labelled columns
   const lvOf = (c, ci) => c.lv ?? ci;
   const nLv = Math.max(0, ...cols.map((c, ci) => (!c.plain && !c.vert ? lvOf(c, ci) + 1 : 0)));
-  const E = spec.edit ? 20 : 0;   // figure editing: a band of column toggles above the labels
+  const E0 = spec.edit ? 20 : 0;   // figure editing: a band of column toggles above the labels
+  // Gene bars (figure editing and PNG): one rectangle over each run of a gene's columns
+  const runs = [];
+  if (spec.bands) cols.forEach((c, ci) => { if (!c.grp) return; const r = runs[runs.length - 1]; if (r && r.g === c.grp && r.b === ci - 1) r.b = ci; else runs.push({ g: c.grp, a: ci, b: ci }); });
+  const shownRuns = spec.edit ? runs : runs.filter(r => !spec.bands.has(r.g)), GB = shownRuns.length ? 20 : 0, E = E0 + GB;
   const top = (spec.flatLabels ? Math.max(16 * nLv + 30, vertH) : spec.top) + E;
   const xs = []; let x = labelW;
   const ws = cols.map(c => c.w ?? cw);
@@ -4256,6 +4272,28 @@ function drawGrid(spec) {
     const t = svgEl("text", { class: "col", x: cx, y: top - 6, transform: `rotate(-62 ${cx} ${top - 6})` }, c.label);
     svg.append(t); return t;
   });
+  for (const r of shownRuns) {   // gene bars: click toggles (in the figure or not), drag moves the gene's columns
+    const off = spec.bands.has(r.g), x0 = xs[r.a], x1 = xs[r.b] + ws[r.b], y0 = E0 + 3;
+    const g = svgEl("g", spec.edit ? { style: "cursor: grab" } : {});
+    g.append(svgEl("rect", { x: x0, y: y0, width: x1 - x0, height: 14, rx: 2, fill: off ? "none" : "#bfc4cc", stroke: off ? "var(--muted)" : "none", "stroke-dasharray": off ? "3 2" : "none" }),
+      svgEl("text", { x: x0 + 4, y: y0 + 10.5, style: `fill: ${off ? "var(--muted)" : "#222"}; font-size: 10px; font-weight: 600; pointer-events: none` }, r.g));
+    if (spec.edit) {
+      g.firstChild.dataset.tip = `${r.g}: gene bar ${off ? "left out of" : "in"} the figure (click to ${off ? "include" : "leave out"}; drag to move the gene's columns)`;
+      g.addEventListener("pointerdown", e => {
+        e.stopPropagation(); g.setPointerCapture(e.pointerId);
+        const sx = e.clientX, k = (svg.getBoundingClientRect().width / W) || 1; let dx = 0;
+        const mv = ev => { dx = (ev.clientX - sx) / k; g.setAttribute("transform", `translate(${dx} 0)`); };
+        const up = () => { g.removeEventListener("pointermove", mv); g.removeEventListener("pointerup", up);
+          if (Math.abs(dx) < 4) { spec.onBandToggle?.(r.g); return; }
+          const mid = (x0 + x1) / 2 + dx; let ci = cols.findIndex((c, i) => c.grp !== r.g && xs[i] + ws[i] / 2 > mid);
+          while (ci > 0 && cols[ci].grp && cols[ci - 1].grp === cols[ci].grp) ci--;   // never inside another gene's columns
+          spec.onBandMove?.(r.g, ci < 0 ? null : cols[ci].key); };
+        g.addEventListener("pointermove", mv); g.addEventListener("pointerup", up);
+      });
+      g.addEventListener("click", e => e.stopPropagation());
+    }
+    svg.append(g);
+  }
   if (spec.edit) cols.forEach((c, ci) => {   // in-figure toggles; columns left out are dimmed
     const cx = xs[ci] + Math.min(ws[ci], cw) / 2, on = !c.off;
     const t = svgEl("rect", { x: cx - 6, y: 3, width: 12, height: 12, rx: 2, fill: on ? "#ffd600" : "none", stroke: on ? "#ffd600" : "var(--muted)", "stroke-width": 1, style: "cursor: pointer" });
@@ -4656,13 +4694,21 @@ function saveRibbonPng() {
     ctx.save(); ctx.beginPath(); ctx.rect(x0, 0, Math.max(0, x1 - x0), headH); ctx.clip();
     ctx.fillStyle = "#e8e8e8"; ctx.font = sp.cls === "dlabel" ? "600 11px sans-serif" : "10px sans-serif"; ctx.fillText(sp.text, x0 + 1, y); ctx.restore();
   }
+  // gene bars: one continuous rectangle down each run of a gene's rows (unless toggled off)
+  const gOf = r => symbolOf(r.id) ?? r.id, bands = rows.some(r => !ribbon.edit.bandOff.has(gOf(r)));
+  for (let i = 0; i < rows.length;) {
+    let j = i; while (j + 1 < rows.length && gOf(rows[j + 1]) === gOf(rows[i])) j++;
+    if (!ribbon.edit.bandOff.has(gOf(rows[i]))) { ctx.fillStyle = "#bfc4cc"; ctx.fillRect(2, headH + i * RH, 5, (j - i + 1) * RH - ROW_GAP); }
+    i = j + 1;
+  }
   ctx.font = "11px sans-serif"; ctx.fillStyle = "#e8e8e8";
-  rows.forEach((r, i) => { const y = headH + i * RH + ROW_H / 2; ctx.save(); ctx.beginPath(); ctx.rect(0, y - RH / 2, labelW - 6, RH); ctx.clip(); ctx.fillText(symbolOf(r.id) && !r.name.startsWith(symbolOf(r.id)) ? `${symbolOf(r.id)} · ${r.name}` : r.name, 4, y); ctx.restore(); });
+  const tx = bands ? 12 : 4;
+  rows.forEach((r, i) => { const y = headH + i * RH + ROW_H / 2; ctx.save(); ctx.beginPath(); ctx.rect(0, y - RH / 2, labelW - 6, RH); ctx.clip(); ctx.fillText(symbolOf(r.id) && !r.name.startsWith(symbolOf(r.id)) ? `${symbolOf(r.id)} · ${r.name}` : r.name, tx, y); ctx.restore(); });
   downloadCanvas(cv, `${expr.gene || "allen"}_ribbon.png`);
 }
 // Ribbon figure: the PNG button turns on editing in the ribbon itself: per row a toggle (in the
 // figure or not) and up / down arrows; a bar offers Save PNG and Done
-ribbon.edit = { on: false, off: new Set() };
+ribbon.edit = { on: false, off: new Set(), bandOff: new Set() };
 function ribbonEditSet(on) {
   ribbon.edit.on = on;
   if (on && ribbon.rows?.length) { const ids = ribbon.rows.map(r => r.id); expr.corr = { query: "list", all: ids, ids, r: expr.corr?.r ?? new Map(), keep: true }; searchBox.value = ""; }
@@ -4673,6 +4719,8 @@ $e("ribbon-png").addEventListener("click", () => { if (ribbon.rows?.length) ribb
 $e("rib-done").addEventListener("click", () => ribbonEditSet(false));
 $e("rib-save").addEventListener("click", saveRibbonPng);
 $e("ribbon-names").addEventListener("click", e => {
+  const bd = e.target.closest(".gband");
+  if (bd) { e.stopPropagation(); const s = ribbon.edit.bandOff, g = bd.dataset.band; s.has(g) ? s.delete(g) : s.add(g); renderRibbon(); return; }
   const gb = e.target.closest(".gbar");
   if (gb) { e.stopPropagation(); ribbon.activeGroup = gb.dataset.sym; const t = ribbon.gRange.get(gb.dataset.sym) ?? +$e("z-sym").value; $e("z-sym").value = t; $e("z-sym-val").textContent = `±${t.toFixed(1)}`; renderRibbon(); return; }
   const b = e.target.closest(".re-btn"); if (!b) return;
