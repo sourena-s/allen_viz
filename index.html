@@ -3670,6 +3670,11 @@ async function loadSingleCell(base = "assets/siletti_hipamy") {
   // Linear means (counts per 10k, no log), one byte per unit scaled to lmax: a third block
   header.nU = header.clusters?.length ?? header.groups.length;
   if (header.lmax) header.lin = header.body.subarray(header.genes.length * header.nU * 2, header.genes.length * header.nU * 3);
+  // Per cluster: share of nuclei expressing the subfield marker genes (markerField)
+  if (header.clusters) for (const g of ["FIBCD1", "FNDC1", "RGS14", "HS3ST4", "PCP4", "FN1", "PROX1"]) {
+    const gi = header.geneIndex.get(g); if (gi === undefined) continue;
+    header.clusters.forEach((c, k) => { (c.mf ??= {})[g] = header.body[gi * header.nU * 2 + header.nU + k] / 255; });
+  }
   scCache.set(base, header);
   return header;
 }
@@ -3752,20 +3757,24 @@ async function showCellTypes() {
 // nuclei mostly come from outside the hippocampus (e.g. amygdala) are left out.
 const MARKER_FIELDS = [
   { key: "CA1", label: "CA1 (FIBCD1+ or FNDC1+)", color: "#0a84ff" },
-  { key: "CA2", label: "CA2 (PCP4+, no CA1 markers)", color: "#3fa7ff" },
-  { key: "CA34", label: "CA3–CA4 (Siletti CA4 class, no CA1 markers)", color: "#7cc0ff" },
+  { key: "CA2", label: "CA2 (RGS14+)", color: "#3fa7ff" },
+  { key: "CA3", label: "CA3 (HS3ST4+)", color: "#7cc0ff" },
+  { key: "SUB", label: "Subiculum (PCP4+ or FN1+, PROX1−)", color: "#5a7dbf" },
   { key: "DG", label: "Dentate gyrus granule (PROX1+)", color: "#00a3a3" },
-  { key: "CAx", label: "CA1–3 class, no canonical marker", color: "#8a96a8" },
+  { key: "CAx", label: "CA class, none of these markers", color: "#8a96a8" },
 ];
 const HIPP_DISSECTIONS = 11;   // dissections 0-10 are hippocampal (head, body, tail)
 function markerField(c) {
   const hipp = c.where.slice(0, HIPP_DISSECTIONS).reduce((a, w) => a + w, 0) / 255;
   if (!c.sc.startsWith("Hippocampal") || hipp < 0.5) return null;
-  const has = m => c.canon?.includes(m);
+  // Human markers, a cluster counting as positive when at least half its nuclei express the gene;
+  // checked in this order: CA1, CA2, subiculum, CA3
+  const pos = m => (c.mf?.[m] ?? 0) >= 0.5;
   if (c.sc === "Hippocampal dentate gyrus") return "DG";
-  if (c.sc === "Hippocampal CA4") return has("FIBCD1") || has("FNDC1") ? "CA1" : "CA34";
-  if (has("FIBCD1") || has("FNDC1")) return "CA1";
-  if (has("PCP4")) return "CA2";
+  if (pos("FIBCD1") || pos("FNDC1")) return "CA1";
+  if (pos("RGS14")) return "CA2";
+  if ((pos("PCP4") || pos("FN1")) && !pos("PROX1")) return "SUB";
+  if (pos("HS3ST4")) return "CA3";
   return "CAx";
 }
 // Both views are one column of the gene (colour: mean, log1p counts per 10k; size: nuclei;
@@ -4100,7 +4109,7 @@ async function renderCellTypes() {
     });
   }
   { const st = diff ? `Differential: ${diff.note}` : ""; $e("sc-status").textContent = st; $e("sc-status").title = st; }
-  $e("sc-sub").textContent = `${diff ? `Differential: ${diff.note} ` : ""}${scView.hpa ? "Protein Atlas brain clusters (c-numbers as on proteinatlas.org: brain neurons, and non-neuronal clusters marked so), each nucleus of these dissections assigned to the cluster whose expression profile it correlates with best over ~1,450 marker genes (an approximation of the Protein Atlas assignment), grouped by cell type, in c-number order. " : ""}${scView.hpa ? "Rows" : detailed ? "Siletti clusters, grouped by subfield (canonical markers) or cell class, sorted by share expressing" : "Hippocampal subfields by canonical markers (CA1: FIBCD1/FNDC1; CA2: PCP4; DG: PROX1), other cell classes per region"}, then each dissection (all its nuclei; dissections mix neighbouring fields). The subiculum has no cluster or canonical marker of its own in these data (its nuclei fall into CA1-type clusters), so it appears only as a dissection row. Colour: mean expression of ${scView.g.name} in counts per 10k (linear, no log), from pale (lowest row) to red (highest row), square area likewise, stretched separately for the by-markers rows and the by-dissection rows; co-expressed columns each over their own range. Bars: nuclei (grey, linear) and those expressing the gene (green).${detailed ? " Allen: the probe highlighted in the ribbon, every sample of the Allen structures matching each subfield, class or dissection (the ribbon turned on its side, its colours), from your loaded donors." : " Allen: mean z of the probe highlighted in the ribbon in each marker subfield's Allen structures, in the ribbon's colours."}${detailed ? " Hover a cluster for where it was dissected." : ""} (Ex) excitatory, (In) inhibitory.`;
+  $e("sc-sub").textContent = `${diff ? `Differential: ${diff.note} ` : ""}${scView.hpa ? "Protein Atlas brain clusters (c-numbers as on proteinatlas.org: brain neurons, and non-neuronal clusters marked so), each nucleus of these dissections assigned to the cluster whose expression profile it correlates with best over ~1,450 marker genes (an approximation of the Protein Atlas assignment), grouped by cell type, in c-number order. " : ""}${scView.hpa ? "Rows" : detailed ? "Siletti clusters, grouped by subfield (canonical markers) or cell class, sorted by share expressing" : "Hippocampal subfields by canonical markers (CA1: FIBCD1/FNDC1; CA2: RGS14; subiculum: PCP4 or FN1 without PROX1; CA3: HS3ST4; DG: PROX1; a cluster counts as positive when half its nuclei express the gene, in that order), other cell classes per region"}, then each dissection (all its nuclei; dissections mix neighbouring fields). The subiculum has no cluster or canonical marker of its own in these data (its nuclei fall into CA1-type clusters), so it appears only as a dissection row. Colour: mean expression of ${scView.g.name} in counts per 10k (linear, no log), from pale (lowest row) to red (highest row), square area likewise, stretched separately for the by-markers rows and the by-dissection rows; co-expressed columns each over their own range. Bars: nuclei (grey, linear) and those expressing the gene (green).${detailed ? " Allen: the probe highlighted in the ribbon, every sample of the Allen structures matching each subfield, class or dissection (the ribbon turned on its side, its colours), from your loaded donors." : " Allen: mean z of the probe highlighted in the ribbon in each marker subfield's Allen structures, in the ribbon's colours."}${detailed ? " Hover a cluster for where it was dissected." : ""} (Ex) excitatory, (In) inhibitory.`;
   const colsAll = [...(multi
       ? multi.flatMap((name, j) => [{ key: `g:${name}`, label: name, gene: name, vert: true, gap: j ? 10 : 0 }, { key: `g:${name}:ct`, label: "Count (% Exp.)", w: 84, vert: true, gap: 2 }])
       : [{ key: "m:sn", label: `${scView.g.name} (snRNA-seq)`, lv: 0 }, { key: "m:al", label: `${scView.g.name} (Allen)`, lv: 1, gap: 6 }, { key: "m:ct", label: "Count (% Exp.)", w: 190, gap: 10, plain: true },
@@ -4132,7 +4141,7 @@ async function renderCellTypes() {
 // Allen structures matching each Siletti dissection (Allen has no separate entorhinal cortex: PHG)
 const ALLEN_OF_DISSECTION = [["DG", "CA4"], ["CA2", "CA3"], ["CA1", "CA2", "CA3"], ["CA1"], ["S"], ["DG", "CA4"], ["CA3"], ["CA1", "CA2", "CA3"], ["CA1", "CA2"], ["CA4", "DG"], ["CA1", "CA2", "CA3"],
   ["PHG"], ["PHG"], ["PHG"], ["LA"], ["BLA"], ["BMA"], ["CeA"], ["COMA"], ["COMA"], ["BST"]];
-const ALLEN_OF_FIELD = { CA1: ["CA1"], CA2: ["CA2"], CA34: ["CA3", "CA4"], DG: ["DG"], CAx: ["CA1", "CA2", "CA3"] };
+const ALLEN_OF_FIELD = { CA1: ["CA1"], CA2: ["CA2"], CA3: ["CA3", "CA4"], SUB: ["S"], CA34: ["CA3", "CA4"], DG: ["DG"], CAx: ["CA1", "CA2", "CA3"] };
 const ALLEN_HIPP = ["CA1", "CA2", "CA3", "CA4", "DG", "S"], ALLEN_AMY = ["LA", "BLA", "BMA", "CeA", "COMA", "ATZ"];
 // Mean Allen z-score of the probe highlighted in the ribbon over the loaded donors' samples in
 // those structures (z within each donor, as in the ribbon); null without data there
