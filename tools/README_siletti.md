@@ -56,3 +56,20 @@ Requires `pip install cellxgene-census`; `cxopen.py` opens Census by its S3 path
    (15), Leiden; each new cluster labelled DG (PROX1+, no CA1 marker), CA1 (FIBCD1+ or FNDC1+),
    CA2 (RGS14+), subiculum (PCP4+ or FN1+, PROX1-), CA3 (HS3ST4+), in that order, a cluster
    counting as positive when at least half its nuclei have any count.
+
+## Brief custom (reclustered hippocampal neurons)
+
+The "Brief custom" toggle in the cells window replaces the Brief "subfield by markers" rows with our own reclustering:
+
+1. `rc1.py` fetches raw counts for all hippocampal nuclei (11 dissections, 150,623 nuclei) from CELLxGENE Census.
+2. `rc2.py` normalises them (counts per 10k, log1p, scaling), runs PCA (50 components), builds a kNN graph (k = 15) and runs Leiden at resolution 1.0, which gives 42 clusters. Each cluster is labelled by the share of its nuclei that express each marker (positive when at least 50% do), checked in order:
+   - CA1: FIBCD1 or FNDC1
+   - CA2: RGS14
+   - SUB: PCP4 or FN1, and not PROX1
+   - CA3: HS3ST4
+   - DG: PROX1
+   - Unlabelled: the nuclei that match none of these markers. They are kept as their own row.
+3. `agg7.py` sums the whole genome per (dissection × label): log1p cp10k means, linear cp10k means and detection fractions.
+4. `packcu.py` writes `assets/siletti_custom.bin.gz` in the SILETTI1 format. Its groups are [dissection, label, n], with n ≥ 30.
+
+Each label's Allen column pools the matching Allen subfields: CA1→CA1, CA2→CA2, CA3→CA3+CA4, SUB→S, DG→DG. The Unlabelled row has no Allen column. Allen data were not used to choose the markers.
