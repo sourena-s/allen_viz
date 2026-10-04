@@ -3882,6 +3882,14 @@ function scDifferential(rows, detailed, region, clusters) {
 }
 // A gene's linear mean (counts per 10k) in unit k; the log mean where a file has no linear block
 const scLin = (data, gi, k) => data.lin ? data.lin[gi * data.nU + k] / 255 * data.lmax[gi] : data.body[gi * data.nU * 2 + k] / 255 * data.max[gi];
+// Brief custom row tooltip: the rule that defines the label and each Leiden cluster in it with its markers
+// (% of the cluster's nuclei with any count)
+const CU_MARKERS = { CA1: ["FIBCD1", "FNDC1"], CA3: ["HS3ST4", "NPNT"], CA2: ["RGS14", "COL21A1"], SUB: ["PCP4", "FN1", "PROX1"], DG: ["PROX1"], none: ["FIBCD1", "FNDC1", "HS3ST4", "NPNT", "RGS14", "COL21A1", "PCP4", "FN1", "PROX1"] };
+function cuTip(cu, key, label, nd) {
+  const cl = (cu.rcClusters ?? []).filter(c => c.label === key), mk = CU_MARKERS[key] ?? [];
+  return [label, cu.rules?.[key] ? `Rule: ${cu.rules[key]}` : null, "Positive: at least 50% of a cluster's nuclei with any count (NPNT 30%)",
+    `${cl.length} Leiden clusters, ${nd} hippocampal dissections:`, ...cl.map(c => `  c${c.cl} (${c.n.toLocaleString()} nuclei): ${mk.map(m => `${m} ${c.pct[m]}%`).join(", ")}`)].filter(Boolean).join("\n");
+}
 async function renderCellTypes() {
   const { region, clusters, gR, gC, detailed } = scView, token = scView.token;
   const rows = [];   // { sec, color } | { label, sub, bar, n, mean, frac, tip }
@@ -3932,7 +3940,7 @@ async function renderCellTypes() {
       if (!n) return;
       const key = cu.keys?.[li] ?? label, al = { CA1: ["CA1"], CA2: ["CA2"], CA3: ["CA3", "CA4"], SUB: ["S"], DG: ["DG"] }[key];
       const col = MARKER_FIELDS.find(f => f.key === key)?.color ?? "#8e8e93";
-      rows.push({ cu: gs, label, bar: col, n, mean: m / n, frac: fr / n, lin: l / n, allen: al ? allenZ(al) : null, allenWhere: al?.join(", "), tip: `${label}\nReclustered nuclei across ${gs.length} hippocampal dissections` });
+      rows.push({ cu: gs, label, bar: col, n, mean: m / n, frac: fr / n, lin: l / n, allen: al ? allenZ(al) : null, allenWhere: al?.join(", "), tip: cuTip(cu, key, label, gs.length) });
     });
   }
   if (!detailed) {

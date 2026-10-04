@@ -73,3 +73,26 @@ The "Brief custom" toggle in the cells window replaces the Brief "subfield by ma
 4. `packcu.py` writes `assets/siletti_custom.bin.gz` in the SILETTI1 format. Its groups are [dissection, label, n], with n ≥ 30.
 
 Each label's Allen column pools the matching Allen subfields: CA1→CA1, CA2→CA2, CA3→CA3+CA4, SUB→S, DG→DG. The Unlabelled row has no Allen column. Allen data were not used to choose the markers.
+
+### Revised labels (rc3.py)
+
+The labels were revised after checking candidate markers (NPNT, HACD2, COL21A1) in the Leiden clusters:
+
+- NPNT is specific to CA3. About 87% of nuclei in the main CA3 cluster express it, against 2% or less in CA1 and DG. HS3ST4 is also high in the CA2 and subiculum clusters.
+- COL21A1 is high in CA2, subiculum and DG, and low in CA1 and CA3.
+- HACD2 is broad and was not used.
+
+`rc3.py` relabels the same 42 Leiden clusters. The rules are checked in this order:
+
+1. CA1: FIBCD1 or FNDC1
+2. CA3: HS3ST4 and NPNT (NPNT at a 30% threshold)
+3. CA2: RGS14 and COL21A1
+4. SUB: PCP4 or FN1, and not PROX1
+5. DG: PROX1
+6. Unlabelled: none of these
+
+Two clusters change label: c22 goes from CA2 to CA3 (60% of its nuclei express NPNT), and c10 goes from CA3 to Unlabelled. Run it as follows:
+
+    LABELS=rc_labels_v2.parquet OUT=agg8 python agg7.py; AGG=agg8 python packcu.py
+
+The file stores each cluster's marker percentages (`rcClusters`) and the rules (`rules`), and the row tooltips show them.
