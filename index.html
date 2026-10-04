@@ -387,17 +387,13 @@
   #tour .tour-btns button[data-a="end"] { margin-left: auto; }
   @keyframes tour-pulse { 50% { box-shadow: 0 0 0 9px rgba(255,214,0,0.08); } }
   @keyframes tour-bob { to { translate: 0 6px; } }
-  #ribbon-edit { width: min(520px, calc(100vw - 16px)); max-height: calc(100dvh - 16px); padding: 0; border-radius: 4px; color: var(--ink); background: #3a3f46; border: 1px solid #555; }
-  #ribbon-edit::backdrop { background: rgba(20, 28, 38, 0.3); }
-  #ribbon-edit ol { max-height: 60dvh; overflow: auto; margin: 0; padding-left: 28px; font-size: 12px; }
-  #ribbon-edit li { display: flex; align-items: center; gap: 6px; padding: 2px 0; cursor: grab; }
-  #ribbon-edit li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #ribbon-edit li button { font: 12px var(--sans); color: var(--ink); background: rgba(255,255,255,0.1); border: 1px solid var(--edge); border-radius: 3px; padding: 0 6px; cursor: pointer; }
   /* co-expressed / differential: push buttons (lit while on) rather than switches */
-  #sc-coexp, #sc-diff, #sc-add { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+  #sc-coexp, #sc-diff, #sc-add, #rib-add { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
   label[for="sc-coexp"], label[for="sc-diff"] { font: 12px var(--sans); color: var(--ink); padding: 3px 9px; border: 1px solid var(--edge); border-radius: 5px; cursor: pointer; background: transparent; white-space: nowrap; }
-  .sc-add-lbl { display: none; font: 600 15px var(--sans); color: var(--ink); width: 30px; height: 30px; line-height: 28px; text-align: center; box-sizing: border-box; border: 1px solid var(--edge); border-radius: 5px; cursor: pointer; }
+  .sc-add-lbl { display: none; flex: none; font: 600 14px var(--sans); color: var(--ink); width: 22px; height: 22px; line-height: 20px; margin-right: 4px; text-align: center; box-sizing: border-box; border: 1px solid var(--edge); border-radius: 5px; cursor: pointer; }
   body.phone .sc-add-lbl { display: inline-block; }
+  body.phone .ribbon-head .sc-add-lbl { width: 30px; height: 30px; line-height: 28px; align-self: center; }
+  #rib-add:checked + label,
   #sc-add:checked + label { background: #ffd600; color: #222; border-color: #ffd600; }
   #sc-coexp:checked + label, #sc-diff:checked + label { background: #ffd600; color: #222; border-color: #ffd600; font-weight: 600; }
   #sc-coexp:disabled + label { opacity: 0.4; cursor: default; }
@@ -445,6 +441,15 @@
   .sc-help { position: absolute; z-index: 5; right: 12px; top: 48px; width: min(560px, calc(100% - 24px)); max-height: 70%; overflow: auto; box-sizing: border-box; padding: 10px 14px; border-radius: 6px; background: #22262b; border: 1px solid var(--edge); box-shadow: 0 6px 24px rgba(0,0,0,0.5); }
   .sc-help[hidden] { display: none; }
   .sc-tg { position: relative; }
+  /* Ribbon figure editing: controls before each row name, the editing bar in the head */
+  #ribbon.editing .ribbon-names { width: auto; max-width: none; padding-left: 4px; padding-right: 8px; }
+  .rname .re-btn { flex: none; width: 16px; height: 14px; padding: 0; margin-right: 2px; font: 9px/12px var(--sans); color: var(--ink); background: rgba(255,255,255,0.1); border: 1px solid var(--edge); border-radius: 3px; cursor: pointer; }
+  .rname .re-tog.on { background: #ffd600; color: #222; border-color: #ffd600; font-weight: 700; }
+  .rname.off > :not(.re-btn) { opacity: 0.35; text-decoration: line-through; }
+  .rname .re-name { font-size: 11px; margin-left: 3px; white-space: nowrap; }
+  .rib-editbar { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: #ffd600; margin-left: 8px; }
+  .rib-editbar[hidden] { display: none; }
+  #sc-png[aria-pressed="true"], #ribbon-png[aria-pressed="true"] { background: #ffd600; color: #222; }
   .sc-zpop { position: absolute; z-index: 6; left: 0; top: calc(100% + 6px); padding: 8px 10px; border-radius: 6px; background: #22262b; border: 1px solid var(--edge); box-shadow: 0 6px 20px rgba(0,0,0,0.5); white-space: nowrap; }
   .sc-zpop[hidden] { display: none; }
   .sc-zbtn[aria-expanded="true"] { background: rgba(255,255,255,0.22); }
@@ -742,10 +747,11 @@
 
 <section id="ribbon" class="glass" hidden aria-label="Expression z-score of every sample, one row per probe">
   <div class="ribbon-head">
-    <input type="text" class="title gene-box" id="gene-input" role="combobox" aria-autocomplete="list" aria-expanded="false"
+    <input type="checkbox" id="rib-add" autocomplete="off"><label for="rib-add" class="sc-add-lbl" title="Add: Enter adds the gene's probes as rows (as Ctrl+Enter)" aria-label="Add genes as rows">+</label><input type="text" class="title gene-box" id="gene-input" role="combobox" aria-autocomplete="list" aria-expanded="false"
            aria-controls="gene-suggestions" aria-label="Gene or probe" placeholder="Gene" autocomplete="off" spellcheck="false"><button type="button" class="corr-btn" id="corr-btn" disabled title="The 20 probes most correlated with the highlighted row">corr</button><button type="button" class="corr-btn" id="cells-btn" title="Cell types expressing this gene in hippocampal and amygdala subregions (single-nucleus RNA-seq, Siletti et al. 2023)">cells</button><button type="button" class="corr-btn" id="sub-btn" title="Subcellular location images (Human Protein Atlas) of every gene in the ribbon">sub</button><span class="probe zval" id="ribbon-probe" hidden></span>
     <label class="zsym" title="Colour range: z from minus to plus this value">z
       <input type="range" id="z-sym" min="0.5" max="6" step="0.1" value="2" aria-label="Colour range, z"><span id="z-sym-val" class="rm-value">±2.0</span></label>
+    <span id="rib-editbar" class="rib-editbar" hidden>Figure: tick rows, ▲▼ to order <button type="button" class="corr-btn" id="rib-save">Save PNG</button><button type="button" class="corr-btn" id="rib-done">Done</button></span>
     <div class="rb-tools">
       <button class="rb-btn" id="ribbon-png" type="button" aria-label="Save as PNG" title="Save the ribbon as a PNG (choose, remove and reorder rows first)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 19h14"/></svg></button>
       <button class="rb-btn" id="ribbon-upright" type="button" aria-pressed="false" aria-label="Maximise the ribbon upright (whole screen)" title="Whole screen, upright">
@@ -786,7 +792,7 @@
       <button class="rb-btn" value="close" aria-label="Close" title="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
 
     <div class="sc-zrow">
-<span id="sc-status" class="sc-status"></span></div>
+<span id="sc-editbar" class="rib-editbar" hidden>Figure: tick columns; select a column (click it) and move it <button type="button" class="corr-btn" id="sc-mvl" title="Move the selected column left">◀</button><button type="button" class="corr-btn" id="sc-mvr" title="Move the selected column right">▶</button><button type="button" class="corr-btn" id="sc-save">Save PNG</button><button type="button" class="corr-btn" id="sc-done">Done</button></span><span id="sc-status" class="sc-status"></span></div>
     <div id="sc-plot"></div>
     <div class="sc-legend" id="sc-legend"></div>
     <div id="sc-help" class="sc-help" hidden>
@@ -2201,7 +2207,7 @@ searchBox.addEventListener("keydown", e => {
   if (e.key === "ArrowDown") { e.preventDefault(); if (suggestList.hidden) showSuggestions(SUGGEST_LIMIT); moveActive(1); }
   else if (e.key === "ArrowUp") { e.preventDefault(); moveActive(-1); }
   else if (e.key === "Escape") hideSuggestions();
-  else if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && expr.byDonor.size && ribbon.rows?.length) {
+  else if (e.key === "Enter" && (e.ctrlKey || e.metaKey || $e("rib-add").checked) && expr.byDonor.size && ribbon.rows?.length) {
     // Ctrl/Cmd+Enter: the gene's probes are added as rows under the current ones
     e.preventDefault(); hideSuggestions();
     const add = probesFor(boxQuery()).filter(id => !ribbon.rows.some(r => r.id === id));
@@ -3079,7 +3085,16 @@ function renderRibbon() {
   showRibbonProbe(ribbon.rows.find(r => r.id === ribbon.shownProbe));
   // Row names double as the probe selector for the brain colours
   $e("ribbon-names").replaceChildren(...ribbon.rows.map(r => {
-    const row = Object.assign(document.createElement("div"), { className: `rname${r.chosen && ribbon.multiGene ? " chosen" : ""}` });
+    const row = Object.assign(document.createElement("div"), { className: `rname${r.chosen && ribbon.multiGene ? " chosen" : ""}${ribbon.edit.on && ribbon.edit.off.has(r.id) ? " off" : ""}` });
+    row.dataset.id = r.id;
+    if (ribbon.edit.on) {   // figure editing: in-figure toggle, up, down
+      const on = !ribbon.edit.off.has(r.id);
+      row.append(Object.assign(document.createElement("button"), { type: "button", className: `re-btn re-tog${on ? " on" : ""}`, title: on ? "In the figure (click to leave out)" : "Left out of the figure (click to include)", textContent: on ? "✓" : "" }),
+        Object.assign(document.createElement("button"), { type: "button", className: "re-btn", title: "Move up", textContent: "▲" }),
+        Object.assign(document.createElement("button"), { type: "button", className: "re-btn", title: "Move down", textContent: "▼" }));
+      row.children[0].dataset.a = "tog"; row.children[1].dataset.a = "up"; row.children[2].dataset.a = "down";
+      if (!ribbon.multiGene) row.append(Object.assign(document.createElement("span"), { className: "re-name", textContent: r.name }));
+    }
     const rv = expr.corr?.r.get(r.id);
     if (ribbon.multiGene) row.append(Object.assign(document.createElement("span"), { className: "rgene", title: "GeneCards / Protein Atlas", textContent: `${rv != null ? `${rv.toFixed(2)} ` : ""}${shownName(symbolOf(r.id) ?? "")}` }));
     if (row.lastChild?.className === "rgene") row.lastChild.dataset.symbol = symbolOf(r.id) ?? "";
@@ -4064,15 +4079,29 @@ async function renderCellTypes() {
   }
   { const st = diff ? `Differential: ${diff.note}` : ""; $e("sc-status").textContent = st; $e("sc-status").title = st; }
   $e("sc-sub").textContent = `${diff ? `Differential: ${diff.note} ` : ""}${scView.hpa ? "Protein Atlas brain clusters (c-numbers as on proteinatlas.org: brain neurons, and non-neuronal clusters marked so), each nucleus of these dissections assigned to the cluster whose expression profile it correlates with best over ~1,450 marker genes (an approximation of the Protein Atlas assignment), grouped by cell type, in c-number order. " : ""}${scView.hpa ? "Rows" : detailed ? "Siletti clusters, grouped by subfield (canonical markers) or cell class, sorted by share expressing" : "Hippocampal subfields by canonical markers (CA1: FIBCD1/FNDC1; CA2: PCP4; DG: PROX1), other cell classes per region"}, then each dissection (all its nuclei; dissections mix neighbouring fields). The subiculum has no cluster or canonical marker of its own in these data (its nuclei fall into CA1-type clusters), so it appears only as a dissection row. Colour: mean expression of ${scView.g.name} in counts per 10k (linear, no log), from pale (lowest row) to red (highest row), square area likewise, stretched separately for the by-markers rows and the by-dissection rows; co-expressed columns each over their own range. Bars: nuclei (grey, linear) and those expressing the gene (green).${detailed ? " Allen: the probe highlighted in the ribbon, every sample of the Allen structures matching each subfield, class or dissection (the ribbon turned on its side, its colours), from your loaded donors." : " Allen: mean z of the probe highlighted in the ribbon in each marker subfield's Allen structures, in the ribbon's colours."}${detailed ? " Hover a cluster for where it was dissected." : ""} (Ex) excitatory, (In) inhibitory.`;
-  drawGrid({ cols: [...(multi
-      ? multi.flatMap((name, j) => [{ label: name, gene: name, vert: true, gap: j ? 10 : 0 }, { label: "Count (% Exp.)", w: 84, vert: true, gap: 2 }])
-      : [{ label: `${scView.g.name} (snRNA-seq)`, lv: 0 }, { label: `${scView.g.name} (Allen)`, lv: 1, gap: 6 }, { label: "Count (% Exp.)", w: 190, gap: 10, plain: true },
-         ...added.flatMap(a => [{ label: `${a.name} (snRNA-seq)`, gene: a.name, lv: 0, gap: 14 }, { label: `${a.name} (Allen)`, lv: 1, gap: 6 }, { label: "Count (% Exp.)", w: 190, gap: 10, plain: true }])]),
-      ...(detailed ? [{ label: "Markers ([canonical] then cluster-specific)", w: 360, gap: 8, plain: !multi, vert: !!multi }] : []),
-      ...extra.map((c, j) => ({ label: c.label, gene: c.name, pct: c.pct, pctOf: c.pctOf, sep: c.sep, vert: true, gap: j === 0 || (c.diff && !extra[j - 1].diff) || c.sep ? 8 : 0 }))],
-    lines, cells, labelW: Math.max(150, ...lines.filter(l => l.label).map(l => 18 + l.label.length * 6.4 + (l.sub ? 6 + l.sub.length * 5.6 : 0))), cw: 22, rh: detailed ? 17 : 20, flatLabels: true,
+  const colsAll = [...(multi
+      ? multi.flatMap((name, j) => [{ key: `g:${name}`, label: name, gene: name, vert: true, gap: j ? 10 : 0 }, { key: `g:${name}:ct`, label: "Count (% Exp.)", w: 84, vert: true, gap: 2 }])
+      : [{ key: "m:sn", label: `${scView.g.name} (snRNA-seq)`, lv: 0 }, { key: "m:al", label: `${scView.g.name} (Allen)`, lv: 1, gap: 6 }, { key: "m:ct", label: "Count (% Exp.)", w: 190, gap: 10, plain: true },
+         ...added.flatMap(a => [{ key: `a:${a.name}:sn`, label: `${a.name} (snRNA-seq)`, gene: a.name, lv: 0, gap: 14 }, { key: `a:${a.name}:al`, label: `${a.name} (Allen)`, lv: 1, gap: 6 }, { key: `a:${a.name}:ct`, label: "Count (% Exp.)", w: 190, gap: 10, plain: true }])]),
+      ...(detailed ? [{ key: "mk", label: "Markers ([canonical] then cluster-specific)", w: 360, gap: 8, plain: !multi, vert: !!multi }] : []),
+      ...extra.map((c, j) => ({ key: `x:${c.diff ? "d" : "c"}:${c.name}`, label: c.label, gene: c.name, pct: c.pct, pctOf: c.pctOf, sep: c.sep, vert: true, gap: j === 0 || (c.diff && !extra[j - 1].diff) || c.sep ? 8 : 0 }))];
+  // Figure editing (PNG button): columns in the user's order; those toggled off are dimmed while
+  // editing and left out otherwise (and in the PNG)
+  const ce = scView.colEdit ??= { on: false, off: new Set(), order: null };
+  let order = colsAll.map((_, i) => i);
+  if (ce.order) { const pos = new Map(ce.order.map((k, i) => [k, i])); order.sort((a, b) => (pos.get(colsAll[a].key) ?? 1e6 + a) - (pos.get(colsAll[b].key) ?? 1e6 + b)); }
+  if (!ce.on || scView.exporting) order = order.filter(i => !ce.off.has(colsAll[i].key));
+  const newCi = new Map(order.map((oi, ni) => [oi, ni]));
+  const colsF = order.map(i => ({ ...colsAll[i], off: ce.off.has(colsAll[i].key) }));
+  // A custom order: label heights follow the new order (one level per labelled column), so none overlap
+  if (ce.order) { let n = 0; for (const c of colsF) if (!c.plain && !c.vert) c.lv = n++; }
+  const cellsF = cells.filter(c => newCi.has(c.ci)).map(c => ({ ...c, ci: newCi.get(c.ci) }));
+  scView.colKeys = colsF.map(c => c.key);
+  drawGrid({ cols: colsF, edit: ce.on && !scView.exporting,
+    onColToggle: ci => { const k = colsF[ci].key; ce.off.has(k) ? ce.off.delete(k) : ce.off.add(k); renderCellTypes(); },
+    lines, cells: cellsF, labelW: Math.max(150, ...lines.filter(l => l.label).map(l => 18 + l.label.length * 6.4 + (l.sub ? 6 + l.sub.length * 5.6 : 0))), cw: 22, rh: detailed ? 17 : 20, flatLabels: true,
     // Differential mode: a click on a row cycles it foreground -> background -> clear
-    selKey: scView.selKey, selCi: scView.selCi,
+    selKey: scView.exporting ? null : scView.selKey, selCi: scView.selCi,
     onSelect: (key, ci) => { const was = scView.selKey; scView.selKey = key ?? null; scView.selCi = ci; if (co && was !== scView.selKey) renderCellTypes(); },
     onRow: marking ? li => { const k = lines[li]?.key; if (!k) return; const m = scView.marks.get(k);
       if (!m) scView.marks.set(k, "fg"); else if (m === "fg") scView.marks.set(k, "bg"); else scView.marks.delete(k); renderCellTypes(); } : null });
@@ -4128,7 +4157,8 @@ function drawGrid(spec) {
   // Label levels: a column's lv (repeated per gene block), else its rank among the labelled columns
   const lvOf = (c, ci) => c.lv ?? ci;
   const nLv = Math.max(0, ...cols.map((c, ci) => (!c.plain && !c.vert ? lvOf(c, ci) + 1 : 0)));
-  const top = spec.flatLabels ? Math.max(16 * nLv + 30, vertH) : spec.top;
+  const E = spec.edit ? 20 : 0;   // figure editing: a band of column toggles above the labels
+  const top = (spec.flatLabels ? Math.max(16 * nLv + 30, vertH) : spec.top) + E;
   const xs = []; let x = labelW;
   const ws = cols.map(c => c.w ?? cw);
   cols.forEach((c, i) => { x += c.gap ?? 0; xs.push(x); x += ws[i]; });
@@ -4169,13 +4199,21 @@ function drawGrid(spec) {
       svg.append(t); return t;
     }
     if (spec.flatLabels) {
-      const ly = 16 * (lvOf(c, ci) + 1);
+      const ly = 16 * (lvOf(c, ci) + 1) + E;
       svg.append(svgEl("polyline", { points: `${cx},${leadEnd} ${cx},${ly - 4} ${cx + 6},${ly - 4}`, fill: "none", stroke: "var(--muted)", "stroke-width": 0.8 }));
       const t = svgEl("text", { class: "col", x: cx + 9, y: ly }, c.label);
       svg.append(t); return t;
     }
     const t = svgEl("text", { class: "col", x: cx, y: top - 6, transform: `rotate(-62 ${cx} ${top - 6})` }, c.label);
     svg.append(t); return t;
+  });
+  if (spec.edit) cols.forEach((c, ci) => {   // in-figure toggles; columns left out are dimmed
+    const cx = xs[ci] + Math.min(ws[ci], cw) / 2, on = !c.off;
+    const t = svgEl("rect", { x: cx - 6, y: 3, width: 12, height: 12, rx: 2, fill: on ? "#ffd600" : "none", stroke: on ? "#ffd600" : "var(--muted)", "stroke-width": 1, style: "cursor: pointer" });
+    t.dataset.tip = on ? "In the figure (click to leave out)" : "Left out of the figure (click to include)";
+    t.addEventListener("click", e => { e.stopPropagation(); spec.onColToggle?.(ci); });
+    svg.append(t);
+    if (c.off) svg.append(svgEl("rect", { x: xs[ci], y: E, width: ws[ci], height: top - E + lines.length * rh, fill: "#3a3f46", opacity: 0.7, "pointer-events": "none" }));
   });
   const rowText = lines.map((ln, li) => {
     const y = top + li * rh + rh / 2;
@@ -4414,7 +4452,7 @@ $e("sc-diff-run").addEventListener("click", () => {
   setBusy("Ranking genes…"); setTimeout(() => { renderCellTypes(); setBusy(null); }, 30);
 });
 // Each opening of the cells window starts fresh: brief view, no co-expression
-$e("cells-btn").addEventListener("click", () => { $e("sc-add").checked = false; scView.selKey = null; scView.multi = null; scView.added = []; scView.sym = undefined; scView.probe = undefined; scView.coAnchor = null; $e("sc-detail").checked = false; $e("sc-hpa").checked = false; $e("sc-coexp").checked = false; $e("sc-diff").checked = false; scView.marks = new Map(); scView.diffRes = null; showCellTypes(); });
+$e("cells-btn").addEventListener("click", () => { $e("sc-add").checked = false; scView.colEdit = { on: false, off: new Set(), order: null }; $e("sc-editbar").hidden = true; $e("sc-png").setAttribute("aria-pressed", false); scView.selKey = null; scView.multi = null; scView.added = []; scView.sym = undefined; scView.probe = undefined; scView.coAnchor = null; $e("sc-detail").checked = false; $e("sc-hpa").checked = false; $e("sc-coexp").checked = false; $e("sc-diff").checked = false; scView.marks = new Map(); scView.diffRes = null; showCellTypes(); });
 // A click outside the window does not close it (close button or Escape); the ? button shows the descriptions
 // Allen z: the slider shows from its icon and goes away shortly after use (or a click elsewhere)
 { const pop = $e("sc-zpop"), btn = $e("sc-zbtn"); let t;
@@ -4549,7 +4587,7 @@ function saveScPng() {
 }
 // Ribbon: every row (not only those in view) with its name, under the structure labels
 function saveRibbonPng() {
-  const rows = ribbon.rows; if (!rows?.length) return;
+  const rows = ribbon.rows?.filter(r => !ribbon.edit.off.has(r.id)); if (!rows?.length) return;
   const dpr = Math.min(2, 32000 / Math.max(1, ribbon.width)), RH = ROW_H + ROW_GAP, total = rows.length * RH - ROW_GAP;
   const labelW = 170, headH = 34, W = labelW + ribbon.width + 10, H = headH + total + 10;
   const cv = Object.assign(document.createElement("canvas"), { width: Math.ceil(W * dpr), height: Math.ceil(H * dpr) });
@@ -4572,44 +4610,38 @@ function saveRibbonPng() {
   rows.forEach((r, i) => { const y = headH + i * RH + ROW_H / 2; ctx.save(); ctx.beginPath(); ctx.rect(0, y - RH / 2, labelW - 6, RH); ctx.clip(); ctx.fillText(symbolOf(r.id) && !r.name.startsWith(symbolOf(r.id)) ? `${symbolOf(r.id)} · ${r.name}` : r.name, 4, y); ctx.restore(); });
   downloadCanvas(cv, `${expr.gene || "allen"}_ribbon.png`);
 }
-// Ribbon export: first a list of the rows to remove or reorder (drag, or the arrows), then the PNG
-const ribEd = Object.assign(document.createElement("dialog"), { id: "ribbon-edit" });
-ribEd.innerHTML = `<form method="dialog" class="sc-form"><div class="sc-head"><h2>Rows of the figure</h2><button value="close" class="corr-btn">cancel</button></div>
-  <p class="sub">Drag rows (or use the arrows) to reorder them; × removes a row. The ribbon shows the result; Save PNG downloads it.</p>
-  <ol id="ribbon-edit-list"></ol><div class="sc-head"><button type="button" class="corr-btn" id="ribbon-edit-apply">Apply</button><button type="button" class="corr-btn" id="ribbon-edit-png">Save PNG</button></div></form>`;
-document.body.append(ribEd);
-function ribEdFill() {
-  const ol = $e("ribbon-edit-list");
-  ol.replaceChildren(...ribbon.rows.map(r => {
-    const li = Object.assign(document.createElement("li"), { draggable: true }); li.dataset.id = r.id;
-    li.append(Object.assign(document.createElement("span"), { textContent: r.name }));
-    for (const [t, a] of [["↑", "up"], ["↓", "down"], ["×", "del"]]) li.append(Object.assign(document.createElement("button"), { type: "button", textContent: t, className: "re-" + a }));
-    return li;
-  }));
+// Ribbon figure: the PNG button turns on editing in the ribbon itself: per row a toggle (in the
+// figure or not) and up / down arrows; a bar offers Save PNG and Done
+ribbon.edit = { on: false, off: new Set() };
+function ribbonEditSet(on) {
+  ribbon.edit.on = on;
+  if (on && ribbon.rows?.length) { const ids = ribbon.rows.map(r => r.id); expr.corr = { query: "list", all: ids, ids, r: expr.corr?.r ?? new Map(), keep: true }; searchBox.value = ""; }
+  $e("ribbon").classList.toggle("editing", on); $e("rib-editbar").hidden = !on; $e("ribbon-png").setAttribute("aria-pressed", on);
+  renderRibbon();
 }
-$e("ribbon-edit-list").addEventListener("click", e => {
-  const li = e.target.closest("li"), b = e.target.closest("button"); if (!li || !b) return;
-  if (b.classList.contains("re-up") && li.previousElementSibling) li.parentNode.insertBefore(li, li.previousElementSibling);
-  if (b.classList.contains("re-down") && li.nextElementSibling) li.parentNode.insertBefore(li.nextElementSibling, li);
-  if (b.classList.contains("re-del")) li.remove();
+$e("ribbon-png").addEventListener("click", () => { if (ribbon.rows?.length) ribbonEditSet(!ribbon.edit.on); });
+$e("rib-done").addEventListener("click", () => ribbonEditSet(false));
+$e("rib-save").addEventListener("click", saveRibbonPng);
+$e("ribbon-names").addEventListener("click", e => {
+  const b = e.target.closest(".re-btn"); if (!b) return;
+  e.stopPropagation();
+  const id = b.closest(".rname").dataset.id, ids = [...expr.corr.ids], i = ids.indexOf(id);
+  if (b.dataset.a === "tog") { ribbon.edit.off.has(id) ? ribbon.edit.off.delete(id) : ribbon.edit.off.add(id); }
+  else if (b.dataset.a === "up" && i > 0) [ids[i - 1], ids[i]] = [ids[i], ids[i - 1]];
+  else if (b.dataset.a === "down" && i < ids.length - 1) [ids[i + 1], ids[i]] = [ids[i], ids[i + 1]];
+  expr.corr = { ...expr.corr, all: ids, ids };
+  renderRibbon();
+}, true);
+function scEditSet(on) { const ce = scView.colEdit ??= { on: false, off: new Set(), order: null }; ce.on = on; $e("sc-editbar").hidden = !on; $e("sc-png").setAttribute("aria-pressed", on); renderCellTypes(); }
+$e("sc-png").addEventListener("click", () => scEditSet(!scView.colEdit?.on));
+$e("sc-done").addEventListener("click", () => scEditSet(false));
+$e("sc-save").addEventListener("click", async () => { scView.exporting = true; await renderCellTypes(); trimScPlot(); saveScPng(); scView.exporting = false; await renderCellTypes(); });
+for (const [id, d] of [["sc-mvl", -1], ["sc-mvr", 1]]) $e(id).addEventListener("click", () => {
+  const ce = scView.colEdit, keys = [...(scView.colKeys ?? [])], ci = scView.selCi;
+  if (ci == null || ci + d < 0 || ci + d >= keys.length) return;
+  [keys[ci], keys[ci + d]] = [keys[ci + d], keys[ci]];
+  ce.order = keys; scView.selCi = ci + d; renderCellTypes();
 });
-let ribDrag = null;
-$e("ribbon-edit-list").addEventListener("dragstart", e => { ribDrag = e.target.closest("li"); });
-$e("ribbon-edit-list").addEventListener("dragover", e => {
-  e.preventDefault(); const li = e.target.closest("li"); if (!li || !ribDrag || li === ribDrag) return;
-  const r = li.getBoundingClientRect(); li.parentNode.insertBefore(ribDrag, e.clientY > r.top + r.height / 2 ? li.nextSibling : li);
-});
-function ribEdApply() {
-  const ids = [...$e("ribbon-edit-list").children].map(li => li.dataset.id);
-  if (!ids.length) return;
-  expr.corr = { query: "list", all: ids, ids, r: expr.corr?.r ?? new Map(), keep: true };
-  if (!ids.some(id => expr.chosen?.has(id))) expr.chosen = new Set(ids.slice(0, 1));
-  searchBox.value = ""; renderRibbon();
-}
-$e("ribbon-edit-apply").addEventListener("click", ribEdApply);
-$e("ribbon-edit-png").addEventListener("click", () => { ribEdApply(); ribEd.close(); requestAnimationFrame(() => setTimeout(saveRibbonPng, 50)); });
-$e("ribbon-png").addEventListener("click", () => { if (!ribbon.rows?.length) return; ribEdFill(); ribEd.showModal(); });
-$e("sc-png").addEventListener("click", saveScPng);
 
 
 
