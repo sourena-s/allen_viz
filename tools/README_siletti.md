@@ -107,3 +107,9 @@ In the cells window, the green "expressing" part of each count bar is split by h
 - `MODE=custom` covers the reclustered labels of `siletti_custom`.
 
 Siletti and Protein Atlas cluster rows have no histogram file, so their bars stay plain green.
+
+## Raw differential (rawmean.py)
+
+`rawmean.py` stores the mean raw count per nucleus for every gene and row unit, without dividing by each nucleus's total counts. It writes `<file>_raw.bin.gz`: float32 per-gene maxima, then uint8 [gene][unit]. It has the same two modes as `hist.py`, `MODE=region` and `MODE=custom`.
+
+The "Diff. raw" button in the cells window uses these means. It ranks genes on per-cell amounts, which is closer to what a flow cytometer measures than counts per 10k. Large cells, such as CA1 and CA2 pyramidal neurons, score higher for most genes. "Diff. raw" works on Brief rows only.

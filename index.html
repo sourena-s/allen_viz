@@ -473,9 +473,10 @@
   .zvert { flex-direction: column; gap: 6px; }
   .zsym.zvert input[type=range], body.phone .zsym.zvert input[type=range], body.phone .ribbon-head .zsym.zvert input[type=range] { writing-mode: vertical-lr; direction: rtl; width: 22px; height: 200px; }
   .sc-zbtn[aria-expanded="true"] { background: rgba(255,255,255,0.22); }
-  #sc-diff-sub { font: 12px var(--sans); padding: 3px 9px; border-radius: 5px; height: auto; background: transparent; border: 1px solid var(--edge); color: var(--ink); }
+  #sc-diffraw[aria-pressed="true"] { background: #ffd600; color: #222; border-color: #ffd600; }
+  #sc-diffraw, #sc-diff-sub { font: 12px var(--sans); padding: 3px 9px; border-radius: 5px; height: auto; background: transparent; border: 1px solid var(--edge); color: var(--ink); }
   #sc-diff-sub:not(:disabled):hover { background: rgba(255,255,255,0.12); }
-  body.phone #sc-diff-sub { font-size: 13px; padding: 6px 10px; }
+  body.phone #sc-diff-sub, body.phone #sc-diffraw { font-size: 13px; padding: 6px 10px; }
   .sc-zrow { display: flex; align-items: center; gap: 14px; min-width: 0; }
   .sc-status { flex: 1; min-width: 0; font-size: 11.5px; color: #ffd600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sc-help-btn { font: 600 14px var(--sans); color: var(--ink); }
@@ -809,7 +810,7 @@
   <form method="dialog" class="sc-form">
     <div class="sc-head"><h2 id="sc-title" hidden></h2>
       <div class="row sc-toggle sc-detail-row"><span class="sc-tg"><input type="checkbox" id="sc-add" autocomplete="off"><label for="sc-add" class="sc-add-lbl" title="Add: Enter adds the gene as more columns on the right (as Ctrl+Enter)" aria-label="Add genes as columns">+</label><input type="text" id="sc-gene" class="gene-box" placeholder="Gene" aria-label="Gene shown in the cells window" autocomplete="off" spellcheck="false" title="Show another gene (Enter), or add it as more columns (Ctrl+Enter): a name, or with * for several (rad* starts with, *rad ends with, *rad* contains); co-expression and differential results stay"><button type="button" class="rb-btn sc-zbtn" id="sc-zbtn" aria-expanded="false" title="Colour range of the Allen z-scores" aria-label="Allen colour range"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16M4 16h16"/><circle cx="9" cy="8" r="2.2"/><circle cx="15" cy="16" r="2.2"/></svg></button><span class="sc-zpop" id="sc-zpop" hidden><label class="zsym sc-zr zvert" title="Colour range of the Allen z-scores: from minus to plus this value">Allen z
-      <input type="range" id="sc-zr" min="0.5" max="6" step="0.1" value="2" aria-label="Allen colour range, z"><span id="sc-zr-val" class="rm-value">±2.0</span></label></span></span><span class="sc-seg" role="radiogroup" aria-label="Rows"><button type="button" data-v="custom" role="radio" title="Brief, with hippocampal neurons from our reclustering of all hippocampal nuclei (Leiden), labelled CA1, CA2, CA3, subiculum, dentate gyrus by markers, plus the unlabelled nuclei">Brief</button><button type="button" data-v="siletti" role="radio" title="Siletti clusters">Siletti</button><button type="button" data-v="hpa" role="radio" title="Protein Atlas brain clusters (its neuronal and non-neuronal clusters), each nucleus assigned by marker-gene correlation"><span class="full">Protein Atlas</span><span class="short">P. Atlas</span></button></span><span hidden><input type="checkbox" id="sc-detail" autocomplete="off"></span><span hidden><input type="checkbox" id="sc-custom" autocomplete="off" checked></span><span hidden><input type="checkbox" id="sc-hpa" autocomplete="off"></span><span class="sc-tg"><input type="checkbox" id="sc-coexp" autocomplete="off"><label for="sc-coexp" title="The 200 genes whose mean expression across the hippocampal formation, dentate, parahippocampal and amygdala cell groups (clusters in the detailed view, dissection x supercluster in the brief) correlates best with this gene (r after the name)">Co-exp.</label></span><span class="sc-tg"><input type="checkbox" id="sc-diff" autocomplete="off"><label for="sc-diff" id="sc-diff-lbl" title="Click rows: once yellow (foreground), again blue (background), again clear. Then calculate: the 200 genes most raised in the foreground relative to the background appear as columns on the right">Diff.</label></span><span class="sc-tg"><button type="button" class="corr-btn" id="sc-diff-run" hidden title="Rank the genes for the yellow (foreground) vs blue (background) rows">Calculate</button><button type="button" class="corr-btn" id="sc-diff-sub" hidden title="Subcellular location images (Human Protein Atlas) of the differential genes">Subcel.</button></span></div>
+      <input type="range" id="sc-zr" min="0.5" max="6" step="0.1" value="2" aria-label="Allen colour range, z"><span id="sc-zr-val" class="rm-value">±2.0</span></label></span></span><span class="sc-seg" role="radiogroup" aria-label="Rows"><button type="button" data-v="custom" role="radio" title="Brief, with hippocampal neurons from our reclustering of all hippocampal nuclei (Leiden), labelled CA1, CA2, CA3, subiculum, dentate gyrus by markers, plus the unlabelled nuclei">Brief</button><button type="button" data-v="siletti" role="radio" title="Siletti clusters">Siletti</button><button type="button" data-v="hpa" role="radio" title="Protein Atlas brain clusters (its neuronal and non-neuronal clusters), each nucleus assigned by marker-gene correlation"><span class="full">Protein Atlas</span><span class="short">P. Atlas</span></button></span><span hidden><input type="checkbox" id="sc-detail" autocomplete="off"></span><span hidden><input type="checkbox" id="sc-custom" autocomplete="off" checked></span><span hidden><input type="checkbox" id="sc-hpa" autocomplete="off"></span><span class="sc-tg"><input type="checkbox" id="sc-coexp" autocomplete="off"><label for="sc-coexp" title="The 200 genes whose mean expression across the hippocampal formation, dentate, parahippocampal and amygdala cell groups (clusters in the detailed view, dissection x supercluster in the brief) correlates best with this gene (r after the name)">Co-exp.</label></span><span class="sc-tg"><input type="checkbox" id="sc-diff" autocomplete="off"><label for="sc-diff" id="sc-diff-lbl" title="Click rows: once yellow (foreground), again blue (background), again clear. Then calculate: the 200 genes most raised in the foreground relative to the background appear as columns on the right">Diff.</label><button type="button" class="corr-btn" id="sc-diffraw" title="Raw differential (flow-cytometry-like): ranks genes by mean raw counts per nucleus (not divided by each nucleus's total), yellow vs blue rows; Brief rows only">Diff. raw</button></span><span class="sc-tg"><button type="button" class="corr-btn" id="sc-diff-run" hidden title="Rank the genes for the yellow (foreground) vs blue (background) rows">Calculate</button><button type="button" class="corr-btn" id="sc-diff-sub" hidden title="Subcellular location images (Human Protein Atlas) of the differential genes">Subcel.</button></span></div>
 
       <button class="rb-btn sc-zb" type="button" id="sc-zoom-out" aria-label="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
       <button class="rb-btn sc-zb" type="button" id="sc-zoom-in" aria-label="Zoom in"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button>
@@ -3755,6 +3756,7 @@ async function showCellTypes() {
     scView.cu = !$e("sc-detail").checked && $e("sc-custom").checked ? await loadSingleCell("assets/siletti_custom") : null;
     await loadHgnc().catch(() => null);
     await Promise.all([loadScHist(region, "assets/siletti_hipamy"), scView.cu && loadScHist(scView.cu, "assets/siletti_custom")]);
+    if (scView.diffMode === "raw") await Promise.all([loadScRaw(region, "assets/siletti_hipamy"), scView.cu && loadScRaw(scView.cu, "assets/siletti_custom")]);
   } catch (err) { setBusy(null); setExprStatus([`Single-nucleus data: ${err.message}`]); return; }
   setBusy(null);
   const id0 = scProbe();
@@ -3865,7 +3867,10 @@ function coExpressed(data, gi, detailed, top = CO_TOP) {
 // minus that of the background rows. Named genes detected (any count) in at least 10% of the
 // nuclei of some foreground row; the top 100 by score.
 const DIFF_SC_TOP = 200;
-function scDifferential(rows, detailed, region, clusters) {
+function scDifferential(rows, detailed, region, clusters, raw = false) {
+  // raw: mean raw counts per nucleus (no division by each nucleus's total), as a flow cytometer sees
+  // amounts per cell; only units with a raw table (Brief rows) count
+  const val = raw ? (dd, gi, k) => (dd.raw ? dd.raw[gi * dd.nU + k] / 255 * dd.rawMax[gi] : NaN) : scLin;
   const fg = [], bg = [], all = [];
   for (const r of rows) if (r.n && r.key) { all.push(r); const m = scView.marks.get(r.key); if (m === "fg") fg.push(all.length - 1); else if (m === "bg") bg.push(all.length - 1); }
   if (!fg.length) return { list: [], note: "" };
@@ -3887,7 +3892,8 @@ function scDifferential(rows, detailed, region, clusters) {
       for (const [dd, k, nn] of units[a]) {
         const gi = dd === data ? i : dd === clusters ? region.toCl[i] : dd === cuF ? cuF.toX[i] : -1;
         if (gi < 0) continue;
-        s += nn * scLin(dd, gi, k); f += nn * dd.body[gi * dd.nU * 2 + dd.nU + k] / 255; w += nn;
+        const x = val(dd, gi, k); if (Number.isNaN(x)) continue;
+        s += nn * x; f += nn * dd.body[gi * dd.nU * 2 + dd.nU + k] / 255; w += nn;
       }
       v[a] = w ? s / w : 0;
       if (w && fg.includes(a)) { if (f / w > fdet) fdet = f / w; fgF += f; fgW += w; }
@@ -3902,7 +3908,7 @@ function scDifferential(rows, detailed, region, clusters) {
     const d = (mf / fg.length - mb / bg.length) / sd;
     if (best.length < DIFF_SC_TOP || d > best[best.length - 1].d) { best.push({ name: data.genes[i], d, mf: mf / fg.length, mb: mb / bg.length, pct: fgF / fgW }); best.sort((p, q) => q.d - p.d); if (best.length > DIFF_SC_TOP) best.pop(); }
   }
-  return { list: best, note: `the ${best.length} genes most raised in the ${fg.length} yellow row${fg.length > 1 ? "s" : ""} relative to ${globalBg ? `all ${bg.length} other rows (no blue rows marked)` : `the ${bg.length} blue row${bg.length > 1 ? "s" : ""}`} (linear means standardised across all rows, as the Allen differential; score after each name, in SD). Turn differential on again for a new search.` };
+  return { list: best, note: `the ${best.length} genes most raised in the ${fg.length} yellow row${fg.length > 1 ? "s" : ""} relative to ${globalBg ? `all ${bg.length} other rows (no blue rows marked)` : `the ${bg.length} blue row${bg.length > 1 ? "s" : ""}`} (${raw ? "RAW: mean raw counts per nucleus, not divided by each nucleus's total, as a flow cytometer sees amounts per cell; large cells score higher for most genes;" : "linear means (counts per 10k)"} standardised across all rows; score after each name, in SD). Turn differential on again for a new search.` };
 }
 // A gene's linear mean (counts per 10k) in unit k; the log mean where a file has no linear block
 const scLin = (data, gi, k) => data.lin ? data.lin[gi * data.nU + k] / 255 * data.lmax[gi] : data.body[gi * data.nU * 2 + k] / 255 * data.max[gi];
@@ -3928,6 +3934,19 @@ async function loadScHist(d, base) {
     const per = d.genes.length * d.nU;
     if (buf.length && buf.length % per === 0) { d.hist = buf; d.histN = buf.length / per; }
   } catch { /* plain bars */ }
+}
+// Mean raw counts per nucleus per gene and unit (tools/rawmean.py): float32 per-gene maxima, then
+// uint8 [gene][unit]; loaded for the raw differential only
+async function loadScRaw(d, base) {
+  if (d.rawTried) return; d.rawTried = true;
+  try {
+    const res = await fetch(`${base}_raw.bin.gz`); if (!res.ok) return;
+    let buf = new Uint8Array(await res.arrayBuffer());
+    if (buf[0] === 0x1f && buf[1] === 0x8b) buf = new Uint8Array(await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer());
+    const G = d.genes.length;
+    if (buf.length !== G * 4 + G * d.nU) return;
+    d.rawMax = new Float32Array(buf.slice(0, G * 4).buffer); d.raw = buf.subarray(G * 4);
+  } catch { /* no raw differential */ }
 }
 // Count-bar bins (raw counts per nucleus, lower bounds of the stored >= bins) and colours, most counts first:
 // >= 32, 16-31, 8-15 (ever deeper reds), 4-7, 2-3, 1
@@ -4122,7 +4141,7 @@ async function renderCellTypes() {
   scView.marks ??= new Map();
   { let sec = ""; for (const r of rows) { if (r.sec) sec = r.sec; else if (r.n) r.key = r.k != null ? `k${r.k}` : `${sec}|${r.label}`; } }
   // Differential: computed only on Calculate (scView.diffRun), kept until the next one
-  if (scView.diffRun) { scView.diffRun = false; scView.diffRes = { ...scDifferential(rows, detailed, region, clusters), id: (scView.diffId = (scView.diffId ?? 0) + 1) }; scView.diffMarks = JSON.stringify([...scView.marks]); }
+  if (scView.diffRun) { scView.diffRun = false; if (scView.diffMode === "raw") await Promise.all([loadScRaw(region, "assets/siletti_hipamy"), cu && loadScRaw(cu, "assets/siletti_custom")]); scView.diffRes = { ...scDifferential(rows, detailed, region, clusters, scView.diffMode === "raw"), id: (scView.diffId = (scView.diffId ?? 0) + 1) }; scView.diffMarks = JSON.stringify([...scView.marks]); }
   const nFg = [...scView.marks.values()].filter(m => m === "fg").length, nBg = scView.marks.size - nFg;
   // Marking (row clicks mark foreground/background) while "differential" is on; Calculate ends it and
   // turns the toggle off. Results and marked rows stay until the next differential search
@@ -4130,7 +4149,11 @@ async function renderCellTypes() {
   const diff = marking ? { list: [], note: `click rows to mark the foreground (yellow, ${nFg} so far) and, clicking again, the background (blue, ${nBg}); a third click clears. Then press Calculate (no blue rows: all other rows are the background).` }
     : scView.diffRes?.list.length ? { ...scView.diffRes, note: scView.diffRes.note + (scView.diffRes.nucN != null ? ` After Sub: the ${scView.diffRes.nucN} genes with a nuclear (nucl*) Protein Atlas location first, by share of foreground nuclei expressing them, then (dashed line) the rest by score.` : "") } : null;
   $e("sc-diff-run").hidden = true;   // the differential button itself reads calculate while marking
-  $e("sc-diff-lbl").textContent = marking ? "Calculate" : "Diff.";
+  const rawMode = scView.diffMode === "raw";
+  $e("sc-diff-lbl").textContent = marking && !rawMode ? "Calculate" : "Diff.";
+  $e("sc-diffraw").textContent = marking && rawMode ? "Calculate raw" : "Diff. raw";
+  $e("sc-diffraw").setAttribute("aria-pressed", marking && rawMode);
+  $e("sc-diffraw").disabled = detailed;   // raw means exist for the Brief rows only
   $e("sc-diff-run").disabled = !nFg;
   // Sub: always shown; active once a differential search has results
   $e("sc-coexp").disabled = scView.noGene && !scView.coAnchor;   // co-expression needs a gene
@@ -4620,9 +4643,16 @@ $e("sc-gene").addEventListener("pointerup", e => { if (document.activeElement ==
 // While marking, the (yellow) differential button reads calculate: with a yellow row it ranks the
 // genes; without any it cancels the search
 $e("sc-diff-lbl").addEventListener("click", e => {
-  if (!$e("sc-diff").checked) return;
+  if (!$e("sc-diff").checked) { scView.diffMode = "norm"; return; }
+  scView.diffMode = "norm";
   if (![...(scView.marks?.values() ?? [])].includes("fg")) return;   // nothing marked: the click turns it off
   e.preventDefault(); $e("sc-diff-run").click();
+});
+// Raw differential: the same marking; the button starts it, then calculates on raw counts
+$e("sc-diffraw").addEventListener("click", () => {
+  if (!$e("sc-diff").checked) { scView.diffMode = "raw"; $e("sc-diff").checked = true; $e("sc-diff").dispatchEvent(new Event("change")); return; }
+  scView.diffMode = "raw";
+  if ([...(scView.marks?.values() ?? [])].includes("fg")) $e("sc-diff-run").click(); else renderCellTypes();
 });
 $e("sc-diff").addEventListener("change", () => { scView.marks = new Map(); scView.diffRes = null; showCellTypes(); });   // on: a new search; off: cancelled
 // Cells "sub": the first press looks everything up (the button counts) and reorders the columns,
