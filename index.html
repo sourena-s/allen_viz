@@ -410,6 +410,13 @@
   .sc-seg { display: inline-flex; border: 1px solid var(--edge); border-radius: 5px; overflow: hidden; }
   .sc-seg button { font: 12px var(--sans); color: var(--ink); background: transparent; border: 0; padding: 3px 9px; cursor: pointer; }
   .sc-seg button + button { border-left: 1px solid var(--edge); }
+  .sc-seg .short { display: none; }
+  #sc-info { position: fixed; z-index: 30; max-height: 70vh; overflow-y: auto; padding: 10px 12px; border-radius: 8px; background: rgba(40, 44, 50, 0.97); border: 1px solid var(--edge); font: 12px/1.4 var(--sans); color: var(--ink); }
+  #sc-info[hidden] { display: none; }
+  #sc-info b { display: block; margin-top: 6px; color: #fff; }
+  #sc-info p { margin: 2px 0 4px; color: var(--muted); }
+  #sc-info .sc-info-x { float: right; background: none; border: 0; color: var(--ink); font-size: 14px; cursor: pointer; }
+  body.phone .sc-seg .short { display: inline; } body.phone .sc-seg .full { display: none; }
   .sc-seg button[aria-checked="true"] { background: rgba(255,255,255,0.22); font-weight: 600; }
   .sc-tg { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
   #sc-dialog .sc-form { min-width: 0; }
@@ -799,7 +806,7 @@
   <form method="dialog" class="sc-form">
     <div class="sc-head"><h2 id="sc-title" hidden></h2>
       <div class="row sc-toggle sc-detail-row"><span class="sc-tg"><input type="checkbox" id="sc-add" autocomplete="off"><label for="sc-add" class="sc-add-lbl" title="Add: Enter adds the gene as more columns on the right (as Ctrl+Enter)" aria-label="Add genes as columns">+</label><input type="text" id="sc-gene" class="gene-box" placeholder="Gene" aria-label="Gene shown in the cells window" autocomplete="off" spellcheck="false" title="Show another gene (Enter), or add it as more columns (Ctrl+Enter): a name, or with * for several (rad* starts with, *rad ends with, *rad* contains); co-expression and differential results stay"><button type="button" class="rb-btn sc-zbtn" id="sc-zbtn" aria-expanded="false" title="Colour range of the Allen z-scores" aria-label="Allen colour range"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16M4 16h16"/><circle cx="9" cy="8" r="2.2"/><circle cx="15" cy="16" r="2.2"/></svg></button><span class="sc-zpop" id="sc-zpop" hidden><label class="zsym sc-zr" title="Colour range of the Allen z-scores: from minus to plus this value">Allen z
-      <input type="range" id="sc-zr" min="0.5" max="6" step="0.1" value="2" aria-label="Allen colour range, z"><span id="sc-zr-val" class="rm-value">±2.0</span></label></span></span><span class="sc-seg" role="radiogroup" aria-label="Rows"><button type="button" data-v="custom" role="radio" title="Brief, with hippocampal neurons from our reclustering of all hippocampal nuclei (Leiden), labelled CA1, CA2, CA3, subiculum, dentate gyrus by markers, plus the unlabelled nuclei">Brief custom</button><button type="button" data-v="brief" role="radio" title="Hippocampal subfields by markers, cell classes per region, dissections">Brief</button><button type="button" data-v="siletti" role="radio" title="Siletti clusters">Siletti</button><button type="button" data-v="hpa" role="radio" title="Protein Atlas brain clusters (its neuronal and non-neuronal clusters), each nucleus assigned by marker-gene correlation">Protein Atlas</button></span><span hidden><input type="checkbox" id="sc-detail" autocomplete="off"></span><span hidden><input type="checkbox" id="sc-custom" autocomplete="off" checked></span><span hidden><input type="checkbox" id="sc-hpa" autocomplete="off"></span><span class="sc-tg"><input type="checkbox" id="sc-coexp" autocomplete="off"><label for="sc-coexp" title="The 200 genes whose mean expression across the hippocampal formation, dentate, parahippocampal and amygdala cell groups (clusters in the detailed view, dissection x supercluster in the brief) correlates best with this gene (r after the name)">co-expressed</label></span><span class="sc-tg"><input type="checkbox" id="sc-diff" autocomplete="off"><label for="sc-diff" id="sc-diff-lbl" title="Click rows: once yellow (foreground), again blue (background), again clear. Then calculate: the 200 genes most raised in the foreground relative to the background appear as columns on the right">differential</label></span><span class="sc-tg"><button type="button" class="corr-btn" id="sc-diff-run" hidden title="Rank the genes for the yellow (foreground) vs blue (background) rows">Calculate</button><button type="button" class="corr-btn" id="sc-diff-sub" hidden title="Subcellular location images (Human Protein Atlas) of the differential genes">subcellular</button></span></div>
+      <input type="range" id="sc-zr" min="0.5" max="6" step="0.1" value="2" aria-label="Allen colour range, z"><span id="sc-zr-val" class="rm-value">±2.0</span></label></span></span><span class="sc-seg" role="radiogroup" aria-label="Rows"><button type="button" data-v="custom" role="radio" title="Brief, with hippocampal neurons from our reclustering of all hippocampal nuclei (Leiden), labelled CA1, CA2, CA3, subiculum, dentate gyrus by markers, plus the unlabelled nuclei">Brief</button><button type="button" data-v="siletti" role="radio" title="Siletti clusters">Siletti</button><button type="button" data-v="hpa" role="radio" title="Protein Atlas brain clusters (its neuronal and non-neuronal clusters), each nucleus assigned by marker-gene correlation"><span class="full">Protein Atlas</span><span class="short">P. Atlas</span></button></span><span hidden><input type="checkbox" id="sc-detail" autocomplete="off"></span><span hidden><input type="checkbox" id="sc-custom" autocomplete="off" checked></span><span hidden><input type="checkbox" id="sc-hpa" autocomplete="off"></span><span class="sc-tg"><input type="checkbox" id="sc-coexp" autocomplete="off"><label for="sc-coexp" title="The 200 genes whose mean expression across the hippocampal formation, dentate, parahippocampal and amygdala cell groups (clusters in the detailed view, dissection x supercluster in the brief) correlates best with this gene (r after the name)">Co-exp.</label></span><span class="sc-tg"><input type="checkbox" id="sc-diff" autocomplete="off"><label for="sc-diff" id="sc-diff-lbl" title="Click rows: once yellow (foreground), again blue (background), again clear. Then calculate: the 200 genes most raised in the foreground relative to the background appear as columns on the right">Diff.</label></span><span class="sc-tg"><button type="button" class="corr-btn" id="sc-diff-run" hidden title="Rank the genes for the yellow (foreground) vs blue (background) rows">Calculate</button><button type="button" class="corr-btn" id="sc-diff-sub" hidden title="Subcellular location images (Human Protein Atlas) of the differential genes">Subcel.</button></span></div>
 
       <button class="rb-btn sc-zb" type="button" id="sc-zoom-out" aria-label="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
       <button class="rb-btn sc-zb" type="button" id="sc-zoom-in" aria-label="Zoom in"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button>
@@ -3915,11 +3922,33 @@ async function loadScHist(d, base) {
     const res = await fetch(`${base}_hist.bin.gz`); if (!res.ok) return;
     let buf = new Uint8Array(await res.arrayBuffer());
     if (buf[0] === 0x1f && buf[1] === 0x8b) buf = new Uint8Array(await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer());
-    if (buf.length === 3 * d.genes.length * d.nU) d.hist = buf;
+    const per = d.genes.length * d.nU;
+    if (buf.length && buf.length % per === 0) { d.hist = buf; d.histN = buf.length / per; }
   } catch { /* plain bars */ }
 }
-// Count-bar colours, most counts first: >= 8, 4-7, 2-3, 1
-const HIST_COL = ["#d7301f", "#fc8d59", "#f2d024", "#3cb371"];
+// Count-bar bins (raw counts per nucleus, lower bounds of the stored >= bins) and colours, most counts first:
+// >= 32, 16-31, 8-15 (ever deeper reds), 4-7, 2-3, 1
+const HIST_TH = [2, 4, 8, 16, 32];
+const HIST_COL = ["#3cb371", "#f2d024", "#fc8d59", "#d7301f", "#a50f15", "#5c0010"];   // 1, 2-3, 4-7, 8-15, 16-31, >= 32
+// How the Brief hippocampal neuron rows are defined, with a line of evidence per marker
+// (percentages: share of a Leiden cluster's nuclei with any count, tools/rc3.py)
+const CU_INFO = [
+  ["How the subfields are defined", "All 150,623 hippocampal principal neurons of Siletti et al. 2023 were reclustered (Leiden, 42 clusters). Each cluster is labelled by the first rule it meets, in this order. A marker is positive when at least 50% of the cluster's nuclei have any count (NPNT: 30%). The rest are Unlabelled."],
+  ["1 · CA1: FIBCD1+ or FNDC1+", "FIBCD1 is a known CA1 pyramidal marker in mouse (Hipposeq, Cembrowski et al. 2016). Here FIBCD1 or FNDC1 is in 53–99% of nuclei of every CA1 cluster. FNDC1 reaches 39% at most in the other principal clusters."],
+  ["2 · CA3: HS3ST4+ and NPNT+", "HS3ST4 is in 86–99% of nuclei of the CA3 clusters, but also in CA2 and some subiculum clusters. NPNT separates them: it is in 41–87% of CA3 cluster nuclei and in at most 24% of any other principal cluster."],
+  ["3 · CA2: RGS14+ and COL21A1+", "RGS14 is a known CA2 marker in rodents (Lee et al. 2010). Here it is in 51–91% of CA2 cluster nuclei, but also in about half of some CA1 clusters, so CA1 is checked first. COL21A1 is in 63–94% of CA2 cluster nuclei and is mostly low in CA1 and CA3."],
+  ["4 · Subiculum: PCP4+ or FN1+, and PROX1−", "FN1 is in 89–100% of nuclei of three of the five subiculum clusters (44–56% in the other two). PCP4 is in 31–90%, and also marks CA2 in rodents, which is checked earlier. PROX1 is excluded to keep out dentate granule cells."],
+  ["5 · Dentate gyrus granule: PROX1+", "PROX1 is the transcription factor that defines dentate granule cell identity. Here it is in 53–99% of nuclei of the dentate clusters."],
+  ["Unlabelled", "Clusters meeting none of the rules: 11,769 nuclei, mostly with few counts per nucleus. Hover a row for each cluster's marker percentages."]];
+const scInfo = Object.assign(document.createElement("div"), { id: "sc-info", hidden: true });
+function scInfoOpen(items, e) {
+  scInfo.replaceChildren(Object.assign(document.createElement("button"), { type: "button", className: "sc-info-x", textContent: "✕", title: "Close", onclick: () => (scInfo.hidden = true) }),
+    ...items.flatMap(([h, t]) => [Object.assign(document.createElement("b"), { textContent: h }), Object.assign(document.createElement("p"), { textContent: t })]));
+  $e("sc-dialog").append(scInfo); scInfo.hidden = false;
+  const W = Math.min(420, innerWidth - 24);
+  Object.assign(scInfo.style, { width: `${W}px`, left: `${Math.max(12, Math.min(innerWidth - W - 12, e.clientX + 8))}px`, top: `${Math.max(12, Math.min(innerHeight - 380, e.clientY + 10))}px` });
+}
+document.addEventListener("pointerdown", e => { if (!scInfo.hidden && !scInfo.contains(e.target)) scInfo.hidden = true; });
 // Brief custom row tooltip: the rule that defines the label and each Leiden cluster in it with its markers
 // (% of the cluster's nuclei with any count)
 const CU_MARKERS = { CA1: ["FIBCD1", "FNDC1"], CA3: ["HS3ST4", "NPNT"], CA2: ["RGS14", "COL21A1"], SUB: ["PCP4", "FN1", "PROX1"], DG: ["PROX1"], none: ["FIBCD1", "FNDC1", "HS3ST4", "NPNT", "RGS14", "COL21A1", "PCP4", "FN1", "PROX1"] };
@@ -3970,7 +3999,7 @@ async function renderCellTypes() {
   if (!detailed && cu) {
     // Brief custom: our reclustering (Leiden on all hippocampal nuclei, labelled by markers), whole genome
     const gU = scGeneFor(cu), nU = cu.nU;
-    rows.push({ sec: "Hippocampal neurons", color: "#0a84ff" });
+    rows.push({ sec: "Hippocampal neurons", color: "#0a84ff", info: CU_INFO });
     if (gU?.i >= 0) cu.superclusters.forEach((label, li) => {
       const gs = cu.groups.map((g, k) => (g[1] === li ? k : -1)).filter(k => k >= 0);
       let n = 0, m = 0, fr = 0, l = 0;
@@ -4082,9 +4111,9 @@ async function renderCellTypes() {
     if (!pick || !name) return null;
     const [dd, us] = pick; if (!dd?.hist) return null;
     const gi = dd.geneIndex.get(name.toUpperCase()); if (gi === undefined) return null;
-    const U = dd.nU, GU = dd.genes.length * U; let f1 = 0; const a = [0, 0, 0];
-    for (const [k, nn] of us) { f1 += nn * dd.body[gi * U * 2 + U + k] / 255; for (let b = 0; b < 3; b++) a[b] += nn * dd.hist[b * GU + gi * U + k] / 255; }
-    return f1 ? [a[2], a[1], a[0]].map(x => Math.min(1, x / f1)) : null;
+    const U = dd.nU, GU = dd.genes.length * U, nb = dd.histN; let f1 = 0; const a = new Array(nb).fill(0);
+    for (const [k, nn] of us) { f1 += nn * dd.body[gi * U * 2 + U + k] / 255; for (let b = 0; b < nb; b++) a[b] += nn * dd.hist[b * GU + gi * U + k] / 255; }
+    return f1 ? a.map(x => Math.min(1, x / f1)) : null;   // shares of expressing nuclei with >= 2, >= 4, ... counts
   };
   // Row keys (kept across re-renders) and the differential marks: foreground (yellow), background (blue)
   scView.marks ??= new Map();
@@ -4098,7 +4127,7 @@ async function renderCellTypes() {
   const diff = marking ? { list: [], note: `click rows to mark the foreground (yellow, ${nFg} so far) and, clicking again, the background (blue, ${nBg}); a third click clears. Then press Calculate (no blue rows: all other rows are the background).` }
     : scView.diffRes?.list.length ? { ...scView.diffRes, note: scView.diffRes.note + (scView.diffRes.nucN != null ? ` After Sub: the ${scView.diffRes.nucN} genes with a nuclear (nucl*) Protein Atlas location first, by share of foreground nuclei expressing them, then (dashed line) the rest by score.` : "") } : null;
   $e("sc-diff-run").hidden = true;   // the differential button itself reads calculate while marking
-  $e("sc-diff-lbl").textContent = marking ? "calculate" : "differential";
+  $e("sc-diff-lbl").textContent = marking ? "Calculate" : "Diff.";
   $e("sc-diff-run").disabled = !nFg;
   // Sub: always shown; active once a differential search has results
   $e("sc-coexp").disabled = scView.noGene && !scView.coAnchor;   // co-expression needs a gene
@@ -4142,7 +4171,7 @@ async function renderCellTypes() {
   const lines = [], cells = [];
   for (const r of rows) {
     if (r.divider) { lines.push({ divider: true }); continue; }
-    if (r.sec) { lines.push({ sec: r.sec, secColor: r.color }); continue; }
+    if (r.sec) { lines.push({ sec: r.sec, secColor: r.color, info: scView.exporting ? null : r.info }); continue; }
     const li = lines.push({ label: r.label, sub: r.sub, bar: r.bar, key: r.key, mark: scView.marks.get(r.key) }) - 1;
     if (multi) {
       const mv = mVals[rows.indexOf(r)];
@@ -4193,8 +4222,8 @@ async function renderCellTypes() {
   $e("sc-sub").textContent = `${diff ? `Differential: ${diff.note} ` : ""}${scView.hpa ? "Protein Atlas brain clusters (c-numbers as on proteinatlas.org: brain neurons, and non-neuronal clusters marked so), each nucleus of these dissections assigned to the cluster whose expression profile it correlates with best over ~1,450 marker genes (an approximation of the Protein Atlas assignment), grouped by cell type, in c-number order. " : ""}${scView.hpa ? "Rows" : detailed ? "Siletti clusters, grouped by subfield (canonical markers) or cell class, sorted by share expressing" : "Hippocampal subfields by canonical markers (CA1: FIBCD1/FNDC1; CA2: RGS14; subiculum: PCP4 or FN1 without PROX1; CA3: HS3ST4; DG: PROX1; a cluster counts as positive when half its nuclei express the gene, in that order), other cell classes per region"}, then each dissection (all its nuclei; dissections mix neighbouring fields). The subiculum has no cluster or canonical marker of its own in these data (its nuclei fall into CA1-type clusters), so it appears only as a dissection row. Colour: mean expression of ${scView.g.name} in counts per 10k (linear, no log), from pale (lowest row) to red (highest row), square area likewise, stretched separately for the by-markers rows and the by-dissection rows; co-expressed columns each over their own range. Bars: nuclei (grey, linear) and those expressing the gene (green).${detailed ? " Allen: the probe highlighted in the ribbon, every sample of the Allen structures matching each subfield, class or dissection (the ribbon turned on its side, its colours), from your loaded donors." : " Allen: mean z of the probe highlighted in the ribbon in each marker subfield's Allen structures, in the ribbon's colours."}${detailed ? " Hover a cluster for where it was dissected." : ""} (Ex) excitatory, (In) inhibitory.`;
   const colsAll = [...(multi
       ? multi.flatMap((name, j) => [{ key: `g:${name}`, label: name, gene: name, vert: true, gap: j ? 10 : 0 }, { key: `g:${name}:ct`, label: "Count (% Exp.)", w: 84, vert: true, gap: 2 }])
-      : [{ key: "m:sn", label: "snRNA-seq Siletti et al.", lv: 0 }, { key: "m:al", label: "Allen Brain Atlas", lv: 1, gap: 6 }, { key: "m:ct", label: "Count (% Exp.)", w: 190, gap: 10, plain: true },
-         ...added.flatMap(a => [{ key: `a:${a.name}:sn`, label: "snRNA-seq Siletti et al.", gene: a.name, lv: 0, gap: 14 }, { key: `a:${a.name}:al`, label: "Allen Brain Atlas", lv: 1, gap: 6 }, { key: `a:${a.name}:ct`, label: "Count (% Exp.)", w: 190, gap: 10, plain: true }])]),
+      : [{ key: "m:sn", label: "snRNA-seq Siletti et al.", lv: 0 }, { key: "m:al", label: "Allen Brain Atlas", lv: 1, mid: true, gap: 6 }, { key: "m:ct", label: "Count (% Exp.)", w: 190, gap: 10, plain: true },
+         ...added.flatMap(a => [{ key: `a:${a.name}:sn`, label: "snRNA-seq Siletti et al.", gene: a.name, lv: 0, gap: 14 }, { key: `a:${a.name}:al`, label: "Allen Brain Atlas", lv: 1, mid: true, gap: 6 }, { key: `a:${a.name}:ct`, label: "Count (% Exp.)", w: 190, gap: 10, plain: true }])]),
       ...(detailed ? [{ key: "mk", label: "Markers ([canonical] then cluster-specific)", w: 360, gap: 8, plain: !multi, vert: !!multi }] : []),
       ...extra.map((c, j) => ({ key: `x:${c.diff ? "d" : "c"}:${c.name}`, label: c.label, gene: c.name, pct: c.pct, pctOf: c.pctOf, sep: c.sep, vert: true, gap: j === 0 || (c.diff && !extra[j - 1].diff) || c.sep ? 8 : 0 }))];
   // Figure editing (PNG button): columns in the user's order; those toggled off are dimmed while
@@ -4321,7 +4350,8 @@ function drawGrid(spec) {
       svg.append(t); return t;
     }
     if (spec.flatLabels) {
-      const ly = 16 * (lvOf(c, ci) + 1) + E;
+      // the Allen label sits halfway between the snRNA-seq label above and the count label below
+      const ly = c.mid ? Math.round((16 + E + top - 7) / 2) : 16 * (lvOf(c, ci) + 1) + E;
       svg.append(svgEl("polyline", { points: `${cx},${leadEnd} ${cx},${ly - 4} ${cx + 6},${ly - 4}`, fill: "none", stroke: "var(--muted)", "stroke-width": 0.8 }));
       const t = svgEl("text", { class: "col", x: cx + 9, y: ly }, c.label);
       svg.append(t); return t;
@@ -4372,7 +4402,14 @@ function drawGrid(spec) {
   const rowText = lines.map((ln, li) => {
     const y = top + li * rh + rh / 2;
     if (ln.divider) { svg.append(svgEl("line", { x1: 2, x2: x, y1: y, y2: y, stroke: "#e8e8e8", "stroke-width": 1.5 })); return null; }
-    if (ln.sec) { svg.append(svgEl("text", { class: "sec", x: 2, y: y + 4, ...(ln.secColor ? { style: `fill: ${ln.secColor}` } : {}) }, ln.sec)); return null; }
+    if (ln.sec) {
+      const t = svgEl("text", { class: "sec", x: 2, y: y + 4, ...(ln.secColor ? { style: `fill: ${ln.secColor}` } : {}) }, ln.sec);
+      if (ln.info) {   // a heading with a note (how its rows are defined): click to open it
+        t.append(svgEl("tspan", { dx: 6, style: "font-weight: 400; text-decoration: underline" }, "how defined"));
+        t.style.cursor = "pointer"; t.addEventListener("click", e => { e.stopPropagation(); scInfoOpen(ln.info, e); });
+      }
+      svg.append(t); return null;
+    }
     const t = svgEl("text", { x: 10, y: y + 4 });
     t.append(svgEl("tspan", {}, ln.label));
     if (ln.sub) t.append(svgEl("tspan", { class: "mk", dx: 6 }, ln.sub));
@@ -4402,10 +4439,16 @@ function drawGrid(spec) {
       mark = svgEl("rect", { x: xs[c.ci] + 3, y: cy - rh * 0.3, width: bw(c.bar), height: rh * 0.6, fill: c.fill, rx: 1 });
       svg.append(mark);
       if (c.bar2 != null && c.hist) {   // expressing nuclei as a histogram: most counts (red) left, one count (green) right
-        const w2 = bw(c.bar2), [h8, h4, h2] = c.hist, parts = [h8, h4 - h8, h2 - h4, 1 - h2];
-        c.tip = `${c.tip ?? ""}\nOf those expressing: ${["≥ 8 counts", "4–7", "2–3", "1 count"].map((l, i) => `${l} ${(Math.max(0, parts[i]) * 100).toFixed(0)}%`).join(", ")}`;
+        // bins from the top: share with >= the highest bound, then each band down to 1 count
+        const w2 = bw(c.bar2), cum = [1, ...c.hist], nb = cum.length, parts = [], labs = [], cols = [];
+        for (let i = nb - 1; i >= 0; i--) {
+          parts.push(cum[i] - (cum[i + 1] ?? 0)); cols.push(HIST_COL[i]);
+          const lo = i ? HIST_TH[i - 1] : 1, hi = i + 1 < nb ? (HIST_TH[i] - 1) : null;
+          labs.push(hi == null ? `≥ ${lo}` : lo === hi ? `${lo}` : `${lo}–${hi}`);
+        }
+        c.tip = `${c.tip ?? ""}\nOf those expressing, counts per nucleus: ${labs.map((l, i) => `${l}: ${(Math.max(0, parts[i]) * 100).toFixed(0)}%`).join(", ")}`;
         let x0 = xs[c.ci] + 3;
-        parts.forEach((p, i) => { const pw = Math.max(0, p) * w2; if (pw > 0) svg.append(svgEl("rect", { x: x0, y: cy - rh * 0.3, width: pw + (i < 3 ? 0.3 : 0), height: rh * 0.6, fill: HIST_COL[i], "pointer-events": "none" })); x0 += pw; });
+        parts.forEach((p, i) => { const pw = Math.max(0, p) * w2; if (pw > 0) svg.append(svgEl("rect", { x: x0, y: cy - rh * 0.3, width: pw + (i < nb - 1 ? 0.3 : 0), height: rh * 0.6, fill: cols[i], "pointer-events": "none" })); x0 += pw; });
       } else if (c.bar2 != null) { const m2 = svgEl("rect", { x: xs[c.ci] + 3, y: cy - rh * 0.3, width: bw(c.bar2), height: rh * 0.6, fill: c.fill2, rx: 1, "pointer-events": "none" }); svg.append(m2); }
       svg.append(svgEl("text", { class: "mk", x: xs[c.ci] + room + 8, y: cy + 4 }, c.text ?? ""));
     } else {
@@ -4587,7 +4630,7 @@ function scSubRun(items, onNuc) {
 }
 function scSubLabel() {
   const b = $e("sc-diff-sub"), st = scView.sub?.key === scView.subKey ? scView.sub : null;
-  b.textContent = st?.state === "ready" ? "view subcellular" : st?.state === "loading" ? `subcellular ${Math.min(99, Math.round(st.done / Math.max(1, st.total) * 100))}%` : "subcellular";
+  b.textContent = st?.state === "ready" ? "View subcel." : st?.state === "loading" ? `Subcel. ${Math.min(99, Math.round(st.done / Math.max(1, st.total) * 100))}%` : "Subcel.";
 }
 $e("sc-diff-sub").addEventListener("click", () => {
   // No differential result: the co-expressed genes (nucl* ones then marked in the same way)
@@ -4650,19 +4693,19 @@ const TOUR = [
     text: "Switch the rows to Siletti, the atlas's own clusters.", goal: "Finer cell types: which CA1 sub-clusters carry FNDC1, with their marker genes.",
     done: () => $e("sc-detail").checked && !$e("sc-hpa").checked && /Subfield by markers/.test($e("sc-plot").textContent) },
   { title: "7 · Co-expression", target: 'label[for="sc-coexp"]',
-    text: "Press co-expressed. The 200 genes whose expression across these clusters best follows FNDC1's appear as columns on the right (scroll right); r after each name.",
+    text: "Press Co-exp. The 200 genes whose expression across these clusters best follows FNDC1's appear as columns on the right (scroll right); r after each name.",
     goal: "Genes co-expressed across cell types often share a cell type or a function: a first list of FNDC1's partners.", done: () => !!scView.coShown },
   { title: "8 · Subcellular location", target: "#sc-diff-sub",
-    text: "Press subcellular. The Human Protein Atlas is asked where each co-expressed gene's protein sits in the cell (the button counts up); the columns are then reordered, nuclear genes first. Then press view subcellular.",
+    text: "Press Subcel. The Human Protein Atlas is asked where each co-expressed gene's protein sits in the cell (the button counts up); the columns are then reordered, nuclear genes first. Then press View subcel.",
     goal: "Narrow the list to nuclear proteins (e.g. transcription regulators) and see the staining (images of the nuclear ones).", done: () => $e("sub-dialog").open },
   { title: "9 · Images", target: () => ($e("sub-dialog").open ? $e("sub-dialog").querySelector("button[value=close]") : null),
     text: "Each tile: the image (click it for the gene's Protein Atlas page), its locations and its correlation with FNDC1. When you have looked, close this window.",
     goal: "Back in the table, the nuclear genes now come first, before the dashed line.", done: () => !$e("sub-dialog").open },
-  { title: "10 · Differential: CA1 vs dentate gyrus", target: '.sc-seg button[data-v="brief"]',
+  { title: "10 · Differential: CA1 vs dentate gyrus", target: '.sc-seg button[data-v="custom"]',
     text: "Switch the rows back to Brief.", goal: "Next: which genes are most raised in CA1 neurons compared with dentate gyrus granule cells?",
-    done: () => !$e("sc-detail").checked && /Hippocampal neurons, subfield by markers/.test($e("sc-plot").textContent) },
+    done: () => !$e("sc-detail").checked && $e("sc-custom").checked },
   { title: "11 · Differential mode", target: "#sc-diff-lbl",
-    text: "Press differential.", goal: "In this mode a click on a row marks it: once yellow (foreground), twice blue (background).", done: () => $e("sc-diff").checked },
+    text: "Press Diff.", goal: "In this mode a click on a row marks it: once yellow (foreground), twice blue (background).", done: () => $e("sc-diff").checked },
   { title: "12 · Foreground: CA1", target: () => scRowText(/^CA1 \(FIBCD1/),
     text: "Click the CA1 row once: it turns yellow.", goal: "The cell type whose genes we want.", done: () => [...scView.marks].some(([k, m]) => /\|CA1 \(FIBCD1/.test(k) && m === "fg") || [...scView.marks.values()].includes("fg") },
   { title: "13 · Background: dentate gyrus", target: () => scRowText(/^Dentate gyrus granule/),
