@@ -3744,6 +3744,7 @@ async function showCellTypes() {
     scView.hpa = $e("sc-hpa").checked;
     scView.cu = !$e("sc-detail").checked && $e("sc-custom").checked ? await loadSingleCell("assets/siletti_custom") : null;
     await loadHgnc().catch(() => null);
+    await Promise.all([loadScHist(region, "assets/siletti_hipamy"), scView.cu && loadScHist(scView.cu, "assets/siletti_custom")]);
   } catch (err) { setBusy(null); setExprStatus([`Single-nucleus data: ${err.message}`]); return; }
   setBusy(null);
   const id0 = scProbe();
@@ -3906,6 +3907,19 @@ function scRemoveGene(g) {
   if (!a) $e("sc-gene").value = "";
   showCellTypes();
 }
+// Count histograms for the count bars (tools/hist.py): per bin (>= 2, >= 4, >= 8 counts), gene and
+// unit, the share of the unit's nuclei, * 255; optional (bars stay plain green without them)
+async function loadScHist(d, base) {
+  if (d.histTried) return; d.histTried = true;
+  try {
+    const res = await fetch(`${base}_hist.bin.gz`); if (!res.ok) return;
+    let buf = new Uint8Array(await res.arrayBuffer());
+    if (buf[0] === 0x1f && buf[1] === 0x8b) buf = new Uint8Array(await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer());
+    if (buf.length === 3 * d.genes.length * d.nU) d.hist = buf;
+  } catch { /* plain bars */ }
+}
+// Count-bar colours, most counts first: >= 8, 4-7, 2-3, 1
+const HIST_COL = ["#d7301f", "#fc8d59", "#f2d024", "#3cb371"];
 // Brief custom row tooltip: the rule that defines the label and each Leiden cluster in it with its markers
 // (% of the cluster's nuclei with any count)
 const CU_MARKERS = { CA1: ["FIBCD1", "FNDC1"], CA3: ["HS3ST4", "NPNT"], CA2: ["RGS14", "COL21A1"], SUB: ["PCP4", "FN1", "PROX1"], DG: ["PROX1"], none: ["FIBCD1", "FNDC1", "HS3ST4", "NPNT", "RGS14", "COL21A1", "PCP4", "FN1", "PROX1"] };
@@ -4062,6 +4076,16 @@ async function renderCellTypes() {
     else if (r.test) region.groups.forEach(([d, c, nn], k) => { if (r.test(d, region.superclusters[c])) add(region, nG, k, nn); });
     return n ? { mean: m / n, frac: f / n, lin: l / n } : null;
   };
+  // A row's count histogram for a gene: shares of its expressing nuclei with >= 8, >= 4, >= 2 counts
+  const histOf = (r, name) => {
+    const pick = r.cu ? [cu, r.cu.map(k => [k, cu.groups[k][2]])] : r.test ? [region, region.groups.map(([d, c, nn], k) => (r.test(d, region.superclusters[c]) ? [k, nn] : null)).filter(Boolean)] : null;
+    if (!pick || !name) return null;
+    const [dd, us] = pick; if (!dd?.hist) return null;
+    const gi = dd.geneIndex.get(name.toUpperCase()); if (gi === undefined) return null;
+    const U = dd.nU, GU = dd.genes.length * U; let f1 = 0; const a = [0, 0, 0];
+    for (const [k, nn] of us) { f1 += nn * dd.body[gi * U * 2 + U + k] / 255; for (let b = 0; b < 3; b++) a[b] += nn * dd.hist[b * GU + gi * U + k] / 255; }
+    return f1 ? [a[2], a[1], a[0]].map(x => Math.min(1, x / f1)) : null;
+  };
   // Row keys (kept across re-renders) and the differential marks: foreground (yellow), background (blue)
   scView.marks ??= new Map();
   { let sec = ""; for (const r of rows) { if (r.sec) sec = r.sec; else if (r.n) r.key = r.k != null ? `k${r.k}` : `${sec}|${r.label}`; } }
@@ -4126,7 +4150,7 @@ async function renderCellTypes() {
         const v = mv?.[j]; if (!v) return;
         cells.push({ li, ci: 2 * j, size: sqSize(stretch(v.lin, mRange[j])), fill: scColour(stretch(v.lin, mRange[j])), tip: `${r.tip}\n${name}: ${(v.frac * 100).toFixed(0)}% of ${r.n.toLocaleString()} nuclei, ${v.lin.toFixed(2)} counts per 10k (log mean ${v.mean.toFixed(2)})` });
         const mN = secMaxN[r.secI];   // grey: the row's nuclei (linear, to the group maximum); green: those expressing
-        cells.push({ li, ci: 2 * j + 1, bar: r.n / mN, fill: "rgba(255,255,255,0.35)", bar2: r.n * v.frac / mN, fill2: "#3cb371", text: `${Math.round(v.frac * 100)}%`, textW: 34,
+        cells.push({ li, ci: 2 * j + 1, bar: r.n / mN, fill: "rgba(255,255,255,0.35)", bar2: r.n * v.frac / mN, fill2: "#3cb371", hist: histOf(r, name), text: `${Math.round(v.frac * 100)}%`, textW: 34,
           tip: `${r.n.toLocaleString()} nuclei, ${Math.round(r.n * v.frac).toLocaleString()} (${(v.frac * 100).toFixed(1)}%) expressing ${name}` });
       });
       if (detailed && r.markers) cells.push({ li, ci: nBase, label: r.markers });
@@ -4142,7 +4166,7 @@ async function renderCellTypes() {
     // Nuclei (grey, linear) with those expressing the gene (green) on top
     const nc = 2;
     const mN = secMaxN[r.secI];
-    cells.push({ li, ci: nc, bar: r.n / mN, fill: "rgba(255,255,255,0.35)", bar2: r.n * r.frac / mN, fill2: "#3cb371",
+    cells.push({ li, ci: nc, bar: r.n / mN, fill: "rgba(255,255,255,0.35)", bar2: r.n * r.frac / mN, fill2: "#3cb371", hist: histOf(r, scView.g?.name),
       text: `${r.n.toLocaleString()} (${Math.round(r.frac * 100)}%)`, tip: `${r.n.toLocaleString()} nuclei, ${Math.round(r.n * r.frac).toLocaleString()} (${(r.frac * 100).toFixed(1)}%) expressing ${scView.g.name}` });
     added.forEach((a, j) => {
       const v = aVals[rows.indexOf(r)]?.[j], c0 = 3 + 3 * j; if (!v) return;
@@ -4152,7 +4176,7 @@ async function renderCellTypes() {
         if (z?.z != null) cells.push({ li, ci: c0 + 1, span, stripes: z.vals.map(ribbonColour), tip: `Allen microarray, ${a.name}: ${z.n} samples in ${g.where}, mean z ${z.z >= 0 ? "+" : ""}${z.z.toFixed(2)}` });
       }
       if (!detailed && r.allenWhere && r.allen) { const z = allenFor(j, r.allenWhere); if (z?.z != null) cells.push({ li, ci: c0 + 1, size: 0.9, fill: ribbonColour(z.z), tip: `Allen microarray, ${a.name}: mean z ${z.z >= 0 ? "+" : ""}${z.z.toFixed(2)} over ${z.n} samples in ${r.allenWhere}` }); }
-      cells.push({ li, ci: c0 + 2, bar: r.n / mN, fill: "rgba(255,255,255,0.35)", bar2: r.n * v.frac / mN, fill2: "#3cb371",
+      cells.push({ li, ci: c0 + 2, bar: r.n / mN, fill: "rgba(255,255,255,0.35)", bar2: r.n * v.frac / mN, fill2: "#3cb371", hist: histOf(r, a.name),
         text: `${r.n.toLocaleString()} (${Math.round(v.frac * 100)}%)`, tip: `${r.n.toLocaleString()} nuclei, ${Math.round(r.n * v.frac).toLocaleString()} (${(v.frac * 100).toFixed(1)}%) expressing ${a.name}` });
     });
     if (detailed && r.markers) cells.push({ li, ci: nBase, label: r.markers });
@@ -4377,7 +4401,12 @@ function drawGrid(spec) {
       const room = w - (c.textW ?? 92), bw = v => Math.max(v > 0 ? 1 : 0, v * room);
       mark = svgEl("rect", { x: xs[c.ci] + 3, y: cy - rh * 0.3, width: bw(c.bar), height: rh * 0.6, fill: c.fill, rx: 1 });
       svg.append(mark);
-      if (c.bar2 != null) { const m2 = svgEl("rect", { x: xs[c.ci] + 3, y: cy - rh * 0.3, width: bw(c.bar2), height: rh * 0.6, fill: c.fill2, rx: 1, "pointer-events": "none" }); svg.append(m2); }
+      if (c.bar2 != null && c.hist) {   // expressing nuclei as a histogram: most counts (red) left, one count (green) right
+        const w2 = bw(c.bar2), [h8, h4, h2] = c.hist, parts = [h8, h4 - h8, h2 - h4, 1 - h2];
+        c.tip = `${c.tip ?? ""}\nOf those expressing: ${["≥ 8 counts", "4–7", "2–3", "1 count"].map((l, i) => `${l} ${(Math.max(0, parts[i]) * 100).toFixed(0)}%`).join(", ")}`;
+        let x0 = xs[c.ci] + 3;
+        parts.forEach((p, i) => { const pw = Math.max(0, p) * w2; if (pw > 0) svg.append(svgEl("rect", { x: x0, y: cy - rh * 0.3, width: pw + (i < 3 ? 0.3 : 0), height: rh * 0.6, fill: HIST_COL[i], "pointer-events": "none" })); x0 += pw; });
+      } else if (c.bar2 != null) { const m2 = svgEl("rect", { x: xs[c.ci] + 3, y: cy - rh * 0.3, width: bw(c.bar2), height: rh * 0.6, fill: c.fill2, rx: 1, "pointer-events": "none" }); svg.append(m2); }
       svg.append(svgEl("text", { class: "mk", x: xs[c.ci] + room + 8, y: cy + 4 }, c.text ?? ""));
     } else {
       const s2 = c.size > 0 ? Math.max(2, c.size * side) : 0;

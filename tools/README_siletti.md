@@ -96,3 +96,14 @@ Two clusters change label: c22 goes from CA2 to CA3 (60% of its nuclei express N
     LABELS=rc_labels_v2.parquet OUT=agg8 python agg7.py; AGG=agg8 python packcu.py
 
 The file stores each cluster's marker percentages (`rcClusters`) and the rules (`rules`), and the row tooltips show them.
+
+## Count histograms (hist.py)
+
+In the cells window, the green "expressing" part of each count bar is split by how many counts each expressing nucleus has. From left to right the colours are red (8 or more counts), orange (4–7), yellow (2–3) and green (1 count). The bar keeps its length, which is the share of expressing nuclei; only its colouring changes.
+
+`hist.py` stores, for every gene and row unit, the share of the unit's nuclei with 2 or more, 4 or more and 8 or more raw counts. It writes them as `<file>_hist.bin.gz` (uint8, layout [bin][gene][unit]). There are two outputs:
+
+- `MODE=region` covers the dissection × supercluster groups of `siletti_hipamy`.
+- `MODE=custom` covers the reclustered labels of `siletti_custom`.
+
+Siletti and Protein Atlas cluster rows have no histogram file, so their bars stay plain green.
