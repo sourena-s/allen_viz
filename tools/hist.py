@@ -1,5 +1,5 @@
 # Count histograms for the cells window's count bars: per gene and row unit (group of the brief
-# file), the fraction of nuclei with >= 2, >= 4 and >= 8 raw counts (>= 1 is in the file already).
+# file), the fraction of nuclei with >= 2, 4, 8, 16 and 32 raw counts (>= 1 is in the file already).
 # MODE=region: groups (dissection, Siletti supercluster) of siletti_hipamy; MODE=custom: groups
 # (dissection, reclustered label) of siletti_custom. Output: <name>_hist.bin.gz, uint8 per
 # [bin][gene][unit] in the brief file's gene order, value = fraction * 255.
@@ -21,7 +21,7 @@ if MODE == 'region':
 else:
     lab = pd.read_parquet('rc_labels_v2.parquet'); keys = h['keys']
     code = pd.Series(lab.subfield.map({l: i for i, l in enumerate(keys)}).values, index=lab.soma_joinid.values)
-TH = [2, 4, 8]; H = np.zeros((len(TH), U, G), np.float32); N = np.array([g[2] for g in h["groups"]], np.float64)
+TH = [2, 4, 8, 16, 32]; H = np.zeros((len(TH), U, G), np.float32); N = np.array([g[2] for g in h["groups"]], np.float64)
 dsets = pd.read_csv('hipamy_datasets.csv'); c = open_c(); exp = c["census_data"]["homo_sapiens"]
 for k, row in dsets.iterrows():
     title = row.dataset_title.replace('Dissection: ', '')
