@@ -810,7 +810,7 @@
       <button class="rb-btn" value="close" aria-label="Close" title="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
 
     <div class="sc-zrow">
-<span id="sc-editbar" class="rib-editbar" hidden>Figure: tick columns; select a column (click it) and move it <button type="button" class="corr-btn" id="sc-mvl" title="Move the selected column left">◀</button><button type="button" class="corr-btn" id="sc-mvr" title="Move the selected column right">▶</button><button type="button" class="corr-btn" id="sc-save">Save PNG</button><button type="button" class="corr-btn" id="sc-done">Done</button></span><span id="sc-status" class="sc-status"></span></div>
+<span id="sc-editbar" class="rib-editbar" hidden>Figure: click a gene bar to include or leave out its columns, drag it to move them; other columns: tick, select and move <button type="button" class="corr-btn" id="sc-mvl" title="Move the selected column left">◀</button><button type="button" class="corr-btn" id="sc-mvr" title="Move the selected column right">▶</button><button type="button" class="corr-btn" id="sc-save">Save PNG</button><button type="button" class="corr-btn" id="sc-done">Done</button></span><span id="sc-status" class="sc-status"></span></div>
     <div id="sc-plot"></div>
     <div class="sc-legend" id="sc-legend"></div>
     <div id="sc-help" class="sc-help" hidden>
@@ -4158,14 +4158,13 @@ async function renderCellTypes() {
   $e("sc-sub").textContent = `${diff ? `Differential: ${diff.note} ` : ""}${scView.hpa ? "Protein Atlas brain clusters (c-numbers as on proteinatlas.org: brain neurons, and non-neuronal clusters marked so), each nucleus of these dissections assigned to the cluster whose expression profile it correlates with best over ~1,450 marker genes (an approximation of the Protein Atlas assignment), grouped by cell type, in c-number order. " : ""}${scView.hpa ? "Rows" : detailed ? "Siletti clusters, grouped by subfield (canonical markers) or cell class, sorted by share expressing" : "Hippocampal subfields by canonical markers (CA1: FIBCD1/FNDC1; CA2: RGS14; subiculum: PCP4 or FN1 without PROX1; CA3: HS3ST4; DG: PROX1; a cluster counts as positive when half its nuclei express the gene, in that order), other cell classes per region"}, then each dissection (all its nuclei; dissections mix neighbouring fields). The subiculum has no cluster or canonical marker of its own in these data (its nuclei fall into CA1-type clusters), so it appears only as a dissection row. Colour: mean expression of ${scView.g.name} in counts per 10k (linear, no log), from pale (lowest row) to red (highest row), square area likewise, stretched separately for the by-markers rows and the by-dissection rows; co-expressed columns each over their own range. Bars: nuclei (grey, linear) and those expressing the gene (green).${detailed ? " Allen: the probe highlighted in the ribbon, every sample of the Allen structures matching each subfield, class or dissection (the ribbon turned on its side, its colours), from your loaded donors." : " Allen: mean z of the probe highlighted in the ribbon in each marker subfield's Allen structures, in the ribbon's colours."}${detailed ? " Hover a cluster for where it was dissected." : ""} (Ex) excitatory, (In) inhibitory.`;
   const colsAll = [...(multi
       ? multi.flatMap((name, j) => [{ key: `g:${name}`, label: name, gene: name, vert: true, gap: j ? 10 : 0 }, { key: `g:${name}:ct`, label: "Count (% Exp.)", w: 84, vert: true, gap: 2 }])
-      : [{ key: "m:sn", label: `${scView.g.name} (snRNA-seq Siletti et al.)`, lv: 0 }, { key: "m:al", label: `${scView.g.name} (Allen Brain Atlas)`, lv: 1, gap: 6 }, { key: "m:ct", label: "Count (% Exp.)", w: 190, gap: 10, plain: true },
-         ...added.flatMap(a => [{ key: `a:${a.name}:sn`, label: `${a.name} (snRNA-seq Siletti et al.)`, gene: a.name, lv: 0, gap: 14 }, { key: `a:${a.name}:al`, label: `${a.name} (Allen Brain Atlas)`, lv: 1, gap: 6 }, { key: `a:${a.name}:ct`, label: "Count (% Exp.)", w: 190, gap: 10, plain: true }])]),
+      : [{ key: "m:sn", label: "snRNA-seq Siletti et al.", lv: 0 }, { key: "m:al", label: "Allen Brain Atlas", lv: 1, gap: 6 }, { key: "m:ct", label: "Count (% Exp.)", w: 190, gap: 10, plain: true },
+         ...added.flatMap(a => [{ key: `a:${a.name}:sn`, label: "snRNA-seq Siletti et al.", gene: a.name, lv: 0, gap: 14 }, { key: `a:${a.name}:al`, label: "Allen Brain Atlas", lv: 1, gap: 6 }, { key: `a:${a.name}:ct`, label: "Count (% Exp.)", w: 190, gap: 10, plain: true }])]),
       ...(detailed ? [{ key: "mk", label: "Markers ([canonical] then cluster-specific)", w: 360, gap: 8, plain: !multi, vert: !!multi }] : []),
       ...extra.map((c, j) => ({ key: `x:${c.diff ? "d" : "c"}:${c.name}`, label: c.label, gene: c.name, pct: c.pct, pctOf: c.pctOf, sep: c.sep, vert: true, gap: j === 0 || (c.diff && !extra[j - 1].diff) || c.sep ? 8 : 0 }))];
   // Figure editing (PNG button): columns in the user's order; those toggled off are dimmed while
   // editing and left out otherwise (and in the PNG)
   const ce = scView.colEdit ??= { on: false, off: new Set(), order: null };
-  ce.bandOff ??= new Set();
   for (const c of colsAll) { const m = c.key.match(/^(?:g|a):(.+?)(?::(?:ct|sn|al))?$/); c.grp = c.key.startsWith("m:") ? scView.g?.name : m ? m[1] : null; }
   let order = colsAll.map((_, i) => i);
   if (ce.order) { const pos = new Map(ce.order.map((k, i) => [k, i])); order.sort((a, b) => (pos.get(colsAll[a].key) ?? 1e6 + a) - (pos.get(colsAll[b].key) ?? 1e6 + b)); }
@@ -4173,11 +4172,12 @@ async function renderCellTypes() {
   const newCi = new Map(order.map((oi, ni) => [oi, ni]));
   const colsF = order.map(i => ({ ...colsAll[i], off: ce.off.has(colsAll[i].key) }));
   // A custom order: label heights follow the new order (one level per labelled column), so none overlap
-  if (ce.order) { let n = 0; for (const c of colsF) if (!c.plain && !c.vert) c.lv = n++; }
+  if (ce.order) { const n0 = colsF.some(c => c.grp && !c.plain && !c.vert) ? 2 : 0; let n = n0; for (const c of colsF) if (!c.plain && !c.vert && !c.grp) c.lv = n++; }
   const cellsF = cells.filter(c => newCi.has(c.ci)).map(c => ({ ...c, ci: newCi.get(c.ci) }));
   scView.colKeys = colsF.map(c => c.key);
-  drawGrid({ cols: colsF, edit: ce.on && !scView.exporting, bands: ce.on || scView.exporting ? ce.bandOff : null,
-    onBandToggle: g => { ce.bandOff.has(g) ? ce.bandOff.delete(g) : ce.bandOff.add(g); renderCellTypes(); },
+  drawGrid({ cols: colsF, edit: ce.on && !scView.exporting, bands: true,
+    // a gene bar toggles all of its gene's columns in or out of the figure
+    onBandToggle: g => { const ks = colsF.filter(c => c.grp === g).map(c => c.key), on = ks.some(k => !ce.off.has(k)); for (const k of ks) on ? ce.off.add(k) : ce.off.delete(k); renderCellTypes(); },
     onBandMove: (g, beforeKey) => { const keys = colsF.map(c => c.key), mine = keys.filter((k, i) => colsF[i].grp === g), rest = keys.filter((k, i) => colsF[i].grp !== g);
       let at = beforeKey == null ? rest.length : rest.indexOf(beforeKey); if (at < 0) at = rest.length; rest.splice(at, 0, ...mine); ce.order = rest; renderCellTypes(); },
     onColToggle: ci => { const k = colsF[ci].key; ce.off.has(k) ? ce.off.delete(k) : ce.off.add(k); renderCellTypes(); },
@@ -4239,11 +4239,11 @@ function drawGrid(spec) {
   // Label levels: a column's lv (repeated per gene block), else its rank among the labelled columns
   const lvOf = (c, ci) => c.lv ?? ci;
   const nLv = Math.max(0, ...cols.map((c, ci) => (!c.plain && !c.vert ? lvOf(c, ci) + 1 : 0)));
-  const E0 = spec.edit ? 20 : 0;   // figure editing: a band of column toggles above the labels
+  const E0 = spec.edit && cols.some(c => !c.grp) ? 20 : 0;   // figure editing: a band of column toggles above the labels
   // Gene bars (figure editing and PNG): one rectangle over each run of a gene's columns
   const runs = [];
   if (spec.bands) cols.forEach((c, ci) => { if (!c.grp) return; const r = runs[runs.length - 1]; if (r && r.g === c.grp && r.b === ci - 1) r.b = ci; else runs.push({ g: c.grp, a: ci, b: ci }); });
-  const shownRuns = spec.edit ? runs : runs.filter(r => !spec.bands.has(r.g)), GB = shownRuns.length ? 20 : 0, E = E0 + GB;
+  const shownRuns = runs, GB = shownRuns.length ? 20 : 0, E = E0 + GB;
   const top = (spec.flatLabels ? Math.max(16 * nLv + 30, vertH) : spec.top) + E;
   const xs = []; let x = labelW;
   const ws = cols.map(c => c.w ?? cw);
@@ -4294,12 +4294,12 @@ function drawGrid(spec) {
     svg.append(t); return t;
   });
   for (const r of shownRuns) {   // gene bars: click toggles (in the figure or not), drag moves the gene's columns
-    const off = spec.bands.has(r.g), x0 = xs[r.a], x1 = xs[r.b] + ws[r.b], y0 = E0 + 3;
+    const off = cols.slice(r.a, r.b + 1).every(c => c.off), x0 = xs[r.a], x1 = xs[r.b] + ws[r.b], y0 = E0 + 3;
     const g = svgEl("g", spec.edit ? { style: "cursor: grab" } : {});
-    g.append(svgEl("rect", { x: x0, y: y0, width: x1 - x0, height: 14, rx: 2, fill: off ? "none" : "#bfc4cc", stroke: off ? "var(--muted)" : "none", "stroke-dasharray": off ? "3 2" : "none" }),
-      svgEl("text", { x: x0 + 4, y: y0 + 10.5, style: `fill: ${off ? "var(--muted)" : "#222"}; font-size: 10px; font-weight: 600; pointer-events: none` }, r.g));
+    g.append(svgEl("rect", { x: x0 + 1, y: y0, width: x1 - x0 - 2, height: 14, rx: 2, fill: "#bfc4cc" }),
+      svgEl("text", { x: x0 + 4, y: y0 + 10.5, style: "fill: #222; font-size: 10px; font-weight: 600; pointer-events: none" }, spec.edit && !off ? `✓ ${r.g}` : r.g));
     if (spec.edit) {
-      g.firstChild.dataset.tip = `${r.g}: gene bar ${off ? "left out of" : "in"} the figure (click to ${off ? "include" : "leave out"}; drag to move the gene's columns)`;
+      g.firstChild.dataset.tip = `${r.g}: ${off ? "left out of" : "in"} the figure (click to ${off ? "include" : "leave out"}; drag to move the gene's columns)`;
       g.addEventListener("pointerdown", e => {
         e.stopPropagation(); g.setPointerCapture(e.pointerId);
         const sx = e.clientX, k = (svg.getBoundingClientRect().width / W) || 1; let dx = 0;
@@ -4315,13 +4315,14 @@ function drawGrid(spec) {
     }
     svg.append(g);
   }
-  if (spec.edit) cols.forEach((c, ci) => {   // in-figure toggles; columns left out are dimmed
+  if (spec.edit) cols.forEach((c, ci) => {   // in-figure toggles (gene columns: their gene bar); columns left out are dimmed
+    if (c.off) svg.append(svgEl("rect", { x: xs[ci], y: E, width: ws[ci], height: top - E + lines.length * rh, fill: "#3a3f46", opacity: 0.7, "pointer-events": "none" }));
+    if (c.grp) return;
     const cx = xs[ci] + Math.min(ws[ci], cw) / 2, on = !c.off;
     const t = svgEl("rect", { x: cx - 6, y: 3, width: 12, height: 12, rx: 2, fill: on ? "#ffd600" : "none", stroke: on ? "#ffd600" : "var(--muted)", "stroke-width": 1, style: "cursor: pointer" });
     t.dataset.tip = on ? "In the figure (click to leave out)" : "Left out of the figure (click to include)";
     t.addEventListener("click", e => { e.stopPropagation(); spec.onColToggle?.(ci); });
     svg.append(t);
-    if (c.off) svg.append(svgEl("rect", { x: xs[ci], y: E, width: ws[ci], height: top - E + lines.length * rh, fill: "#3a3f46", opacity: 0.7, "pointer-events": "none" }));
   });
   const rowText = lines.map((ln, li) => {
     const y = top + li * rh + rh / 2;
