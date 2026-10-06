@@ -4129,14 +4129,19 @@ async function renderCellTypes() {
     return n ? { mean: m / n, frac: f / n, lin: l / n } : null;
   };
   // A row's count histogram for a gene: shares of its expressing nuclei with >= 8, >= 4, >= 2 counts
+  // (several rows pooled when r is an array; null if any row has no histogram table)
   const histOf = (r, name) => {
-    const pick = r.cu ? [cu, r.cu.map(k => [k, cu.groups[k][2]])] : r.test ? [region, region.groups.map(([d, c, nn], k) => (r.test(d, region.superclusters[c]) ? [k, nn] : null)).filter(Boolean)] : null;
-    if (!pick || !name) return null;
-    const [dd, us] = pick; if (!dd?.hist) return null;
-    const gi = dd.geneIndex.get(name.toUpperCase()); if (gi === undefined) return null;
-    const U = dd.nU, GU = dd.genes.length * U, nb = dd.histN; let f1 = 0; const a = new Array(nb).fill(0);
-    for (const [k, nn] of us) { f1 += nn * dd.body[gi * U * 2 + U + k] / 255; for (let b = 0; b < nb; b++) a[b] += nn * dd.hist[b * GU + gi * U + k] / 255; }
-    return f1 ? a.map(x => Math.min(1, x / f1)) : null;   // shares of expressing nuclei with >= 2, >= 4, ... counts
+    if (!name) return null;
+    let f1 = 0, a = null;
+    for (const rr of Array.isArray(r) ? r : [r]) {
+      const pick = rr.cu ? [cu, rr.cu.map(k => [k, cu.groups[k][2]])] : rr.test ? [region, region.groups.map(([d, c, nn], k) => (rr.test(d, region.superclusters[c]) ? [k, nn] : null)).filter(Boolean)] : null;
+      if (!pick) return null;
+      const [dd, us] = pick; if (!dd?.hist) return null;
+      const gi = dd.geneIndex.get(name.toUpperCase()); if (gi === undefined) continue;
+      const U = dd.nU, GU = dd.genes.length * U, nb = dd.histN; a ??= new Array(nb).fill(0);
+      for (const [k, nn] of us) { f1 += nn * dd.body[gi * U * 2 + U + k] / 255; for (let b = 0; b < Math.min(nb, a.length); b++) a[b] += nn * dd.hist[b * GU + gi * U + k] / 255; }
+    }
+    return f1 && a ? a.map(x => Math.min(1, x / f1)) : null;   // shares of expressing nuclei with >= 2, >= 4, ... counts
   };
   // Row keys (kept across re-renders) and the differential marks: foreground (yellow), background (blue)
   scView.marks ??= new Map();
@@ -4174,9 +4179,10 @@ async function renderCellTypes() {
   })();
   scView.coShown = co ? { key: coKey, list: co.list.map(c => ({ name: coData.genes[c.i], r: c.r })) } : null;
   // Extra columns on the right: co-expressed genes, then differential genes, each on its own range
+  const fgRows = rows.filter(r => r.n && r.key && scView.marks?.get(r.key) === "fg");   // the differential's foreground rows
   const extra = [
-    ...coCols.map(({ i, r: rr, sep }) => ({ name: coData.genes[i], sep, ...(selRow ? { pct: rowOf(selRow, coData.genes[i])?.frac ?? 0, pctOf: `${selRow.label} nuclei` } : {}), label: `${coData.genes[i]} ${rr.toFixed(2)}`, why: `r = ${rr.toFixed(2)} with ${scView.coAnchor}`, only: coIn })),
-    ...(diff?.list ?? []).map(({ name, d, pct }, j) => ({ name, pct, pctOf: "the foreground nuclei", sep: diff.nucN != null && j === diff.nucN && j > 0, label: `${name} ${d >= 0 ? "+" : ""}${d.toFixed(1)}`, why: `foreground minus background, ${d.toFixed(2)} SD of the gene across the rows`, diff: true })),
+    ...coCols.map(({ i, r: rr, sep }) => ({ name: coData.genes[i], sep, ...(selRow ? { pct: rowOf(selRow, coData.genes[i])?.frac ?? 0, pctOf: `${selRow.label} nuclei`, hist: histOf(selRow, coData.genes[i]) } : {}), label: `${coData.genes[i]} ${rr.toFixed(2)}`, why: `r = ${rr.toFixed(2)} with ${scView.coAnchor}`, only: coIn })),
+    ...(diff?.list ?? []).map(({ name, d, pct }, j) => ({ name, pct, pctOf: "the foreground nuclei", hist: fgRows.length ? histOf(fgRows, name) : null, sep: diff.nucN != null && j === diff.nucN && j > 0, label: `${name} ${d >= 0 ? "+" : ""}${d.toFixed(1)}`, why: `foreground minus background, ${d.toFixed(2)} SD of the gene across the rows`, diff: true })),
   ];
   const exRows = rows.map(r => (r.n ? extra.map(c => (!c.only || c.only.has(r.k) ? rowOf(r, c.name) : null)) : null));
   const exRange = extra.map((_, j) => { const vs = exRows.filter(Boolean).map(v => v[j]?.lin).filter(v => v != null); return [Math.min(...vs), Math.max(...vs)]; });
@@ -4251,7 +4257,7 @@ async function renderCellTypes() {
       : [{ key: "m:sn", label: "snRNA-seq Siletti et al.", lv: 0 }, { key: "m:al", label: "Allen Brain Atlas", lv: 1, mid: true, gap: 6 }, { key: "m:ct", label: "Count (% Exp.)", w: 190, gap: 10, plain: true },
          ...added.flatMap(a => [{ key: `a:${a.name}:sn`, label: "snRNA-seq Siletti et al.", gene: a.name, lv: 0, gap: 14 }, { key: `a:${a.name}:al`, label: "Allen Brain Atlas", lv: 1, mid: true, gap: 6 }, { key: `a:${a.name}:ct`, label: "Count (% Exp.)", w: 190, gap: 10, plain: true }])]),
       ...(detailed ? [{ key: "mk", label: "Markers ([canonical] then cluster-specific)", w: 360, gap: 8, plain: !multi, vert: !!multi }] : []),
-      ...extra.map((c, j) => ({ key: `x:${c.diff ? "d" : "c"}:${c.name}`, label: c.label, gene: c.name, pct: c.pct, pctOf: c.pctOf, sep: c.sep, vert: true, gap: j === 0 || (c.diff && !extra[j - 1].diff) || c.sep ? 8 : 0 }))];
+      ...extra.map((c, j) => ({ key: `x:${c.diff ? "d" : "c"}:${c.name}`, label: c.label, gene: c.name, pct: c.pct, pctOf: c.pctOf, hist: c.hist, sep: c.sep, vert: true, gap: j === 0 || (c.diff && !extra[j - 1].diff) || c.sep ? 8 : 0 }))];
   // Figure editing (PNG button): columns in the user's order; those toggled off are dimmed while
   // editing and left out otherwise (and in the PNG)
   const ce = scView.colEdit ??= { on: false, off: new Set(), order: null };
@@ -4365,7 +4371,17 @@ function drawGrid(spec) {
         const y0 = top - 6 - pctH + 4, h = pctH - 6;
         const bg = svgEl("rect", { x: cx - 5, y: y0, width: 10, height: h, fill: "rgba(255,255,255,0.35)", rx: 1 });
         bg.dataset.tip = `${c.gene}: ${(c.pct * 100).toFixed(1)}% of ${c.pctOf ?? "the foreground nuclei"} express it (any count)`;
-        svg.append(bg, svgEl("rect", { x: cx - 5, y: y0 + h * (1 - c.pct), width: 10, height: h * c.pct, fill: "#3cb371", rx: 1, "pointer-events": "none" }));
+        svg.append(bg);
+        if (c.hist) {   // expressing nuclei as a count histogram, most counts at the bottom (as left in the count bars)
+          const cum = [1, ...c.hist], hh = h * c.pct; let yb = y0 + h, tipH = [];
+          for (let k = cum.length - 1; k >= 0; k--) {
+            const part = Math.max(0, cum[k] - (cum[k + 1] ?? 0)), ph = part * hh;
+            if (ph > 0) { svg.append(svgEl("rect", { x: cx - 5, y: yb - ph, width: 10, height: ph + (k ? 0.3 : 0), fill: HIST_COL[k], "pointer-events": "none" })); yb -= ph; }
+            const lo = k ? HIST_TH[k - 1] : 1, hi = k + 1 < cum.length ? HIST_TH[k] - 1 : null;
+            tipH.push(`${hi == null ? `≥ ${lo}` : lo === hi ? lo : `${lo}–${hi}`}: ${(part * 100).toFixed(0)}%`);
+          }
+          bg.dataset.tip += `\nOf those expressing, counts per nucleus: ${tipH.join(", ")}`;
+        } else svg.append(svgEl("rect", { x: cx - 5, y: y0 + h * (1 - c.pct), width: 10, height: h * c.pct, fill: "#3cb371", rx: 1, "pointer-events": "none" }));
       }
       const ty = top - 10 - (c.pct != null ? pctH : 0);
       const t = svgEl("text", { class: "col", x: cx + 4, y: ty, transform: `rotate(-90 ${cx + 4} ${ty})` }, c.label);
