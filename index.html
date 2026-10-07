@@ -442,7 +442,7 @@
     font: 11.5px var(--sans); line-height: 1.4; white-space: pre-line; color: #fff; background: #23272d; border: 1px solid #555;
   }
   #sc-tip[hidden] { display: none; }
-  #sc-dialog.max { inset: 0; width: auto; max-width: none; height: auto; max-height: none; margin: 0; border-radius: 0; overflow: hidden; }
+  #sc-dialog.max { inset: 0; width: auto; max-width: none; height: auto; max-height: none; margin: 0; border-radius: 0; overflow: auto; }
   #sc-dialog.max #sc-plot { max-height: calc(100dvh - 104px); }
   .sc-legend { display: flex; gap: 28px; align-items: center; flex-wrap: wrap; font-size: 11px; color: var(--muted); }
   .sc-leg { display: inline-flex; align-items: center; gap: 6px; }
@@ -478,6 +478,8 @@
   .zsym.zvert input[type=range], body.phone .zsym.zvert input[type=range], body.phone .ribbon-head .zsym.zvert input[type=range] { writing-mode: vertical-lr; direction: rtl; width: 22px; height: 200px; }
   .sc-zbtn[aria-expanded="true"] { background: rgba(255,255,255,0.22); }
   #sc-diffraw[aria-pressed="true"] { background: #ffd600; color: #222; border-color: #ffd600; }
+  #sc-clear { font: 12px var(--sans); padding: 3px 9px; border-radius: 5px; height: auto; background: transparent; border: 1px solid var(--edge); color: var(--ink); cursor: pointer; }
+  body.phone #sc-clear { font-size: 13px; padding: 6px 10px; }
   #sc-diffraw, #sc-diff-sub { font: 12px var(--sans); padding: 3px 9px; border-radius: 5px; height: auto; background: transparent; border: 1px solid var(--edge); color: var(--ink); }
   #sc-diff-sub:not(:disabled):hover { background: rgba(255,255,255,0.12); }
   body.phone #sc-diff-sub, body.phone #sc-diffraw { font-size: 13px; padding: 6px 10px; }
@@ -781,7 +783,7 @@
 <section id="ribbon" class="glass" hidden aria-label="Expression z-score of every sample, one row per probe">
   <div class="ribbon-head">
     <input type="checkbox" id="rib-add" autocomplete="off"><label for="rib-add" class="sc-add-lbl" title="Add: Enter adds the gene's probes as rows (as Ctrl+Enter)" aria-label="Add genes as rows">+</label><input type="text" class="title gene-box" id="gene-input" role="combobox" aria-autocomplete="list" aria-expanded="false"
-           aria-controls="gene-suggestions" aria-label="Gene or probe" placeholder="Gene" autocomplete="off" spellcheck="false"><button type="button" class="corr-btn" id="corr-btn" disabled title="The 20 probes most correlated with the highlighted row">corr</button><button type="button" class="corr-btn" id="cells-btn" title="Cell types expressing this gene in hippocampal and amygdala subregions (single-nucleus RNA-seq, Siletti et al. 2023)">cells</button><button type="button" class="corr-btn" id="sub-btn" title="Subcellular location images (Human Protein Atlas) of every gene in the ribbon">sub</button><span class="probe zval" id="ribbon-probe" hidden></span>
+           aria-controls="gene-suggestions" aria-label="Gene or probe" placeholder="Gene" autocomplete="off" spellcheck="false"><button type="button" class="corr-btn" id="corr-btn" disabled title="The 20 probes most correlated with the highlighted row">Corr.</button><button type="button" class="corr-btn" id="cells-btn" title="Cell types expressing this gene in hippocampal and amygdala subregions (single-nucleus RNA-seq, Siletti et al. 2023)">Cell</button><button type="button" class="corr-btn" id="sub-btn" title="Subcellular location images (Human Protein Atlas) of every gene in the ribbon">Subcell</button><span class="probe zval" id="ribbon-probe" hidden></span>
     <button type="button" class="rb-btn sc-zbtn" id="rib-zbtn" aria-expanded="false" title="Colour range: z from minus to plus this value" aria-label="Colour range"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16M4 16h16"/><circle cx="9" cy="8" r="2.2"/><circle cx="15" cy="16" r="2.2"/></svg></button><span class="sc-zpop" id="rib-zpop" hidden><label class="zsym zvert" title="Colour range: z from minus to plus this value">z
       <input type="range" id="z-sym" min="0.5" max="6" step="0.1" value="2" aria-label="Colour range, z"><span id="z-sym-val" class="rm-value">±2.0</span></label></span>
     <span id="rib-editbar" class="rib-editbar" hidden>Figure: tick rows, ▲▼ to order <button type="button" class="corr-btn" id="rib-save">Save PNG</button><button type="button" class="corr-btn" id="rib-done">Done</button></span>
@@ -814,7 +816,7 @@
   <form method="dialog" class="sc-form">
     <div class="sc-head"><h2 id="sc-title" hidden></h2>
       <div class="row sc-toggle sc-detail-row"><span class="sc-tg"><input type="checkbox" id="sc-add" autocomplete="off"><label for="sc-add" class="sc-add-lbl" title="Add: Enter adds the gene as more columns on the right (as Ctrl+Enter)" aria-label="Add genes as columns">+</label><input type="text" id="sc-gene" class="gene-box" placeholder="Gene" aria-label="Gene shown in the cells window" autocomplete="off" spellcheck="false" title="Show another gene (Enter), or add it as more columns (Ctrl+Enter): a name, or with * for several (rad* starts with, *rad ends with, *rad* contains); co-expression and differential results stay"><button type="button" class="rb-btn sc-zbtn" id="sc-zbtn" aria-expanded="false" title="Colour range of the Allen z-scores" aria-label="Allen colour range"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16M4 16h16"/><circle cx="9" cy="8" r="2.2"/><circle cx="15" cy="16" r="2.2"/></svg></button><span class="sc-zpop" id="sc-zpop" hidden><label class="zsym sc-zr zvert" title="Colour range of the Allen z-scores: from minus to plus this value">Allen z
-      <input type="range" id="sc-zr" min="0.5" max="6" step="0.1" value="2" aria-label="Allen colour range, z"><span id="sc-zr-val" class="rm-value">±2.0</span></label></span></span><span class="sc-seg" role="radiogroup" aria-label="Rows"><button type="button" data-v="custom" role="radio" title="Brief, with hippocampal neurons from our reclustering of all hippocampal nuclei (Leiden), labelled CA1, CA2, CA3, subiculum, dentate gyrus by markers, plus the unlabelled nuclei">Brief</button><button type="button" data-v="siletti" role="radio" title="Siletti clusters">Siletti</button><button type="button" data-v="hpa" role="radio" title="Protein Atlas brain clusters (its neuronal and non-neuronal clusters), each nucleus assigned by marker-gene correlation"><span class="full">Protein Atlas</span><span class="short">P. Atlas</span></button><button type="button" data-v="brain" role="radio" title="Whole brain: every Siletti supercluster in each brain region (all 105 dissections: cortex, hippocampus, amygdala, basal nuclei, thalamus, hypothalamus, midbrain, pons, medulla, cerebellum, spinal cord)">Brain</button><button type="button" data-v="ncx" role="radio" title="Neocortex: every Siletti supercluster in each neocortical area (frontal, insular, cingulate, parietal, temporal, occipital dissections; entorhinal, perirhinal, parahippocampal, retrosplenial and prostriata left out as not isocortex)">Neocortex</button></span><span class="sc-seg sc-gl" role="radiogroup" aria-label="Squares"><button type="button" data-g="norm" role="radio" aria-checked="false" title="Squares: mean counts per 10k (each nucleus's counts divided by its total): the share of the cell's RNA">Norm</button><button type="button" data-g="raw" role="radio" aria-checked="true" title="Squares: mean raw counts per nucleus (not divided by the nucleus's total): amounts per cell, as a flow cytometer sees them; Brief rows only">Raw</button></span><span hidden><input type="checkbox" id="sc-detail" autocomplete="off"></span><span hidden><input type="checkbox" id="sc-custom" autocomplete="off" checked></span><span hidden><input type="checkbox" id="sc-brain" autocomplete="off"></span><span hidden><input type="checkbox" id="sc-ncx" autocomplete="off"></span><span hidden><input type="checkbox" id="sc-hpa" autocomplete="off"></span><span class="sc-tg"><input type="checkbox" id="sc-coexp" autocomplete="off"><label for="sc-coexp" title="The 200 genes whose mean expression across the hippocampal formation, dentate, parahippocampal and amygdala cell groups (clusters in the detailed view, dissection x supercluster in the brief) correlates best with this gene (r after the name)">Co-exp.</label></span><span class="sc-tg"><input type="checkbox" id="sc-diff" autocomplete="off"><label for="sc-diff" id="sc-diff-lbl" title="Click rows: once yellow (foreground), again blue (background), again clear. Then calculate: the 200 genes most raised in the foreground relative to the background appear as columns on the right">Diff.</label><button type="button" class="corr-btn" id="sc-diffraw" hidden title="Raw differential (flow-cytometry-like): ranks genes by mean raw counts per nucleus (not divided by each nucleus's total), yellow vs blue rows; Brief rows only">Calc. raw</button></span><span class="sc-tg"><button type="button" class="corr-btn" id="sc-diff-run" hidden title="Rank the genes for the yellow (foreground) vs blue (background) rows">Calculate</button><button type="button" class="corr-btn" id="sc-diff-sub" hidden title="Subcellular location images (Human Protein Atlas) of the differential genes">Subcel.</button></span></div>
+      <input type="range" id="sc-zr" min="0.5" max="6" step="0.1" value="2" aria-label="Allen colour range, z"><span id="sc-zr-val" class="rm-value">±2.0</span></label></span></span><span class="sc-seg" role="radiogroup" aria-label="Rows"><button type="button" data-v="custom" role="radio" title="Brief, with hippocampal neurons from our reclustering of all hippocampal nuclei (Leiden), labelled CA1, CA2, CA3, subiculum, dentate gyrus by markers, plus the unlabelled nuclei">Brief</button><button type="button" data-v="siletti" role="radio" title="Siletti clusters">Siletti</button><button type="button" data-v="hpa" role="radio" title="Protein Atlas brain clusters (its neuronal and non-neuronal clusters), each nucleus assigned by marker-gene correlation"><span class="full">Protein Atlas</span><span class="short">P. Atlas</span></button><button type="button" data-v="brain" role="radio" title="Whole brain: every Siletti supercluster in each brain region (all 105 dissections: cortex, hippocampus, amygdala, basal nuclei, thalamus, hypothalamus, midbrain, pons, medulla, cerebellum, spinal cord)">Brain</button><button type="button" data-v="ncx" role="radio" title="Neocortex: every Siletti supercluster in each neocortical area (frontal, insular, cingulate, parietal, temporal, occipital dissections; entorhinal, perirhinal, parahippocampal, retrosplenial and prostriata left out as not isocortex)">Neocortex</button></span><span class="sc-seg sc-gl" role="radiogroup" aria-label="Squares"><button type="button" data-g="raw" role="radio" aria-checked="true" title="Squares: mean raw counts per nucleus (not divided by the nucleus's total): amounts per cell, as a flow cytometer sees them; Brief rows only">Raw</button><button type="button" data-g="norm" role="radio" aria-checked="false" title="Squares: mean counts per 10k (each nucleus's counts divided by its total): the share of the cell's RNA">Norm</button></span><span hidden><input type="checkbox" id="sc-detail" autocomplete="off"></span><span hidden><input type="checkbox" id="sc-custom" autocomplete="off" checked></span><span hidden><input type="checkbox" id="sc-brain" autocomplete="off"></span><span hidden><input type="checkbox" id="sc-ncx" autocomplete="off"></span><span hidden><input type="checkbox" id="sc-hpa" autocomplete="off"></span><button type="button" class="corr-btn" id="sc-clear" title="Clear: remove the co-expressed and differential gene columns (and the marked rows)">Clear</button><span class="sc-tg"><input type="checkbox" id="sc-coexp" autocomplete="off"><label for="sc-coexp" title="The 200 genes whose mean expression across the hippocampal formation, dentate, parahippocampal and amygdala cell groups (clusters in the detailed view, dissection x supercluster in the brief) correlates best with this gene (r after the name)">Co-exp.</label></span><span class="sc-tg"><input type="checkbox" id="sc-diff" autocomplete="off"><label for="sc-diff" id="sc-diff-lbl" title="Click rows: once yellow (foreground), again blue (background), again clear. Then calculate: the 200 genes most raised in the foreground relative to the background appear as columns on the right">Diff.</label><button type="button" class="corr-btn" id="sc-diffraw" hidden title="Raw differential (flow-cytometry-like): ranks genes by mean raw counts per nucleus (not divided by each nucleus's total), yellow vs blue rows; Brief rows only">Calc. raw</button></span><span class="sc-tg"><button type="button" class="corr-btn" id="sc-diff-run" hidden title="Rank the genes for the yellow (foreground) vs blue (background) rows">Calculate</button><button type="button" class="corr-btn" id="sc-diff-sub" hidden title="Subcellular location images (Human Protein Atlas) of the differential genes">Subcel.</button></span></div>
 
       <button class="rb-btn sc-zb" type="button" id="sc-zoom-out" aria-label="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
       <button class="rb-btn sc-zb" type="button" id="sc-zoom-in" aria-label="Zoom in"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button>
@@ -3733,6 +3735,22 @@ const SC_INHIB = new Set(["MGE interneuron", "CGE interneuron", "LAMP5-LHX6 and 
 const SC_EXCIT = new Set(["Hippocampal dentate gyrus", "Hippocampal CA4", "Hippocampal CA1-3", "Amygdala excitatory", "Upper-layer intratelencephalic", "Deep-layer intratelencephalic", "Deep-layer near-projecting", "Deep-layer corticothalamic and 6b", "Thalamic excitatory", "Splatter", "Mammillary body", "Upper rhombic lip", "Lower rhombic lip"]);
 // Cell classes grouping the rows (detailed view) and columns (overview), each with its colour
 // (hippocampus blue and amygdala red as in the ribbon)
+// Neocortex lobes: the neocortical areas (dissection codes) pooled in each, and the Allen structures
+const ALLEN_GROUP = name => REGION_LAYOUT.flatMap(d => d.groups).filter(g => g.name === name).flatMap(g => g.keys);
+const NCX_LOBES = [
+  ["Frontal", ["M1C", "A46", "A44-A45", "A14", "A13"], ALLEN_GROUP("Frontal")],
+  ["Cingulate and medial frontal", ["A32", "A24", "A25", "A23"], ["CgGf", "CgGp", "CgGr", "SCG"]],
+  ["Insular", ["Ig", "Idg", "FI"], ALLEN_GROUP("Insula")],
+  ["Parietal", ["S1C", "A5-A7", "A40", "A43"], ALLEN_GROUP("Parietal")],
+  ["Temporal", ["A1C", "STG", "MTG", "ITG", "A38", "Temporal area TF"], ALLEN_GROUP("Temporal")],
+  ["Occipital", ["V1C", "V2", "A19"], ALLEN_GROUP("Occipital")]];
+// Brain regions and their Allen structures (none for the spinal cord)
+const BRAIN_ALLEN = {
+  "Cerebral cortex": REGION_LAYOUT.find(d => d.division === "Cortex").groups.flatMap(g => g.keys), "Paleocortex and claustrum": ["Pir", "Cl"],
+  "Hippocampus": ["CA1", "CA2", "CA3", "CA4", "DG", "S"], "Amygdala": ["LA", "BLA", "BMA", "CeA", "COMA", "ATZ"],
+  "Basal nuclei and basal forebrain": [...ALLEN_GROUP("Striatum"), ...ALLEN_GROUP("Pallidum"), ...ALLEN_GROUP("Basal forebrain")],
+  "Thalamus and epithalamus": ALLEN_GROUP("Thalamus"), "Hypothalamus": ALLEN_GROUP("Hypothalamus"), "Midbrain": ALLEN_GROUP("Midbrain"),
+  "Pons": ALLEN_GROUP("Pons"), "Medulla": ALLEN_GROUP("Medulla"), "Cerebellum": [...ALLEN_GROUP("Cortex").filter(k => /^(I|V|X|Crus)/.test(k)), ...ALLEN_GROUP("Nuclei")] };
 const WB_REGION_COLOR = ["#f28e00", "#c9a227", "#0a84ff", "#e6194b", "#8e5bd8", "#3cb371", "#d45087", "#a0522d", "#00a3a3", "#6f7fd6", "#b8860b", "#8a96a8"];
 const SC_CLASSES = [
   { name: "Hippocampal pyramidal (CA)", color: "#0a84ff", sc: ["Hippocampal CA1-3", "Hippocampal CA4"] },
@@ -4048,15 +4066,26 @@ async function renderCellTypes() {
   };
   const cu = scView.cu;
   // Whole brain: per region, a row per Siletti supercluster (nuclei of all its dissections)
-  if (scView.brain) region.sections.forEach((name, di) => {
-    if (region.sections.indexOf(name) !== di) return;
-    const scs = [...new Set(region.groups.filter(([d]) => d === di).map(([, c]) => region.superclusters[c]))]
-      .sort((a, b) => SC_CLASSES.indexOf(clsOf(a)) - SC_CLASSES.indexOf(clsOf(b)) || a.localeCompare(b));
-    const out = scs.map(sc => ({ sc, v: pool((d, s2) => d === di && s2 === sc) })).filter(x => x.v && x.v.n >= 30);
-    if (!out.length) return;
-    rows.push({ sec: name, color: WB_REGION_COLOR[di % WB_REGION_COLOR.length] });
-    for (const { sc, v } of out) rows.push({ label: sc, bar: clsOf(sc).color, ...v, test: (d, s2) => d === di && s2 === sc, tip: `${name} · ${sc}` });
-  });
+  // Brain: per region; Neocortex: per lobe (its areas pooled). A row per Siletti supercluster, and
+  // per section one Allen rectangle over its rows (the Allen structures of that region or lobe)
+  if (scView.brain) {
+    const ncx = $e("sc-ncx").checked;
+    const secs = ncx ? NCX_LOBES.map(([name, codes, keys]) => ({ name, ds: region.sections.map((t, d) => (codes.includes(t.match(/\(([^()]*)\)$/)?.[1]) ? d : -1)).filter(d => d >= 0), keys }))
+      : region.sections.map((name, d) => ({ name, ds: [d], keys: BRAIN_ALLEN[name] ?? [] }));
+    secs.forEach(({ name, ds, keys }, si) => {
+      if (!ds.length) return;
+      const inSec = new Set(ds);
+      const scs = [...new Set(region.groups.filter(([d]) => inSec.has(d)).map(([, c]) => region.superclusters[c]))]
+        .sort((a, b) => SC_CLASSES.indexOf(clsOf(a)) - SC_CLASSES.indexOf(clsOf(b)) || a.localeCompare(b));
+      const out = scs.map(sc => ({ sc, v: pool((d, s2) => inSec.has(d) && s2 === sc) })).filter(x => x.v && x.v.n >= 30);
+      if (!out.length) return;
+      rows.push({ sec: name, color: WB_REGION_COLOR[si % WB_REGION_COLOR.length] });
+      const grp = keys.length ? `wb:${name}` : null;
+      if (grp && !groupAllen.has(grp)) groupAllen.set(grp, { ...(allenZ(keys) ?? {}), where: keys.join(", ") });
+      const areas = ncx ? `\nAreas: ${ds.map(d => region.sections[d]).join("; ")}` : "";
+      for (const { sc, v } of out) rows.push({ label: sc, bar: clsOf(sc).color, ...v, grp, test: (d, s2) => inSec.has(d) && s2 === sc, tip: `${name} · ${sc}${areas}` });
+    });
+  }
   if (!scView.brain && !detailed && cu) {
     // Brief custom: our reclustering (Leiden on all hippocampal nuclei, labelled by markers), whole genome
     // rows always shown: without a gene (or one missing from this file) their gene values are zero
@@ -4711,6 +4740,11 @@ function syncScGl() {
   const det = $e("sc-detail").checked;
   document.querySelectorAll(".sc-gl button").forEach(b => { b.setAttribute("aria-checked", (b.dataset.g === "raw") === (!!scView.glyphRawPick && !det)); if (b.dataset.g === "raw") b.disabled = det; });
 }
+// Clear: no co-expression or differential columns, no marked rows
+$e("sc-clear").addEventListener("click", () => {
+  $e("sc-coexp").checked = false; $e("sc-diff").checked = false; scView.coAnchor = null; scView.coShown = null;
+  scView.diffRes = null; scView.marks = new Map(); scView.sub = null; renderCellTypes();
+});
 // Raw differential: the same marking; the button starts it, then calculates on raw counts
 $e("sc-diffraw").addEventListener("click", () => {
   if (!$e("sc-diff").checked || ![...(scView.marks?.values() ?? [])].includes("fg")) return;
