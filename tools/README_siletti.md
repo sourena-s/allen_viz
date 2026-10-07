@@ -113,3 +113,14 @@ Siletti and Protein Atlas cluster rows have no histogram file, so their bars sta
 `rawmean.py` stores the mean raw count per nucleus for every gene and row unit, without dividing by each nucleus's total counts. It writes `<file>_raw.bin.gz`: float32 per-gene maxima, then uint8 [gene][unit]. It has the same two modes as `hist.py`, `MODE=region` and `MODE=custom`.
 
 The "Diff. raw" button in the cells window uses these means. It ranks genes on per-cell amounts, which is closer to what a flow cytometer measures than counts per 10k. Large cells, such as CA1 and CA2 pyramidal neurons, score higher for most genes. "Diff. raw" works on Brief rows only.
+
+## Brain and Neocortex views (wb.py, wbcx.py)
+
+The Brain and Neocortex views each have their own data pass and packing script:
+
+- **Brain.** `wb.py` covers all 105 Siletti dissections, with 3.37M nuclei pooled into 12 brain regions × 31 superclusters. `packwb.py` writes `siletti_brain*`.
+- **Neocortex.** `wbcx.py` takes the 25 neocortical dissections, pooled per area and supercluster. `packcx.py` writes `siletti_ncx*`. Entorhinal, perirhinal, parahippocampal (TH-TL), retrosplenial and prostriata are left out because they are not isocortex.
+
+Each script writes the same three outputs as the Brief rows: the brief-file format, a count-histogram file and a raw-mean file.
+
+The passes read Census in small batches through `open_c_small` in `cxopen.py`, which keeps memory to about 5 GB.
