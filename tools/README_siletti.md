@@ -124,3 +124,9 @@ The Brain and Neocortex views each have their own data pass and packing script:
 Each script writes the same three outputs as the Brief rows: the brief-file format, a count-histogram file and a raw-mean file.
 
 The passes read Census in small batches through `open_c_small` in `cxopen.py`, which keeps memory to about 5 GB.
+
+## Neocortex clusters (wbcl.py)
+
+`wbcl.py` pools the 25 neocortical dissections per Siletti cluster. `packcl3.py` writes `siletti_ncxcl*`, keeping the 174 clusters that have 30 or more nuclei. 158 of them take their names, neurotransmitter and markers from the cluster table; the rest are named c<id>. Each cluster's supercluster is the one most of its nuclei belong to.
+
+The "Ncx clusters" view shows a section per supercluster and a row per cluster.
