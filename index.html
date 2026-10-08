@@ -4088,7 +4088,8 @@ async function renderCellTypes() {
   if (scView.brain && $e("sc-ncxcl").checked) {
     const byScx = new Map();
     region.superclusters.forEach((cl, i) => { const sc = region.scOf?.[i] || "Other"; if (!byScx.has(sc)) byScx.set(sc, []); byScx.get(sc).push(i); });
-    const scs = [...byScx.keys()].sort((a, b) => SC_CLASSES.indexOf(clsOf(a)) - SC_CLASSES.indexOf(clsOf(b)) || a.localeCompare(b));
+    const NOT_CTX = new Set(["Hippocampal CA1-3", "Hippocampal CA4", "Hippocampal dentate gyrus", "Amygdala excitatory"]);   // stray clusters of other regions
+    const scs = [...byScx.keys()].filter(sc => !NOT_CTX.has(sc)).sort((a, b) => SC_CLASSES.indexOf(clsOf(a)) - SC_CLASSES.indexOf(clsOf(b)) || a.localeCompare(b));
     const keys = BRAIN_ALLEN["Cerebral cortex"];
     // First: excitatory clusters assigned to cortical layers by marker rules (share of each cluster's
     // nuclei with any count), first rule met wins
@@ -4107,7 +4108,7 @@ async function renderCellTypes() {
         const its = lay.get(L.key); if (!its.length) continue;
         const names = new Set(its.map(x => region.superclusters[x.i])), v = pool((d, s2) => names.has(s2));
         if (!v || v.n < 30) continue;
-        rows.push({ label: L.label, bar: L.color ?? "#8a96a8", ...v, grp, test: (d, s2) => names.has(s2),
+        rows.push({ label: L.label, bar: L.color ?? "#8a96a8", ...v, grp, sg: "layers", test: (d, s2) => names.has(s2),
           tip: `${L.label}${L.rule ? `\nRule: ${L.rule}` : ""}\n${its.length} Siletti clusters (% of nuclei with any count):\n${its.map(x => `  ${region.superclusters[x.i]}: ${L.genes.map(g => `${g} ${Math.round(x.f[g] * 100)}%`).join(", ")}`).join("\n")}` });
       }
     }
@@ -4226,8 +4227,21 @@ async function renderCellTypes() {
   const secLo = [];
   // Count bars: in the Brain and Neocortex views each region (coloured section) is scaled to its own
   // largest row; otherwise to the largest row of the view
-  { let si = -1; const mx = []; for (const r of rows) { if (r.sec) si++; else if (r.n) { r.nSec = si; mx[si] = Math.max(mx[si] ?? 1, r.n); } }
-    for (const r of rows) if (r.n) r.nMax = scView.brain && !$e("sc-ncxcl").checked ? mx[r.nSec] : null; }   // Ctx cl.: all pooled neocortex, one scale
+  // Scaling groups: Brain / Neocortex: each region; Ctx cl.: the layer rows, then the cell populations;
+  // otherwise the cell-type rows, then the dissection rows. A line separates each group from the next
+  {
+    let si = -1;
+    for (const r of rows) { if (r.sec) si++; else if (r.n) r.sg ??= scView.brain && !$e("sc-ncxcl").checked ? `s${si}` : $e("sc-ncxcl").checked ? "cells" : r.dis ? "dis" : "rows"; }
+    const mx = new Map(); for (const r of rows) if (r.n) mx.set(r.sg, Math.max(mx.get(r.sg) ?? 1, r.n));
+    for (const r of rows) if (r.n) r.nMax = mx.get(r.sg);
+    const out = []; let lastSg = null, pend = [];
+    for (const r of rows) {
+      if (r.sec || r.divider) { pend.push(r); continue; }
+      if (r.n && lastSg !== null && r.sg !== lastSg && !pend.some(x => x.divider) && !out.at(-1)?.divider) out.push({ divider: true });
+      out.push(...pend); pend = []; out.push(r); if (r.n) lastSg = r.sg;
+    }
+    out.push(...pend); rows.splice(0, rows.length, ...out);
+  }
   for (const r of rows) if (r.n) { r.secI = r.dis ? 1 : 0; secMax[r.secI] = Math.max(secMax[r.secI] ?? 1e-6, r.lin); secLo[r.secI] = Math.min(secLo[r.secI] ?? Infinity, r.lin); secMaxN[r.secI] = Math.max(secMaxN[r.secI] ?? 1, r.n); }
   // Colour: linear mean stretched from the group's lowest to its highest row
   const stretch = (v, [lo, hi]) => Math.round(hi > lo ? (v - lo) / (hi - lo) * 255 : 255);
