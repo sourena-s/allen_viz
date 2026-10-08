@@ -3735,6 +3735,22 @@ const SC_INHIB = new Set(["MGE interneuron", "CGE interneuron", "LAMP5-LHX6 and 
 const SC_EXCIT = new Set(["Hippocampal dentate gyrus", "Hippocampal CA4", "Hippocampal CA1-3", "Amygdala excitatory", "Upper-layer intratelencephalic", "Deep-layer intratelencephalic", "Deep-layer near-projecting", "Deep-layer corticothalamic and 6b", "Thalamic excitatory", "Splatter", "Mammillary body", "Upper rhombic lip", "Lower rhombic lip"]);
 // Cell classes grouping the rows (detailed view) and columns (overview), each with its colour
 // (hippocampus blue and amygdala red as in the ribbon)
+// Cortical layers of the neocortex's excitatory Siletti clusters, by marker rules on the share of each
+// cluster's nuclei expressing the marker (thresholds read off the clusters' marker table); checked in order
+const LAYER_EXC = ["Upper-layer intratelencephalic", "Deep-layer intratelencephalic", "Deep-layer near-projecting", "Deep-layer corticothalamic and 6b"];
+const LAYER_GENES = ["CUX2", "RORB", "THEMIS", "FEZF2", "TSHZ2", "NPSR1", "FOXP2", "SYT6", "CCN2"];
+const LAYER_RULES = [
+  { key: "L6b", label: "L6b (CCN2+)", rule: "CCN2 >= 60%", genes: ["CCN2", "FOXP2", "SYT6"], color: "#1f4e9c", test: f => f.CCN2 >= 0.6 },
+  { key: "L6CT", label: "L6 CT (FOXP2+ SYT6+ FEZF2+)", rule: "FOXP2 >= 90%, SYT6 >= 40%, FEZF2 >= 40%", genes: ["FOXP2", "SYT6", "FEZF2"], color: "#2f6fd6", test: f => f.FOXP2 >= 0.9 && f.SYT6 >= 0.4 && f.FEZF2 >= 0.4 },
+  { key: "NP", label: "L5/6 NP (TSHZ2+ NPSR1+ FEZF2+)", rule: "TSHZ2 >= 90%, NPSR1 >= 20%, FEZF2 >= 40%", genes: ["TSHZ2", "NPSR1", "FEZF2"], color: "#5a8fe6", test: f => f.TSHZ2 >= 0.9 && f.NPSR1 >= 0.2 && f.FEZF2 >= 0.4 },
+  { key: "L6IT", label: "L6 IT (THEMIS+)", rule: "THEMIS >= 70%", genes: ["THEMIS", "RORB", "CUX2"], color: "#3fa7ff", test: f => f.THEMIS >= 0.7 },
+  { key: "L5IT", label: "L5 IT (RORB+ CUX2−)", rule: "RORB >= 75%, CUX2 < 50%", genes: ["RORB", "CUX2", "THEMIS"], color: "#7cc0ff", test: f => f.RORB >= 0.75 && f.CUX2 < 0.5 },
+  { key: "L4IT", label: "L4 IT (RORB+ CUX2+)", rule: "RORB >= 75%, CUX2 >= 90%", genes: ["RORB", "CUX2"], color: "#00a3a3", test: f => f.RORB >= 0.75 && f.CUX2 >= 0.9 },
+  { key: "L23IT", label: "L2/3 IT (CUX2+ RORB−)", rule: "CUX2 >= 90% (RORB below 75%)", genes: ["CUX2", "RORB"], color: "#3cb371", test: f => f.CUX2 >= 0.9 }];
+const LAYER_INFO = [
+  ["How the layers are assigned", "The excitatory Siletti clusters of the neocortex (upper- and deep-layer IT, near-projecting, corticothalamic and 6b superclusters) are each given a layer by the first rule they meet, on the share of the cluster's nuclei with any count of each marker. Thresholds were read off the clusters' marker table: each rule separates its clusters from all the others. Siletti et al. do not assign layers; these are marker-based estimates."],
+  ["Markers", "CUX2: upper layers (L2–4). RORB: L4 and L5 IT. THEMIS: L6 IT. FEZF2: deep-layer non-IT. TSHZ2 with NPSR1: near-projecting. FOXP2 and SYT6: L6 corticothalamic. CCN2 (CTGF): L6b. The layer markers broadly follow the human MTG cell-type taxonomy (Hodge et al. 2019); NPSR1 was chosen from this data, where it separates the near-projecting clusters."],
+  ["Limits", "No extratelencephalic (L5 ET, POU3F1+) cluster has enough nuclei to form a row here. L5 and L6 IT are not sharply separated, and some IT clusters are mixtures. Hover a row for each cluster's marker percentages."]];
 // Neocortex lobes: the neocortical areas (dissection codes) pooled in each, and the Allen structures
 const ALLEN_GROUP = name => REGION_LAYOUT.flatMap(d => d.groups).filter(g => g.name === name).flatMap(g => g.keys);
 const NCX_LOBES = [
@@ -4074,6 +4090,27 @@ async function renderCellTypes() {
     region.superclusters.forEach((cl, i) => { const sc = region.scOf?.[i] || "Other"; if (!byScx.has(sc)) byScx.set(sc, []); byScx.get(sc).push(i); });
     const scs = [...byScx.keys()].sort((a, b) => SC_CLASSES.indexOf(clsOf(a)) - SC_CLASSES.indexOf(clsOf(b)) || a.localeCompare(b));
     const keys = BRAIN_ALLEN["Cerebral cortex"];
+    // First: excitatory clusters assigned to cortical layers by marker rules (share of each cluster's
+    // nuclei with any count), first rule met wins
+    {
+      const U = region.groups.length, fr = (g, i) => { const gi = region.geneIndex.get(g); return gi === undefined ? 0 : region.body[gi * U * 2 + U + i] / 255; };
+      const lay = new Map(LAYER_RULES.map(L => [L.key, []])); lay.set("none", []);
+      region.superclusters.forEach((cl, i) => {
+        if (!LAYER_EXC.includes(region.scOf?.[i])) return;
+        const f = Object.fromEntries(LAYER_GENES.map(g => [g, fr(g, i)]));
+        lay.get((LAYER_RULES.find(L => L.test(f)) ?? { key: "none" }).key).push({ i, f });
+      });
+      rows.push({ sec: "Excitatory neurons by cortical layer (marker rules)", color: "#0a84ff", info: LAYER_INFO });
+      const grp = "ncl:layers";
+      if (!groupAllen.has(grp)) groupAllen.set(grp, { ...(allenZ(keys) ?? {}), where: keys.join(", ") });
+      for (const L of [...LAYER_RULES, { key: "none", label: "Excitatory, no layer rule met", genes: LAYER_GENES }]) {
+        const its = lay.get(L.key); if (!its.length) continue;
+        const names = new Set(its.map(x => region.superclusters[x.i])), v = pool((d, s2) => names.has(s2));
+        if (!v || v.n < 30) continue;
+        rows.push({ label: L.label, bar: L.color ?? "#8a96a8", ...v, grp, test: (d, s2) => names.has(s2),
+          tip: `${L.label}${L.rule ? `\nRule: ${L.rule}` : ""}\n${its.length} Siletti clusters (% of nuclei with any count):\n${its.map(x => `  ${region.superclusters[x.i]}: ${L.genes.map(g => `${g} ${Math.round(x.f[g] * 100)}%`).join(", ")}`).join("\n")}` });
+      }
+    }
     scs.forEach(sc => {
       const out = byScx.get(sc).map(i => ({ i, v: pool((d, s2) => s2 === region.superclusters[i]) })).filter(x => x.v && x.v.n >= 30);
       if (!out.length) return;
@@ -4190,7 +4227,7 @@ async function renderCellTypes() {
   // Count bars: in the Brain and Neocortex views each region (coloured section) is scaled to its own
   // largest row; otherwise to the largest row of the view
   { let si = -1; const mx = []; for (const r of rows) { if (r.sec) si++; else if (r.n) { r.nSec = si; mx[si] = Math.max(mx[si] ?? 1, r.n); } }
-    for (const r of rows) if (r.n) r.nMax = scView.brain ? mx[r.nSec] : null; }
+    for (const r of rows) if (r.n) r.nMax = scView.brain && !$e("sc-ncxcl").checked ? mx[r.nSec] : null; }   // Ctx cl.: all pooled neocortex, one scale
   for (const r of rows) if (r.n) { r.secI = r.dis ? 1 : 0; secMax[r.secI] = Math.max(secMax[r.secI] ?? 1e-6, r.lin); secLo[r.secI] = Math.min(secLo[r.secI] ?? Infinity, r.lin); secMaxN[r.secI] = Math.max(secMaxN[r.secI] ?? 1, r.n); }
   // Colour: linear mean stretched from the group's lowest to its highest row
   const stretch = (v, [lo, hi]) => Math.round(hi > lo ? (v - lo) / (hi - lo) * 255 : 255);
