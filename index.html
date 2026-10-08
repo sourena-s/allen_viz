@@ -413,6 +413,8 @@
   .sc-seg .short { display: none; }
   #sc-info { position: fixed; z-index: 30; max-height: 70vh; overflow-y: auto; padding: 10px 12px; border-radius: 8px; background: rgba(40, 44, 50, 0.97); border: 1px solid var(--edge); font: 12px/1.4 var(--sans); color: var(--ink); }
   #sc-info[hidden] { display: none; }
+  .sc-histleg { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font: 11px var(--sans); color: var(--muted); }
+  .sc-histleg i { display: inline-block; width: 14px; height: 10px; border-radius: 1px; vertical-align: -1px; margin-right: 3px; }
   #sc-toast { position: fixed; z-index: 31; left: 50%; bottom: 24px; transform: translateX(-50%); padding: 6px 12px; border-radius: 6px; background: #ffd600; color: #222; font: 600 12px var(--sans); pointer-events: none; }
   #sc-toast[hidden] { display: none; }
   #sc-info b { display: block; margin-top: 6px; color: #fff; }
@@ -828,6 +830,7 @@
 
     <div class="sc-zrow">
 <span id="sc-editbar" class="rib-editbar" hidden>Figure: click a gene bar to include or leave out its columns, drag it to move them; other columns: tick, select and move <button type="button" class="corr-btn" id="sc-mvl" title="Move the selected column left">◀</button><button type="button" class="corr-btn" id="sc-mvr" title="Move the selected column right">▶</button><button type="button" class="corr-btn" id="sc-save">Save PNG</button><button type="button" class="corr-btn" id="sc-done">Done</button></span><span id="sc-status" class="sc-status"></span></div>
+    <div id="sc-histleg" class="sc-histleg"></div>
     <div id="sc-plot"></div>
     <div class="sc-legend" id="sc-legend"></div>
     <div id="sc-help" class="sc-help" hidden>
@@ -3994,10 +3997,18 @@ async function loadScRaw(d, base) {
     d.rawMax = new Float32Array(buf.slice(0, G * 4).buffer); d.raw = buf.subarray(G * 4);
   } catch { /* no raw differential */ }
 }
+// Legend of the count-bar colours, over the plot
+function scHistLegend() {
+  const labs = ["1", "2–3", "4–7", "8–15", "16–31", "≥ 32"];
+  $e("sc-histleg").replaceChildren("Counts per nucleus (expressing nuclei):", ...labs.map((l, i) => {
+    const s = document.createElement("span"); s.append(Object.assign(document.createElement("i"), { style: `background: ${HIST_COL[i]}` }), l); return s; }),
+    Object.assign(document.createElement("span"), { textContent: "· grey: nuclei without a count" }));
+}
 // Count-bar bins (raw counts per nucleus, lower bounds of the stored >= bins) and colours, most counts first:
 // >= 32, 16-31, 8-15 (ever deeper reds), 4-7, 2-3, 1
 const HIST_TH = [2, 4, 8, 16, 32];
 const HIST_COL = ["#3cb371", "#f2d024", "#fc8d59", "#d7301f", "#a50f15", "#5c0010"];   // 1, 2-3, 4-7, 8-15, 16-31, >= 32
+scHistLegend();
 // How the Brief hippocampal neuron rows are defined, with a line of evidence per marker
 // (percentages: share of a Leiden cluster's nuclei with any count, tools/rc3.py)
 const CU_INFO = [
@@ -4227,6 +4238,20 @@ async function renderCellTypes() {
   const secLo = [];
   // Count bars: in the Brain and Neocortex views each region (coloured section) is scaled to its own
   // largest row; otherwise to the largest row of the view
+  // Stray rows: hippocampal neurons in cortical sections, and amygdala excitatory rows under 1,000 nuclei;
+  // a heading left without rows goes too
+  {
+    const CORTICAL = /cortex|Paleocortex|Parahippocampal|^(Frontal|Cingulate|Insular|Parietal|Temporal|Occipital)\b/;
+    let sec = ""; const keep = rows.filter(r => {
+      if (r.sec) { sec = r.sec; return true; }
+      if (!r.n || r.dis) return true;
+      if (/^Hippocampal|^Dentate granule/.test(r.label) && CORTICAL.test(sec)) return false;
+      if (/^Amygdala excitatory/.test(r.label) && r.n < 1000) return false;
+      return true;
+    });
+    const out = keep.filter((r, i) => !r.sec || keep.slice(i + 1).find(x => x.sec || x.n || x.divider)?.n);
+    rows.splice(0, rows.length, ...out);
+  }
   // Scaling groups: Brain / Neocortex: each region; Ctx cl.: the layer rows, then the cell populations;
   // otherwise the cell-type rows, then the dissection rows. A line separates each group from the next
   {
