@@ -130,3 +130,11 @@ The passes read Census in small batches through `open_c_small` in `cxopen.py`, w
 `wbcl.py` pools the 25 neocortical dissections per Siletti cluster. `packcl3.py` writes `siletti_ncxcl*`, keeping the 174 clusters that have 30 or more nuclei. 158 of them take their names, neurotransmitter and markers from the cluster table; the rest are named c<id>. Each cluster's supercluster is the one most of its nuclei belong to.
 
 The "Ncx clusters" view shows a section per supercluster and a row per cluster.
+
+## Brain norm (brainref.py)
+
+`brainref.py` stores the per-gene mean and SD of the mean log1p(counts per 10k) across the 235 whole-brain units of `siletti_brain` (12 regions × superclusters). It writes `siletti_brainref.json.gz`.
+
+In "Brain norm" mode the cells window shows each row's z-score against that reference, (row mean − brain mean) / brain SD. The squares use the Allen colour scale at a fixed size. This is the single-nucleus counterpart of the Allen z, which is standardised across a donor's whole-brain samples.
+
+Raw (mean raw counts per nucleus) and Cell norm (counts per 10k) are the other two modes.

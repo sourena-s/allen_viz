@@ -833,7 +833,7 @@
   <form method="dialog" class="sc-form">
     <div class="sc-head"><h2 id="sc-title" hidden></h2>
       <div class="row sc-toggle sc-detail-row"><span class="sc-tg"><input type="checkbox" id="sc-add" autocomplete="off"><label for="sc-add" class="sc-add-lbl" title="Add the gene typed in the box as more columns (as Ctrl+Enter); the box empties once it is added" aria-label="Add genes as columns">+</label><input type="text" id="sc-gene" class="gene-box" placeholder="Gene" aria-label="Gene shown in the cells window" autocomplete="off" spellcheck="false" title="Show another gene (Enter), or add it as more columns (Ctrl+Enter): a name, or with * for several (rad* starts with, *rad ends with, *rad* contains); co-expression and differential results stay"><button type="button" class="rb-btn sc-zbtn" id="sc-zbtn" aria-expanded="false" title="Colour range of the Allen z-scores" aria-label="Allen colour range"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16M4 16h16"/><circle cx="9" cy="8" r="2.2"/><circle cx="15" cy="16" r="2.2"/></svg></button><span class="sc-zpop" id="sc-zpop" hidden><label class="zsym sc-zr zvert" title="Colour range of the Allen z-scores: from minus to plus this value">Allen z
-      <input type="range" id="sc-zr" min="0.5" max="6" step="0.1" value="2" aria-label="Allen colour range, z"><span id="sc-zr-val" class="rm-value">±2.0</span></label></span></span><span class="sc-break"></span><span class="sc-seg" role="radiogroup" aria-label="Rows"><button type="button" data-v="custom" role="radio" title="Limbic: hippocampal neurons (reclustered, labelled by markers), other hippocampal cells, parahippocampal gyrus and amygdala, dissections">Limbic</button><button type="button" data-v="siletti" role="radio" title="Siletti clusters">Siletti</button><button type="button" data-v="hpa" role="radio" title="Protein Atlas brain clusters (its neuronal and non-neuronal clusters), each nucleus assigned by marker-gene correlation"><span class="full">Protein Atlas</span><span class="short">P. Atlas</span></button><button type="button" data-v="brain" role="radio" title="Whole brain: every Siletti supercluster in each brain region (all 105 dissections: cortex, hippocampus, amygdala, basal nuclei, thalamus, hypothalamus, midbrain, pons, medulla, cerebellum, spinal cord)">Brain</button><button type="button" data-v="ncx" role="radio" title="Neocortex: every Siletti supercluster in each neocortical area (frontal, insular, cingulate, parietal, temporal, occipital dissections; entorhinal, perirhinal, parahippocampal, retrosplenial and prostriata left out as not isocortex)"><span class="full">Neocortex</span><span class="short">Ctx</span></button><button type="button" data-v="ncxcl" role="radio" title="Neocortex clusters: all neocortical dissections pooled, a row per Siletti cluster (fine cell types), grouped by supercluster"><span class="full">Ncx clusters</span><span class="short">Ctx cl.</span></button></span><span hidden><input type="checkbox" id="sc-detail" autocomplete="off"></span><span hidden><input type="checkbox" id="sc-custom" autocomplete="off" checked></span><span hidden><input type="checkbox" id="sc-brain" autocomplete="off"></span><span hidden><input type="checkbox" id="sc-ncx" autocomplete="off"></span><span hidden><input type="checkbox" id="sc-ncxcl" autocomplete="off"></span><span hidden><input type="checkbox" id="sc-hpa" autocomplete="off"></span><span class="sc-acts"><button type="button" class="corr-btn" id="sc-glyph" title="Squares: Raw (mean raw counts per nucleus, amounts per cell) or Norm (counts per 10k, share of the cell's RNA); click to switch">Raw</button><span class="sc-tg"><input type="checkbox" id="sc-diff" autocomplete="off"><label for="sc-diff" id="sc-diff-lbl" title="Click rows: once yellow (foreground), again blue (background), again clear. Then calculate: the 200 genes most raised in the foreground relative to the background appear as columns on the right">Diff.</label><button type="button" class="corr-btn" id="sc-diffraw" hidden title="Raw differential (flow-cytometry-like): ranks genes by mean raw counts per nucleus (not divided by each nucleus's total), yellow vs blue rows">Calc. raw</button></span><button type="button" class="corr-btn" id="sc-clear" title="Clear: remove the co-expressed and differential gene columns (and the marked rows)">Clear</button><span class="sc-tg"><input type="checkbox" id="sc-coexp" autocomplete="off"><label for="sc-coexp" title="The 200 genes whose mean expression across the hippocampal formation, dentate, parahippocampal and amygdala cell groups (clusters in the detailed view, dissection x supercluster in the brief) correlates best with this gene (r after the name)">Co-exp.</label></span><span class="sc-tg"><button type="button" class="corr-btn" id="sc-diff-run" hidden title="Rank the genes for the yellow (foreground) vs blue (background) rows">Calculate</button><button type="button" class="corr-btn" id="sc-diff-sub" hidden title="Subcellular location images (Human Protein Atlas) of the differential genes">Subcel.</button></span></span></div>
+      <input type="range" id="sc-zr" min="0.5" max="6" step="0.1" value="2" aria-label="Allen colour range, z"><span id="sc-zr-val" class="rm-value">±2.0</span></label></span></span><span class="sc-break"></span><span class="sc-seg" role="radiogroup" aria-label="Rows"><button type="button" data-v="custom" role="radio" title="Limbic: hippocampal neurons (reclustered, labelled by markers), other hippocampal cells, parahippocampal gyrus and amygdala, dissections">Limbic</button><button type="button" data-v="siletti" role="radio" title="Siletti clusters">Siletti</button><button type="button" data-v="hpa" role="radio" title="Protein Atlas brain clusters (its neuronal and non-neuronal clusters), each nucleus assigned by marker-gene correlation"><span class="full">Protein Atlas</span><span class="short">P. Atlas</span></button><button type="button" data-v="brain" role="radio" title="Whole brain: every Siletti supercluster in each brain region (all 105 dissections: cortex, hippocampus, amygdala, basal nuclei, thalamus, hypothalamus, midbrain, pons, medulla, cerebellum, spinal cord)">Brain</button><button type="button" data-v="ncx" role="radio" title="Neocortex: every Siletti supercluster in each neocortical area (frontal, insular, cingulate, parietal, temporal, occipital dissections; entorhinal, perirhinal, parahippocampal, retrosplenial and prostriata left out as not isocortex)"><span class="full">Neocortex</span><span class="short">Ctx</span></button><button type="button" data-v="ncxcl" role="radio" title="Neocortex clusters: all neocortical dissections pooled, a row per Siletti cluster (fine cell types), grouped by supercluster"><span class="full">Ncx clusters</span><span class="short">Ctx cl.</span></button></span><span hidden><input type="checkbox" id="sc-detail" autocomplete="off"></span><span hidden><input type="checkbox" id="sc-custom" autocomplete="off" checked></span><span hidden><input type="checkbox" id="sc-brain" autocomplete="off"></span><span hidden><input type="checkbox" id="sc-ncx" autocomplete="off"></span><span hidden><input type="checkbox" id="sc-ncxcl" autocomplete="off"></span><span hidden><input type="checkbox" id="sc-hpa" autocomplete="off"></span><span class="sc-acts"><button type="button" class="corr-btn" id="sc-glyph" title="Squares, click to switch: Raw (mean raw counts per nucleus, amounts per cell) → Cell norm (counts per 10k, each nucleus divided by its total: share of the cell's RNA) → Brain norm (z-score of the gene's mean log1p counts per 10k against all whole-brain cell groups, Allen colours, as the Allen z across the brain)">Raw</button><span class="sc-tg"><input type="checkbox" id="sc-diff" autocomplete="off"><label for="sc-diff" id="sc-diff-lbl" title="Click rows: once yellow (foreground), again blue (background), again clear. Then calculate: the 200 genes most raised in the foreground relative to the background appear as columns on the right">Diff.</label><button type="button" class="corr-btn" id="sc-diffraw" hidden title="Raw differential (flow-cytometry-like): ranks genes by mean raw counts per nucleus (not divided by each nucleus's total), yellow vs blue rows">Calc. raw</button></span><button type="button" class="corr-btn" id="sc-clear" title="Clear: remove the co-expressed and differential gene columns (and the marked rows)">Clear</button><span class="sc-tg"><input type="checkbox" id="sc-coexp" autocomplete="off"><label for="sc-coexp" title="The 200 genes whose mean expression across the hippocampal formation, dentate, parahippocampal and amygdala cell groups (clusters in the detailed view, dissection x supercluster in the brief) correlates best with this gene (r after the name)">Co-exp.</label></span><span class="sc-tg"><button type="button" class="corr-btn" id="sc-diff-run" hidden title="Rank the genes for the yellow (foreground) vs blue (background) rows">Calculate</button><button type="button" class="corr-btn" id="sc-diff-sub" hidden title="Subcellular location images (Human Protein Atlas) of the differential genes">Subcel.</button></span></span></div>
 
       <button class="rb-btn sc-zb" type="button" id="sc-zoom-out" aria-label="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
       <button class="rb-btn sc-zb" type="button" id="sc-zoom-in" aria-label="Zoom in"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button>
@@ -3804,7 +3804,18 @@ const classOf = sc => { const i = SC_CLASSES.findIndex(c => c.sc.includes(sc)); 
 const ntTag = nt => (/GABA|GLY/.test(nt) ? "In" : /VGLUT/.test(nt) ? "Ex" : "");
 const scTag = sc => (SC_INHIB.has(sc) ? "In" : SC_EXCIT.has(sc) ? "Ex" : "");
 const withTag = (name, t) => (t ? `${name} (${t})` : name);
-const scView = { zoom: 1, sel: null, data: null, g: null, detailed: false, glyphRawPick: true };
+const scView = { zoom: 1, sel: null, data: null, g: null, detailed: false, glyphRawPick: true, glyphMode: "raw" };
+let scBrainRef = null;   // Brain norm reference (tools/brainref.py): per gene mean and SD over the whole-brain units
+async function loadBrainRef() {
+  if (scBrainRef) return scBrainRef;
+  try {
+    let buf = new Uint8Array(await (await fetch("assets/siletti_brainref.json.gz")).arrayBuffer());
+    if (buf[0] === 0x1f && buf[1] === 0x8b) buf = new Uint8Array(await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer());
+    const j = JSON.parse(new TextDecoder().decode(buf));
+    scBrainRef = { ...j, idx: new Map(j.genes.map((g, i) => [g.toUpperCase(), i])) };
+  } catch { scBrainRef = null; }
+  return scBrainRef;
+}
 
 async function showCellTypes() {
   const detailed = $e("sc-detail").checked;
@@ -4403,6 +4414,14 @@ async function renderCellTypes() {
   const probesOf = p => (p ? (expr.bySymbol?.get(symbolOf(p)) ?? [p]) : []);
   const azCache = new Map(), azOf = (where, p) => { const k = `${where}|${p}`; if (!azCache.has(k)) azCache.set(k, allenZ(where.split(", "), p)); return azCache.get(k); };
   const allenTip = (gene, pz, where, stripes) => `Allen microarray, ${gene ?? ""}: ${pz.length > 1 ? `${pz.length} probes, one strip each (left to right)` : "probe"}${stripes ? "; samples as stripes in ribbon order" : ""}\n${pz.map(([p, z]) => `${expr.probeName.get(p) ?? p}: mean z ${z.z >= 0 ? "+" : ""}${z.z.toFixed(2)} over ${z.n} samples`).join("\n")}\nin ${where}`;
+  // Brain norm: a square shows the gene's z-score against all whole-brain units (as the Allen z, over
+  // the brain), from its mean log1p(counts per 10k); Allen colours, fixed size
+  const bzCell = (c, name, mean) => {
+    if (scView.glyphMode !== "brain" || !scBrainRef || mean == null) return c;
+    const k = scBrainRef.idx.get(String(name).toUpperCase()); if (k === undefined || !(scBrainRef.s[k] > 0)) return c;
+    const z = (mean - scBrainRef.m[k]) / scBrainRef.s[k];
+    return { ...c, size: 0.9, fill: ribbonColour(z), tip: `${c.tip}\nBrain norm: z ${z >= 0 ? "+" : ""}${z.toFixed(2)} against the ${scBrainRef.units} whole-brain cell groups (mean log1p counts per 10k)` };
+  };
   const lines = [], cells = [];
   for (const r of rows) {
     if (r.divider) { lines.push({ divider: true }); continue; }
@@ -4412,14 +4431,14 @@ async function renderCellTypes() {
       const mv = mVals[rows.indexOf(r)];
       multi.forEach((name, j) => {
         const v = mv?.[j]; if (!v) return;
-        cells.push({ li, ci: 2 * j, size: sqSize(stretch(v.lin, mRange[j])), fill: scColour(stretch(v.lin, mRange[j])), tip: `${r.tip}\n${name}: ${(v.frac * 100).toFixed(0)}% of ${r.n.toLocaleString()} nuclei, ${v.lin.toFixed(2)} ${SC_UNIT()} (log mean ${v.mean.toFixed(2)})` });
+        cells.push(bzCell({ li, ci: 2 * j, size: sqSize(stretch(v.lin, mRange[j])), fill: scColour(stretch(v.lin, mRange[j])), tip: `${r.tip}\n${name}: ${(v.frac * 100).toFixed(0)}% of ${r.n.toLocaleString()} nuclei, ${v.lin.toFixed(2)} ${SC_UNIT()} (log mean ${v.mean.toFixed(2)})` }, name, v.mean));
         const mN = r.nMax ?? secMaxN[r.secI];   // grey: the row's nuclei (linear, to the group maximum); green: those expressing
         cells.push({ li, ci: 2 * j + 1, bar: r.n / mN, fill: "rgba(255,255,255,0.35)", bar2: r.n * v.frac / mN, fill2: "#3cb371", hist: histOf(r, name), text: `${Math.round(v.frac * 100)}%`, textW: 34,
           tip: `${r.n.toLocaleString()} nuclei, ${Math.round(r.n * v.frac).toLocaleString()} (${(v.frac * 100).toFixed(1)}%) expressing ${name}` });
       });
       if (detailed && r.markers) cells.push({ li, ci: nBase, label: r.markers });
     } else {
-    cells.push({ li, ci: 0, size: sqSize(stretch(r.lin, [secLo[r.secI], secMax[r.secI]])), fill: scColour(stretch(r.lin, [secLo[r.secI], secMax[r.secI]])), tip: `${r.tip}\n${scView.g.name}: ${(r.frac * 100).toFixed(0)}% of ${r.n.toLocaleString()} nuclei, ${r.lin.toFixed(2)} ${SC_UNIT()} (log mean ${r.mean.toFixed(2)}); colour from ${secLo[r.secI].toFixed(2)} to ${secMax[r.secI].toFixed(2)}` });
+    cells.push(bzCell({ li, ci: 0, size: sqSize(stretch(r.lin, [secLo[r.secI], secMax[r.secI]])), fill: scColour(stretch(r.lin, [secLo[r.secI], secMax[r.secI]])), tip: `${r.tip}\n${scView.g.name}: ${(r.frac * 100).toFixed(0)}% of ${r.n.toLocaleString()} nuclei, ${r.lin.toFixed(2)} ${SC_UNIT()} (log mean ${r.mean.toFixed(2)}); colour from ${secLo[r.secI].toFixed(2)} to ${secMax[r.secI].toFixed(2)}` }, scView.g.name, r.mean));
     // Allen: one rectangle per row group, on the group's first row, its samples as stripes
     if (r.grp && r.grp !== lastGrp) {
       lastGrp = r.grp;
@@ -4438,7 +4457,7 @@ async function renderCellTypes() {
       text: `${r.n.toLocaleString()} (${Math.round(r.frac * 100)}%)`, tip: `${r.n.toLocaleString()} nuclei, ${Math.round(r.n * r.frac).toLocaleString()} (${(r.frac * 100).toFixed(1)}%) expressing ${scView.g.name}` });
     added.forEach((a, j) => {
       const v = aVals[rows.indexOf(r)]?.[j], c0 = 3 + 3 * j; if (!v) return;
-      cells.push({ li, ci: c0, size: sqSize(stretch(v.lin, aRange[j])), fill: scColour(stretch(v.lin, aRange[j])), tip: `${r.tip}\n${a.name}: ${(v.frac * 100).toFixed(0)}% of ${r.n.toLocaleString()} nuclei, ${v.lin.toFixed(2)} ${SC_UNIT()} (log mean ${v.mean.toFixed(2)})` });
+      cells.push(bzCell({ li, ci: c0, size: sqSize(stretch(v.lin, aRange[j])), fill: scColour(stretch(v.lin, aRange[j])), tip: `${r.tip}\n${a.name}: ${(v.frac * 100).toFixed(0)}% of ${r.n.toLocaleString()} nuclei, ${v.lin.toFixed(2)} ${SC_UNIT()} (log mean ${v.mean.toFixed(2)})` }, a.name, v.mean));
       if (r.grp && r.grp !== rows[rows.indexOf(r) - 1]?.grp) {
         const g = groupAllen.get(r.grp), span = rows.filter(x => x.grp === r.grp).length;
         const pz = g?.where ? probesOf(a.probe).map(p => [p, azOf(g.where, p)]).filter(([, z]) => z?.z != null) : [];
@@ -4884,13 +4903,20 @@ $e("sc-diff-lbl").addEventListener("click", e => {
   e.preventDefault(); $e("sc-diff-run").click();
 });
 // Squares: norm (counts per 10k) or raw (counts per nucleus); raw only in the Brief view
-$e("sc-glyph").addEventListener("click", () => { scView.glyphRawPick = !scView.glyphRawPick; scView.zrKey = null; syncScGl(); showCellTypes(); });
+// Squares: Raw -> Cell norm -> Brain norm -> Raw
+$e("sc-glyph").addEventListener("click", async () => {
+  scView.glyphMode = { raw: "cell", cell: "brain", brain: "raw" }[scView.glyphMode ?? "raw"];
+  scView.glyphRawPick = scView.glyphMode === "raw"; scView.zrKey = null;
+  if (scView.glyphMode === "brain") await loadBrainRef();
+  syncScGl(); showCellTypes();
+});
 function syncScGl() {
-  // the button names both modes, the current one bright, with a switch arrow between them
+  // the current mode bright, then a switch arrow and the next mode dim
   const b = $e("sc-glyph"); if (!b) return;
-  const raw = !!scView.glyphRawPick, part = (t, on) => Object.assign(document.createElement("span"), { textContent: t, className: on ? "gl-on" : "gl-off" });
-  b.replaceChildren(part("Raw", raw), Object.assign(document.createElement("span"), { textContent: "⇄", className: "gl-sw" }), part("Norm", !raw));
-  b.setAttribute("aria-pressed", raw); b.setAttribute("aria-label", `Squares: ${raw ? "raw counts" : "counts per 10k"} (click to switch to ${raw ? "Norm" : "Raw"})`);
+  const NAMES = { raw: "Raw", cell: "Cell norm", brain: "Brain norm" }, mode = scView.glyphMode ?? "raw", next = { raw: "cell", cell: "brain", brain: "raw" }[mode];
+  const part = (t, c) => Object.assign(document.createElement("span"), { textContent: t, className: c });
+  b.replaceChildren(part(NAMES[mode], "gl-on"), part("⇄", "gl-sw"), part(NAMES[next], "gl-off"));
+  b.setAttribute("aria-label", `Squares: ${NAMES[mode]} (click for ${NAMES[next]})`);
 }
 // Clear: no co-expression or differential columns, no marked rows
 $e("sc-clear").addEventListener("click", () => {
