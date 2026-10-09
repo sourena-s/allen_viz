@@ -492,6 +492,9 @@
   .zsym.zvert input[type=range], body.phone .zsym.zvert input[type=range], body.phone .ribbon-head .zsym.zvert input[type=range] { writing-mode: vertical-lr; direction: rtl; width: 22px; height: 200px; }
   .sc-zbtn[aria-expanded="true"] { background: rgba(255,255,255,0.22); }
   #sc-diffraw[aria-pressed="true"] { background: #ffd600; color: #222; border-color: #ffd600; }
+  #sc-glyph .gl-on { color: var(--ink); font-weight: 700; }
+  #sc-glyph .gl-off { color: var(--muted); opacity: 0.6; }
+  #sc-glyph .gl-sw { color: #ffd600; margin: 0 4px; }
   #sc-glyph, #sc-clear { font: 12px var(--sans); padding: 3px 9px; border-radius: 5px; height: auto; background: transparent; border: 1px solid var(--edge); color: var(--ink); cursor: pointer; }
   body.phone #sc-glyph, body.phone #sc-clear { font-size: 13px; padding: 6px 10px; }
   #sc-diffraw, #sc-diff-sub { font: 12px var(--sans); padding: 3px 9px; border-radius: 5px; height: auto; background: transparent; border: 1px solid var(--edge); color: var(--ink); }
@@ -4883,7 +4886,11 @@ $e("sc-diff-lbl").addEventListener("click", e => {
 // Squares: norm (counts per 10k) or raw (counts per nucleus); raw only in the Brief view
 $e("sc-glyph").addEventListener("click", () => { scView.glyphRawPick = !scView.glyphRawPick; scView.zrKey = null; syncScGl(); showCellTypes(); });
 function syncScGl() {
-  const b = $e("sc-glyph"); if (b) { b.textContent = scView.glyphRawPick ? "Raw" : "Norm"; b.setAttribute("aria-pressed", !!scView.glyphRawPick); }
+  // the button names both modes, the current one bright, with a switch arrow between them
+  const b = $e("sc-glyph"); if (!b) return;
+  const raw = !!scView.glyphRawPick, part = (t, on) => Object.assign(document.createElement("span"), { textContent: t, className: on ? "gl-on" : "gl-off" });
+  b.replaceChildren(part("Raw", raw), Object.assign(document.createElement("span"), { textContent: "⇄", className: "gl-sw" }), part("Norm", !raw));
+  b.setAttribute("aria-pressed", raw); b.setAttribute("aria-label", `Squares: ${raw ? "raw counts" : "counts per 10k"} (click to switch to ${raw ? "Norm" : "Raw"})`);
 }
 // Clear: no co-expression or differential columns, no marked rows
 $e("sc-clear").addEventListener("click", () => {
