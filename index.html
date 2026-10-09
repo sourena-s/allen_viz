@@ -4015,7 +4015,7 @@ async function loadScRaw(d, base) {
 }
 // Legend of the count-bar colours, over the plot
 function scHistLegend() {
-  const labs = ["1", ...HIST_TH.slice(0, -1).map((t, i) => `${t}–${HIST_TH[i + 1] - 1}`), `≥ ${HIST_TH.at(-1)}`];
+  const labs = ["1", "2–3", "4–7", "8–15", "16–31", "32–63", "≥ 64"];   // the legend's steps (64-127 and >= 128 both black)
   $e("sc-histleg").replaceChildren("Counts per nucleus (expressing nuclei):", ...labs.map((l, i) => {
     const s = document.createElement("span"); s.append(Object.assign(document.createElement("i"), { style: `background: ${HIST_COL[i]}` }), l); return s; }),
     Object.assign(document.createElement("span"), { textContent: "· grey: nuclei without a count" }));
@@ -4023,7 +4023,7 @@ function scHistLegend() {
 // Count-bar bins (raw counts per nucleus, lower bounds of the stored >= bins) and colours, most counts first:
 // >= 32, 16-31, 8-15 (ever deeper reds), 4-7, 2-3, 1
 const HIST_TH = [2, 4, 8, 16, 32, 64, 128];
-const HIST_COL = ["#3cb371", "#f2d024", "#fc8d59", "#e34a33", "#c0272d", "#8b1a1a", "#4d0d0d", "#000000"];   // 1, 2-3, 4-7, 8-15, 16-31, 32-63, 64-127, >= 128 (black)
+const HIST_COL = ["#3cb371", "#f2d024", "#fdae61", "#f46d43", "#d73027", "#a50f15", "#000000", "#000000"];   // 1, 2-3, 4-7, 8-15, 16-31, 32-63, then >= 64 black (64-127 and >= 128 share it)
 scHistLegend();
 // How the Brief hippocampal neuron rows are defined, with a line of evidence per marker
 // (percentages: share of a Leiden cluster's nuclei with any count, tools/rc3.py)
