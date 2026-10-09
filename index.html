@@ -2251,6 +2251,8 @@ searchBox.addEventListener("keydown", e => {
   if (e.key === "ArrowDown") { e.preventDefault(); if (suggestList.hidden) showSuggestions(SUGGEST_LIMIT); moveActive(1); }
   else if (e.key === "ArrowUp") { e.preventDefault(); moveActive(-1); }
   else if (e.key === "Escape") hideSuggestions();
+  else if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && expr.byDonor.size && ribbon.rows?.length && !probesFor(boxQuery()).some(id => !ribbon.rows.some(r => r.id === id))) {
+    e.preventDefault(); hideSuggestions(); }   // nothing new to add: the text stays
   else if (e.key === "Enter" && (e.ctrlKey || e.metaKey || $e("rib-add").checked) && expr.byDonor.size && ribbon.rows?.length) {
     // Ctrl/Cmd+Enter: the gene's probes are added as rows under the current ones
     e.preventDefault(); hideSuggestions();
@@ -3967,6 +3969,8 @@ const SC_UNIT = () => (scView.glyphRaw ? "raw counts per nucleus" : "counts per 
 const scLin = (data, gi, k) => data.lin ? data.lin[gi * data.nU + k] / 255 * data.lmax[gi] : data.body[gi * data.nU * 2 + k] / 255 * data.max[gi];
 // The + buttons (ribbon and cells window) add the typed gene at once, as Ctrl+Enter in their box
 for (const [lbl, box] of [["rib-add", "gene-input"], ["sc-add", "sc-gene"]]) {
+  // pointerdown keeps the focus in the box: leaving it (blur) would put the shown gene's name back in it
+  document.querySelector(`label[for="${lbl}"]`).addEventListener("pointerdown", e => e.preventDefault());
   document.querySelector(`label[for="${lbl}"]`).addEventListener("click", e => {
     e.preventDefault(); $e(lbl).checked = false;
     if (!$e(box).value.trim()) { $e(box).focus(); return; }
