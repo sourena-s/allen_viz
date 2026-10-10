@@ -2085,7 +2085,7 @@ function showLoadedStatus() {
 // Probe ids for a gene symbol, probe name or probe_id; only probes present in a loaded file
 // "ZNF*" (what Enter on a partial name becomes) means every gene whose symbol starts with
 // ZNF: their probes, sorted by gene symbol and then probe name, capped at MAX_GROUP_PROBES
-const MAX_GROUP_PROBES = 600;
+const MAX_GROUP_PROBES = 3000;   // probes listed for a "PREFIX*" search (ZNF* has about 1,500)
 // Allen symbols starting with the prefix, plus Allen genes whose current official (HGNC)
 // symbol starts with it (found on Enter, see hgncPrefixMatches), sorted by current name
 const shownName = sym => expr.currentName?.get(sym) ?? sym;
@@ -4005,6 +4005,7 @@ for (const [lbl, box] of [["rib-add", "gene-input"], ["sc-add", "sc-gene"]]) {
     $e(box).dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, bubbles: true, cancelable: true }));
   });
 }
+const SC_WILD_MAX = 400;   // genes shown for a wildcard search in the cells window
 // Remove a gene's columns (the cross on its gene bar): an added gene goes; the main gene is replaced
 // by the first added one, or the window returns to its rows only
 function scRemoveGene(g) {
@@ -4875,7 +4876,7 @@ $e("sc-gene").addEventListener("keydown", async e => {
   // otherwise the exact name (up to 40 genes, an exact match first)
   const raw = q.toUpperCase(), pre = raw.startsWith("*"), post = raw.endsWith("*"), Q = raw.replace(/^\*+|\*+$/g, "");
   const match = g => { const G = g.toUpperCase(); return pre && post ? G.includes(Q) : post ? G.startsWith(Q) : pre ? G.endsWith(Q) : G === Q; };
-  const hits = !Q ? [] : region.genes.filter(g => match(g) && !g.startsWith("ENSG")).sort((a, b) => (b.toUpperCase() === Q) - (a.toUpperCase() === Q) || a.localeCompare(b, undefined, { numeric: true })).slice(0, 40);
+  const hits0 = !Q ? [] : region.genes.filter(g => match(g) && !g.startsWith("ENSG")).sort((a, b) => (b.toUpperCase() === Q) - (a.toUpperCase() === Q) || a.localeCompare(b, undefined, { numeric: true })); const nAll = hits0.length; const hits = hits0.slice(0, SC_WILD_MAX);
   const scName = hits.length ? hits[0].toUpperCase() : (table?.bySynonym.get(Q) ?? []).find(a => region.geneIndex.has(a));
   if (!scName) { $e("sc-sub").textContent = `"${q}" is not in the single-nucleus data.`; return; }
   const allenOf = async name => { if (!expr.bySymbol?.size) return null; const a = expr.bySymbol.has(name) ? name : [...expr.bySymbol.keys()].find(k => k.toUpperCase() === name.toUpperCase()) ?? await resolveAlias(name); return a ? expr.bySymbol.get(a)?.[0] ?? null : null; };
@@ -4889,6 +4890,7 @@ $e("sc-gene").addEventListener("keydown", async e => {
     return;
   }
   scView.multi = hits.length > 1 ? hits : null;
+  if (nAll > hits.length) scToast(`${q}: ${nAll} genes match; the first ${hits.length} (alphabetical) are shown`);
   const allen = expr.bySymbol?.size ? (expr.bySymbol.has(q) ? q : [...expr.bySymbol.keys()].find(k => k.toUpperCase() === Q) ?? await resolveAlias(q)) : null;
   scView.sym = allen ?? region.genes[region.geneIndex.get(scName)];
   scView.probe = allen ? expr.bySymbol.get(allen)?.[0] ?? null : null;
