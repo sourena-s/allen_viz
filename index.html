@@ -3990,6 +3990,8 @@ function scDifferential(rows, detailed, region, clusters, raw = false) {
 // The squares' value: counts per 10k (norm), or mean raw counts per nucleus (raw, Brief rows: the
 // raw tables of tools/rawmean.py; flow-cytometry-like amounts per cell)
 const scVal = (d, gi, k) => (scView.glyphRaw && d.raw ? d.raw[gi * d.nU + k] / 255 * d.rawMax[gi] : scLin(d, gi, k));
+// The count columns' label: nuclei (% expressing – mean among the expressing, in raw counts or CP10k)
+const SC_COUNT_LABEL = () => `Count (% Exp. – mean ${scView.glyphRawPick ? "raw count" : "CP10k"} if expressed)`;
 const SC_UNIT = () => (scView.glyphRaw ? "raw counts per nucleus" : "counts per 10k");
 // A gene's linear mean (counts per 10k) in unit k; the log mean where a file has no linear block
 const scLin = (data, gi, k) => data.lin ? data.lin[gi * data.nU + k] / 255 * data.lmax[gi] : data.body[gi * data.nU * 2 + k] / 255 * data.max[gi];
@@ -4422,6 +4424,9 @@ async function renderCellTypes() {
     const z = (mean - scBrainRef.m[k]) / scBrainRef.s[k];
     return { ...c, size: 0.9, fill: ribbonColour(z), tip: `${c.tip}\nBrain norm: z ${z >= 0 ? "+" : ""}${z.toFixed(2)} against the ${scBrainRef.units} whole-brain cell groups (mean log1p counts per 10k)` };
   };
+  // Mean among the expressing nuclei (those with any count): the row's mean over all its nuclei divided by
+  // the share expressing; raw counts per nucleus in Raw mode, counts per 10k (CP10k) in the norm modes
+  const expMean = v => { if (!v?.frac) return "–"; const x = v.lin / v.frac; return x >= 100 ? x.toFixed(0) : x >= 10 ? x.toFixed(1) : x.toFixed(2); };
   const lines = [], cells = [];
   for (const r of rows) {
     if (r.divider) { lines.push({ divider: true }); continue; }
@@ -4433,7 +4438,7 @@ async function renderCellTypes() {
         const v = mv?.[j]; if (!v) return;
         cells.push(bzCell({ li, ci: 2 * j, size: sqSize(stretch(v.lin, mRange[j])), fill: scColour(stretch(v.lin, mRange[j])), tip: `${r.tip}\n${name}: ${(v.frac * 100).toFixed(0)}% of ${r.n.toLocaleString()} nuclei, ${v.lin.toFixed(2)} ${SC_UNIT()} (log mean ${v.mean.toFixed(2)})` }, name, v.mean));
         const mN = r.nMax ?? secMaxN[r.secI];   // grey: the row's nuclei (linear, to the group maximum); green: those expressing
-        cells.push({ li, ci: 2 * j + 1, bar: r.n / mN, fill: "rgba(255,255,255,0.35)", bar2: r.n * v.frac / mN, fill2: "#3cb371", hist: histOf(r, name), text: `${Math.round(v.frac * 100)}%`, textW: 34,
+        cells.push({ li, ci: 2 * j + 1, bar: r.n / mN, fill: "rgba(255,255,255,0.35)", bar2: r.n * v.frac / mN, fill2: "#3cb371", hist: histOf(r, name), text: `${Math.round(v.frac * 100)}% – ${expMean(v)}`, textW: 64,
           tip: `${r.n.toLocaleString()} nuclei, ${Math.round(r.n * v.frac).toLocaleString()} (${(v.frac * 100).toFixed(1)}%) expressing ${name}` });
       });
       if (detailed && r.markers) cells.push({ li, ci: nBase, label: r.markers });
@@ -4454,7 +4459,7 @@ async function renderCellTypes() {
     const nc = 2;
     const mN = r.nMax ?? secMaxN[r.secI];
     cells.push({ li, ci: nc, bar: r.n / mN, fill: "rgba(255,255,255,0.35)", bar2: r.n * r.frac / mN, fill2: "#3cb371", hist: histOf(r, scView.g?.name),
-      text: `${r.n.toLocaleString()} (${Math.round(r.frac * 100)}%)`, tip: `${r.n.toLocaleString()} nuclei, ${Math.round(r.n * r.frac).toLocaleString()} (${(r.frac * 100).toFixed(1)}%) expressing ${scView.g.name}` });
+      text: `${r.n.toLocaleString()} (${Math.round(r.frac * 100)}% – ${expMean(r)})`, textW: 128, tip: `${r.n.toLocaleString()} nuclei, ${Math.round(r.n * r.frac).toLocaleString()} (${(r.frac * 100).toFixed(1)}%) expressing ${scView.g.name}` });
     added.forEach((a, j) => {
       const v = aVals[rows.indexOf(r)]?.[j], c0 = 3 + 3 * j; if (!v) return;
       cells.push(bzCell({ li, ci: c0, size: sqSize(stretch(v.lin, aRange[j])), fill: scColour(stretch(v.lin, aRange[j])), tip: `${r.tip}\n${a.name}: ${(v.frac * 100).toFixed(0)}% of ${r.n.toLocaleString()} nuclei, ${v.lin.toFixed(2)} ${SC_UNIT()} (log mean ${v.mean.toFixed(2)})` }, a.name, v.mean));
@@ -4468,7 +4473,7 @@ async function renderCellTypes() {
         if (pz.length) cells.push({ li, ci: c0 + 1, size: 0.9, fills: pz.map(([, z]) => ribbonColour(z.z)), tip: allenTip(a.name, pz, r.allenWhere) });
       }
       cells.push({ li, ci: c0 + 2, bar: r.n / mN, fill: "rgba(255,255,255,0.35)", bar2: r.n * v.frac / mN, fill2: "#3cb371", hist: histOf(r, a.name),
-        text: `${r.n.toLocaleString()} (${Math.round(v.frac * 100)}%)`, tip: `${r.n.toLocaleString()} nuclei, ${Math.round(r.n * v.frac).toLocaleString()} (${(v.frac * 100).toFixed(1)}%) expressing ${a.name}` });
+        text: `${r.n.toLocaleString()} (${Math.round(v.frac * 100)}% – ${expMean(v)})`, textW: 128, tip: `${r.n.toLocaleString()} nuclei, ${Math.round(r.n * v.frac).toLocaleString()} (${(v.frac * 100).toFixed(1)}%) expressing ${a.name}` });
     });
     if (detailed && r.markers) cells.push({ li, ci: nBase, label: r.markers });
     }
@@ -4483,9 +4488,9 @@ async function renderCellTypes() {
   { const st = diff ? `Differential: ${diff.note}` : ""; $e("sc-status").textContent = st; $e("sc-status").title = st; }
   $e("sc-sub").textContent = `${diff ? `Differential: ${diff.note} ` : ""}${scView.hpa ? "Protein Atlas brain clusters (c-numbers as on proteinatlas.org: brain neurons, and non-neuronal clusters marked so), each nucleus of these dissections assigned to the cluster whose expression profile it correlates with best over ~1,450 marker genes (an approximation of the Protein Atlas assignment), grouped by cell type, in c-number order. " : ""}${scView.hpa ? "Rows" : detailed ? "Siletti clusters, grouped by subfield (canonical markers) or cell class, sorted by share expressing" : "Hippocampal subfields by canonical markers (CA1: FIBCD1/FNDC1; CA2: RGS14; subiculum: PCP4 or FN1 without PROX1; CA3: HS3ST4; DG: PROX1; a cluster counts as positive when half its nuclei express the gene, in that order), other cell classes per region"}, then each dissection (all its nuclei; dissections mix neighbouring fields). The subiculum has no cluster or canonical marker of its own in these data (its nuclei fall into CA1-type clusters), so it appears only as a dissection row. Colour: mean expression of ${scView.g.name} in counts per 10k (linear, no log), from pale (lowest row) to red (highest row), square area likewise, stretched separately for the by-markers rows and the by-dissection rows; co-expressed columns each over their own range. Bars: nuclei (grey, linear) and those expressing the gene (green).${detailed ? " Allen: the probe highlighted in the ribbon, every sample of the Allen structures matching each subfield, class or dissection (the ribbon turned on its side, its colours), from your loaded donors." : " Allen: mean z of the probe highlighted in the ribbon in each marker subfield's Allen structures, in the ribbon's colours."}${detailed ? " Hover a cluster for where it was dissected." : ""} (Ex) excitatory, (In) inhibitory.`;
   const colsAll = [...(multi
-      ? multi.flatMap((name, j) => [{ key: `g:${name}`, label: name, gene: name, vert: true, gap: j ? 10 : 0 }, { key: `g:${name}:ct`, label: "Count (% Exp.)", w: 84, vert: true, gap: 2 }])
-      : [{ key: "m:sn", label: "snRNA-seq Siletti et al.", lv: 0 }, { key: "m:al", label: "Allen Brain Atlas", lv: 1, mid: true, gap: 6 }, { key: "m:ct", label: "Count (% Exp.)", w: 190, gap: 10, plain: true },
-         ...added.flatMap(a => [{ key: `a:${a.name}:sn`, label: "snRNA-seq Siletti et al.", gene: a.name, lv: 0, gap: 14 }, { key: `a:${a.name}:al`, label: "Allen Brain Atlas", lv: 1, mid: true, gap: 6 }, { key: `a:${a.name}:ct`, label: "Count (% Exp.)", w: 190, gap: 10, plain: true }])]),
+      ? multi.flatMap((name, j) => [{ key: `g:${name}`, label: name, gene: name, vert: true, gap: j ? 10 : 0 }, { key: `g:${name}:ct`, label: SC_COUNT_LABEL(), w: 84, vert: true, gap: 2 }])
+      : [{ key: "m:sn", label: "snRNA-seq Siletti et al.", lv: 0 }, { key: "m:al", label: "Allen Brain Atlas", lv: 1, mid: true, gap: 6 }, { key: "m:ct", label: SC_COUNT_LABEL(), w: 190, gap: 10, plain: true },
+         ...added.flatMap(a => [{ key: `a:${a.name}:sn`, label: "snRNA-seq Siletti et al.", gene: a.name, lv: 0, gap: 14 }, { key: `a:${a.name}:al`, label: "Allen Brain Atlas", lv: 1, mid: true, gap: 6 }, { key: `a:${a.name}:ct`, label: SC_COUNT_LABEL(), w: 190, gap: 10, plain: true }])]),
       ...(detailed ? [{ key: "mk", label: "Markers ([canonical] then cluster-specific)", w: 360, gap: 8, plain: !multi, vert: !!multi }] : []),
       ...extra.map((c, j) => ({ key: `x:${c.diff ? "d" : "c"}:${c.name}`, label: c.label, gene: c.name, pct: c.pct, pctOf: c.pctOf, hist: c.hist, sep: c.sep, vert: true, gap: j === 0 || (c.diff && !extra[j - 1].diff) || c.sep ? 8 : 0 }))];
   // Figure editing (PNG button): columns in the user's order; those toggled off are dimmed while
