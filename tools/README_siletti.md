@@ -137,4 +137,4 @@ The "Ncx clusters" view shows a section per supercluster and a row per cluster.
 
 In "Brain norm" mode the cells window shows each row's z-score against that reference, (row mean − brain mean) / brain SD. The squares use the Allen colour scale at a fixed size. This is the single-nucleus counterpart of the Allen z, which is standardised across a donor's whole-brain samples.
 
-Raw (mean raw counts per nucleus) and Cell norm (counts per 10k) are the other two modes.
+Raw (mean raw counts per nucleus) and Cell norm (counts per 10k) are the other two modes. Brain norm CP10k shows the row's mean CP10k divided by the gene's whole-brain mean CP10k (all nuclei, donors pooled), as log2 in Allen colours.
