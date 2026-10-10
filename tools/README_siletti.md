@@ -138,3 +138,13 @@ The "Ncx clusters" view shows a section per supercluster and a row per cluster.
 In "Brain norm" mode the cells window shows each row's z-score against that reference, (row mean − brain mean) / brain SD. The squares use the Allen colour scale at a fixed size. This is the single-nucleus counterpart of the Allen z, which is standardised across a donor's whole-brain samples.
 
 Raw (mean raw counts per nucleus) and Cell norm (counts per 10k) are the other two modes. Brain norm CP10k shows the row's mean CP10k divided by the gene's whole-brain mean CP10k (all nuclei, donors pooled), as log2 in Allen colours.
+
+## Per-donor tables (four Siletti donors: H19.30.002, H19.30.001, H18.30.002, H18.30.001)
+
+- `bnorm.py` → `assets/<file>_bnorm.bin.gz`: per unit, donor and gene, the fold of CP10k over that donor's own
+  whole-brain mean CP10k (log2-coded uint8), with nuclei per unit and donor. The page averages the donors itself,
+  weighted by nuclei (Brain & Cell norm. (CP10k) squares). `python bnorm.py --write` rewrites from the saved sums.
+- `donors.py A` (hipamy, custom, clusters, hpa) and `donors.py B` (brain, ncx, ncxcl) → `<file>_donor.bin.gz`:
+  per unit, donor and gene: nuclei, share expressing, mean raw count, mean CP10k, shares with >= 2..128 counts.
+  `donsplit.py` splits each into `assets/<file>_donor0..3.bin.gz` (one per donor, under GitHub's 100 MB limit);
+  the page loads them on the first click on a count bar (the by-donor bar plots).

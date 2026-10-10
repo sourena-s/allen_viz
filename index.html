@@ -4070,25 +4070,29 @@ async function loadScBnorm(d, base) {
     d.bnD = D; d.bnN = new Float32Array(buf.slice(8, 8 + U * D * 4).buffer); d.bnorm = buf.subarray(8 + U * D * 4);
   } catch { /* pooled donors instead */ }
 }
-// Per-donor tables for the donor bar plots (tools/donors.py), loaded on the first click on a count bar:
-// "DON1", uint32 D, uint32 NB, float32 nuclei[unit][D], float32 rawMax[D][gene], float32 cpMax[D][gene], then
-// uint8 [D][gene][unit] tables: share expressing, mean raw count, mean CP10k, then NB shares with >= 2, 4, ... counts
 // Donor order in the per-donor tables (tools/bnorm.py, tools/donors.py; H18.30.001 gave only a few dissections)
 const SC_DONORS = ["H19.30.002", "H19.30.001", "H18.30.002", "H18.30.001"];
+// Per-donor tables for the donor bar plots (tools/donors.py, split one file per donor), loaded on the first
+// click on a count bar: "DON1", uint32 1, uint32 NB, float32 nuclei[unit], float32 rawMax[gene], float32 cpMax[gene],
+// then uint8 [gene][unit] tables: share expressing, mean raw count, mean CP10k, then NB shares with >= 2, 4, ... counts
 async function loadScDonor(d, base) {
   if (!d) return; d.donP ??= (async () => {
-    try {
-      const res = await fetch(`${base}_donor.bin.gz`); if (!res.ok) return;
-      let buf = new Uint8Array(await res.arrayBuffer());
-      if (buf[0] === 0x1f && buf[1] === 0x8b) buf = new Uint8Array(await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer());
-      if (String.fromCharCode(...buf.subarray(0, 4)) !== "DON1") return;
-      const dv = new DataView(buf.buffer, buf.byteOffset), D = dv.getUint32(4, true), NB = dv.getUint32(8, true), G = d.genes.length, U = d.nU;
-      let o = 12; const f32 = n => { const a = new Float32Array(buf.slice(o, o + n * 4).buffer); o += n * 4; return a; };
-      const N = f32(U * D), rmx = f32(D * G), cmx = f32(D * G), T = D * G * U;
-      if (buf.length !== o + (3 + NB) * T) return;
-      const tb = i => buf.subarray(o + i * T, o + (i + 1) * T);
-      d.don = { D, NB, N, rmx, cmx, frac: tb(0), raw: tb(1), cp: tb(2), hist: Array.from({ length: NB }, (_, b) => tb(3 + b)) };
-    } catch { /* no donor plots */ }
+    const one = async x => {
+      try {
+        const res = await fetch(`${base}_donor${x}.bin.gz`); if (!res.ok) return null;
+        let buf = new Uint8Array(await res.arrayBuffer());
+        if (buf[0] === 0x1f && buf[1] === 0x8b) buf = new Uint8Array(await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer());
+        if (String.fromCharCode(...buf.subarray(0, 4)) !== "DON1") return null;
+        const NB = new DataView(buf.buffer, buf.byteOffset).getUint32(8, true), G = d.genes.length, U = d.nU;
+        let o = 12; const f32 = n => { const a = new Float32Array(buf.slice(o, o + n * 4).buffer); o += n * 4; return a; };
+        const N = f32(U), rmx = f32(G), cmx = f32(G), T = G * U;
+        if (buf.length !== o + (3 + NB) * T) return null;
+        const tb = i => buf.subarray(o + i * T, o + (i + 1) * T);
+        return { NB, N, rmx, cmx, frac: tb(0), raw: tb(1), cp: tb(2), hist: Array.from({ length: NB }, (_, b) => tb(3 + b)) };
+      } catch { return null; }
+    };
+    const all = await Promise.all(SC_DONORS.map((_, x) => one(x)));
+    if (all.some(Boolean)) d.don = all;
   })();
   return d.donP;
 }
@@ -4540,15 +4544,16 @@ async function renderCellTypes() {
     : r.test ? [region, region.groups.map(([d, c], k) => (r.test(d, region.superclusters[c]) ? k : -1)).filter(k => k >= 0)] : null;
   const donorsOf = (r, name) => {
     const pick = unitsOf(r); if (!pick) return null;
-    const [dd, us] = pick, T = dd?.don; if (!T) return null;
+    const [dd, us] = pick; if (!dd?.don) return null;
     const gi = dd.geneIndex.get(String(name).toUpperCase()); if (gi === undefined) return null;
-    const { D, NB } = T, U = dd.nU, G = dd.genes.length, raw = scView.glyphMode === "raw", bn = scView.glyphMode === "brain" ? bnOf(r, name) : null;
-    return Array.from({ length: D }, (_, x) => {
-      let n = 0, f = 0, m = 0; const h = new Array(NB).fill(0), o = (x * G + gi) * U;
+    const U = dd.nU, raw = scView.glyphMode === "raw", bn = scView.glyphMode === "brain" ? bnOf(r, name) : null;
+    return dd.don.map((T, x) => {
+      if (!T) return null;
+      const NB = T.NB; let n = 0, f = 0, m = 0; const h = new Array(NB).fill(0), o = gi * U;
       for (const k of us) {
-        const nn = T.N[k * D + x]; if (!nn) continue;
+        const nn = T.N[k]; if (!nn) continue;
         n += nn; f += nn * T.frac[o + k] / 255;
-        m += nn * (raw ? T.raw[o + k] / 255 * T.rmx[x * G + gi] : T.cp[o + k] / 255 * T.cmx[x * G + gi]);
+        m += nn * (raw ? T.raw[o + k] / 255 * T.rmx[gi] : T.cp[o + k] / 255 * T.cmx[gi]);
         for (let b = 0; b < NB; b++) h[b] += nn * T.hist[b][o + k] / 255;
       }
       return n ? { n, frac: f / n, hist: f ? h.map(v => Math.min(1, v / f)) : null, mean: f ? m / f : 0, fold: bn?.donors[x]?.[0] } : null;
@@ -4562,7 +4567,7 @@ async function renderCellTypes() {
     await Promise.all([loadScDonor(dd, base), scView.glyphMode === "brain" && loadScBnorm(dd, base)]);
     const per = donorsOf(r, name);
     if (!per) { scInfoOpen([[`${name} · ${r.label}`, "No per-donor table for these rows."]], at); return; }
-    const unit = scView.glyphMode === "raw" ? "raw counts" : "CP10k", W = 400, rh = 26, room = 180, mx = Math.max(...per.map(p => p?.n ?? 0));
+    const unit = scView.glyphMode === "raw" ? "raw counts" : "CP10k", W = 390, rh = 26, room = 130, mx = Math.max(...per.map(p => p?.n ?? 0));
     const svg = svgEl("svg", { width: W, height: per.length * rh + 4, viewBox: `0 0 ${W} ${per.length * rh + 4}` });
     per.forEach((p, x) => {
       const cy = 2 + x * rh + rh / 2;
