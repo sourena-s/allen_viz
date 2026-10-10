@@ -4427,7 +4427,7 @@ async function renderCellTypes() {
   };
   // Mean among the expressing nuclei (those with any count): the row's mean over all its nuclei divided by
   // the share expressing; raw counts per nucleus in Raw mode, counts per 10k (CP10k) in the norm modes
-  const expMean = v => { if (!v?.frac) return "–"; const x = v.lin / v.frac; return x >= 100 ? x.toFixed(0) : x >= 10 ? x.toFixed(1) : x.toFixed(2); };
+  const expMean = v => { if (!v?.frac) return "–"; return (v.lin / v.frac).toFixed(1); };
   const lines = [], cells = [];
   for (const r of rows) {
     if (r.divider) { lines.push({ divider: true }); continue; }
