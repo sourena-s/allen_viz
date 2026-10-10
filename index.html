@@ -836,7 +836,7 @@
   <form method="dialog" class="sc-form">
     <div class="sc-head"><h2 id="sc-title" hidden></h2>
       <div class="row sc-toggle sc-detail-row"><span class="sc-tg"><input type="checkbox" id="sc-add" autocomplete="off"><label for="sc-add" class="sc-add-lbl" title="Add the gene typed in the box as more columns (as Ctrl+Enter); the box empties once it is added" aria-label="Add genes as columns">+</label><input type="text" id="sc-gene" class="gene-box" placeholder="Gene" aria-label="Gene shown in the cells window" autocomplete="off" spellcheck="false" title="Show another gene (Enter), or add it as more columns (Ctrl+Enter): a name, or with * for several (rad* starts with, *rad ends with, *rad* contains); co-expression and differential results stay"><button type="button" class="rb-btn sc-zbtn" id="sc-zbtn" aria-expanded="false" title="Colour range of the Allen z-scores" aria-label="Allen colour range"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16M4 16h16"/><circle cx="9" cy="8" r="2.2"/><circle cx="15" cy="16" r="2.2"/></svg></button><span class="sc-zpop" id="sc-zpop" hidden><label class="zsym sc-zr zvert" title="Colour range of the Allen z-scores: from minus to plus this value">Allen z
-      <input type="range" id="sc-zr" min="0.5" max="6" step="0.1" value="2" aria-label="Allen colour range, z"><span id="sc-zr-val" class="rm-value">±2.0</span></label></span></span><span class="sc-break"></span><span class="sc-seg" role="radiogroup" aria-label="Rows"><button type="button" data-v="custom" role="radio" title="Limbic: hippocampal neurons (reclustered, labelled by markers), other hippocampal cells, parahippocampal gyrus and amygdala, dissections">Limbic</button><button type="button" data-v="siletti" role="radio" title="Siletti clusters">Siletti</button><button type="button" data-v="hpa" role="radio" title="Protein Atlas brain clusters (its neuronal and non-neuronal clusters), each nucleus assigned by marker-gene correlation"><span class="full">Protein Atlas</span><span class="short">P. Atlas</span></button><button type="button" data-v="brain" role="radio" title="Whole brain: every Siletti supercluster in each brain region (all 105 dissections: cortex, hippocampus, amygdala, basal nuclei, thalamus, hypothalamus, midbrain, pons, medulla, cerebellum, spinal cord)">Brain</button><button type="button" data-v="ncx" role="radio" title="Neocortex: every Siletti supercluster in each neocortical area (frontal, insular, cingulate, parietal, temporal, occipital dissections; entorhinal, perirhinal, parahippocampal, retrosplenial and prostriata left out as not isocortex)"><span class="full">Neocortex</span><span class="short">Ctx</span></button><button type="button" data-v="ncxcl" role="radio" title="Neocortex clusters: all neocortical dissections pooled, a row per Siletti cluster (fine cell types), grouped by supercluster"><span class="full">Ncx clusters</span><span class="short">Ctx cl.</span></button></span><span hidden><input type="checkbox" id="sc-detail" autocomplete="off"></span><span hidden><input type="checkbox" id="sc-custom" autocomplete="off" checked></span><span hidden><input type="checkbox" id="sc-brain" autocomplete="off"></span><span hidden><input type="checkbox" id="sc-ncx" autocomplete="off"></span><span hidden><input type="checkbox" id="sc-ncxcl" autocomplete="off"></span><span hidden><input type="checkbox" id="sc-hpa" autocomplete="off"></span><span class="sc-acts"><span class="sc-seg sc-gseg" role="radiogroup" aria-label="Squares"><button type="button" data-g="raw" role="radio" aria-checked="true" title="Raw count: mean raw counts per nucleus (amounts per cell)">Raw<br>(count)</button><button type="button" data-g="cell" role="radio" aria-checked="false" title="Cell norm: counts per 10k (each nucleus divided by its own total: the share of the cell's RNA)">Cell norm.<br>(CP10k)</button><button type="button" data-g="brain" role="radio" aria-checked="false" title="Brain &amp; Cell norm. (CP10k): each nucleus's counts per 10k over its own donor's whole-brain mean counts per 10k, averaged over the row; Allen colours on log2 of that fold">Brain &amp; Cell norm.<br>(CP10k)</button></span><span class="sc-tg"><input type="checkbox" id="sc-diff" autocomplete="off"><label for="sc-diff" id="sc-diff-lbl" title="Click rows: once yellow (foreground), again blue (background), again clear. Then calculate: the 200 genes most raised in the foreground relative to the background appear as columns on the right">Diff.</label><button type="button" class="corr-btn" id="sc-diffraw" hidden title="Raw differential (flow-cytometry-like): ranks genes by mean raw counts per nucleus (not divided by each nucleus's total), yellow vs blue rows">Calc. raw</button></span><span class="sc-tg"><input type="checkbox" id="sc-coexp" autocomplete="off"><label for="sc-coexp" title="The 200 genes whose mean expression across the hippocampal formation, dentate, parahippocampal and amygdala cell groups (clusters in the detailed view, dissection x supercluster in the brief) correlates best with this gene (r after the name)">Co-exp.</label></span><button type="button" class="corr-btn" id="sc-clear" title="Clear: remove every gene column (the searched gene, added genes, co-expressed and differential genes) and the marked rows; the row names stay">Clear</button><span class="sc-tg"><button type="button" class="corr-btn" id="sc-diff-run" hidden title="Rank the genes for the yellow (foreground) vs blue (background) rows">Calculate</button><button type="button" class="corr-btn" id="sc-diff-sub" hidden title="Subcellular location images (Human Protein Atlas) of the differential genes">Subcel.</button></span></span></div>
+      <input type="range" id="sc-zr" min="0.5" max="6" step="0.1" value="2" aria-label="Allen colour range, z"><span id="sc-zr-val" class="rm-value">±2.0</span></label></span></span><span class="sc-break"></span><span class="sc-seg" role="radiogroup" aria-label="Rows"><button type="button" data-v="custom" role="radio" title="Limbic: hippocampal neurons (reclustered, labelled by markers), other hippocampal cells, parahippocampal gyrus and amygdala, dissections">Limbic</button><button type="button" data-v="siletti" role="radio" title="Siletti clusters">Siletti</button><button type="button" data-v="hpa" role="radio" title="Protein Atlas brain clusters (its neuronal and non-neuronal clusters), each nucleus assigned by marker-gene correlation"><span class="full">Protein Atlas</span><span class="short">P. Atlas</span></button><button type="button" data-v="brain" role="radio" title="Whole brain: every Siletti supercluster in each brain region (all 105 dissections: cortex, hippocampus, amygdala, basal nuclei, thalamus, hypothalamus, midbrain, pons, medulla, cerebellum, spinal cord)">Brain</button><button type="button" data-v="ncx" role="radio" title="Neocortex: every Siletti supercluster in each neocortical area (frontal, insular, cingulate, parietal, temporal, occipital dissections; entorhinal, perirhinal, parahippocampal, retrosplenial and prostriata left out as not isocortex)"><span class="full">Neocortex</span><span class="short">Ctx</span></button><button type="button" data-v="ncxcl" role="radio" title="Neocortex clusters: all neocortical dissections pooled, a row per Siletti cluster (fine cell types), grouped by supercluster"><span class="full">Ncx clusters</span><span class="short">Ctx cl.</span></button></span><span hidden><input type="checkbox" id="sc-detail" autocomplete="off"></span><span hidden><input type="checkbox" id="sc-custom" autocomplete="off" checked></span><span hidden><input type="checkbox" id="sc-brain" autocomplete="off"></span><span hidden><input type="checkbox" id="sc-ncx" autocomplete="off"></span><span hidden><input type="checkbox" id="sc-ncxcl" autocomplete="off"></span><span hidden><input type="checkbox" id="sc-hpa" autocomplete="off"></span><span class="sc-acts"><span class="sc-seg sc-gseg" role="radiogroup" aria-label="Squares"><button type="button" data-g="raw" role="radio" aria-checked="true" title="Raw count: mean raw counts per nucleus (amounts per cell)">Raw<br>(count)</button><button type="button" data-g="cell" role="radio" aria-checked="false" title="Cell norm: counts per 10k (each nucleus divided by its own total: the share of the cell's RNA)">Cell norm.<br>(CP10k)</button><button type="button" data-g="brain" role="radio" aria-checked="false" title="Brain &amp; Cell norm. (CP10k): each nucleus's counts per 10k over its own donor's whole-brain mean counts per 10k, averaged over the row; Allen colours on log2 of that fold">Brain &amp; Cell norm.<br>(CP10k)</button></span><span class="sc-tg"><input type="checkbox" id="sc-diff" autocomplete="off"><label for="sc-diff" id="sc-diff-lbl" title="Click rows: once yellow (foreground), again blue (background), again clear. Then calculate: the 200 genes most raised in the foreground relative to the background appear as columns on the right">Diff.</label><button type="button" class="corr-btn" id="sc-diffraw" hidden title="Raw differential (flow-cytometry-like): ranks genes by mean raw counts per nucleus (not divided by each nucleus's total), yellow vs blue rows">Calc. raw</button></span><span class="sc-tg"><input type="checkbox" id="sc-coexp" autocomplete="off"><label for="sc-coexp" title="Co-expression: press, click rows to select them (yellow; none selected means all rows of this view), then press Calc: the genes whose mean expression across those rows correlates best with this gene appear on the right (r after the name)">Co-exp.</label></span><button type="button" class="corr-btn" id="sc-clear" title="Clear: remove every gene column (the searched gene, added genes, co-expressed and differential genes) and the marked rows; the row names stay">Clear</button><span class="sc-tg"><button type="button" class="corr-btn" id="sc-diff-run" hidden title="Rank the genes for the yellow (foreground) vs blue (background) rows">Calculate</button><button type="button" class="corr-btn" id="sc-diff-sub" hidden title="Subcellular location images (Human Protein Atlas) of the differential genes">Subcel.</button></span></span></div>
 
       <button class="rb-btn sc-zb" type="button" id="sc-zoom-out" aria-label="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
       <button class="rb-btn sc-zb" type="button" id="sc-zoom-in" aria-label="Zoom in"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button>
@@ -4364,10 +4364,50 @@ async function renderCellTypes() {
 
   const coData = detailed ? clusters : region, coG = detailed ? gC : gR;
   // Co-expression stays with the gene it was started for (a gene searched in the window keeps it)
-  if (!$e("sc-coexp").checked) scView.coAnchor = null; else if (!scView.coAnchor && coG?.i >= 0 && !scView.noGene) scView.coAnchor = coData.genes[coG.i];
-  const coGi = scView.coAnchor ? coData.geneIndex.get(scView.coAnchor.toUpperCase()) : undefined;
-  const co = coGi !== undefined ? coExpressed(coData, coGi, detailed) : null;
-  const coIn = co && detailed ? new Set(co.ks) : null;
+  // Co-exp.: first a row selection (yellow, like the differential's foreground), then Calc correlates
+  // the gene over the selected rows only, or over every unit of this view when none is selected
+  scView.coSel ??= new Set();
+  if (!$e("sc-coexp").checked) { scView.coAnchor = null; scView.coMarking = false; }
+  else if (scView.coRun) { scView.coRun = false; scView.coAnchor = coG?.i >= 0 && !scView.noGene ? coData.genes[coG.i] : null; scView.coRows = [...scView.coSel]; }
+  const coGi = scView.coAnchor && !scView.coMarking ? coData.geneIndex.get(scView.coAnchor.toUpperCase()) : undefined;
+  const coRowsSel = coGi !== undefined && scView.coRows?.length ? rows.filter(r => r.n && r.key && scView.coRows.includes(r.key)) : [];
+  let co = null;
+  if (coGi !== undefined) {
+    if (!coRowsSel.length) co = coExpressed(coData, coGi, detailed);
+    else {   // over the selected rows: each row's linear mean (counts per 10k), pooled over its units by nuclei
+      const ck = `${detailed}|${scView.regionBase}|${scView.hpa}|${!!cu}|${scView.coAnchor}|${coRowsSel.map(r => r.key).join("\u0001")}`;
+      if (scView.coCache?.key !== ck) {
+        const picks = coRowsSel.map(r => r.k != null ? [clusters, [[r.k, 1]]] : r.ks ? [clusters, r.ks.map(k => [k, clusters.clusters[k].n])]
+          : r.cu ? [cu, r.cu.map(k => [k, cu.groups[k][2]])] : r.test ? [region, region.groups.map(([d, c, nn], k) => (r.test(d, region.superclusters[c]) ? [k, nn] : null)).filter(Boolean)] : null).filter(Boolean);
+        const m = picks.length, vec = (name, out, fr) => {
+          for (let j = 0; j < m; j++) {
+            const [dd, us] = picks[j], gi = dd.geneIndex.get(name); let v = 0, f = 0, w = 0;
+            if (gi !== undefined) for (const [k, nn] of us) { v += nn * scLin(dd, gi, k); f += nn * dd.body[gi * dd.nU * 2 + dd.nU + k] / 255; w += nn; }
+            out[j] = w ? v / w : 0; if (fr) fr[j] = w ? f / w : 0;
+          }
+        };
+        const ax = new Float64Array(m); vec(scView.coAnchor.toUpperCase(), ax);
+        const mu = ax.reduce((a, b) => a + b, 0) / m, sd0 = Math.sqrt(ax.reduce((a, b) => a + (b - mu) ** 2, 0) / m);
+        const best = [];
+        if (m >= 3 && sd0 > 0) {
+          for (let j = 0; j < m; j++) ax[j] = (ax[j] - mu) / sd0;
+          const y = new Float64Array(m), fr = new Float64Array(m), anchor = scView.coAnchor.toUpperCase();
+          for (let i = 0; i < coData.genes.length; i++) {
+            const name = coData.genes[i]; if (name.startsWith("ENSG") || name.toUpperCase() === anchor) continue;
+            vec(name.toUpperCase(), y, fr);
+            if (Math.max(...fr) < 0.1) continue;   // detected (any count) in at least 10% of the nuclei of some selected row
+            let sx = 0, sxx = 0, sxy = 0; for (let j = 0; j < m; j++) { sx += y[j]; sxx += y[j] * y[j]; sxy += y[j] * ax[j]; }
+            const sd = Math.sqrt(Math.max(0, sxx / m - (sx / m) ** 2)); if (!sd) continue;
+            const rr = sxy / m / sd;
+            if (best.length < CO_TOP || rr > best[best.length - 1].r) { best.push({ i, r: rr }); best.sort((p, q) => q.r - p.r); if (best.length > CO_TOP) best.pop(); }
+          }
+        }
+        scView.coCache = { key: ck, out: { ks: [], list: best } };
+      }
+      co = scView.coCache.out;
+    }
+  }
+  const coIn = co && detailed && co.ks.length ? new Set(co.ks) : null;   // clusters the correlation used (all rows of the view)
   // Another gene's { mean, frac } on a row: a cluster, marker clusters, or pooled dissection groups
   const rowOf = (r, name) => {
     let n = 0, m = 0, f = 0, l = 0;
@@ -4417,27 +4457,42 @@ async function renderCellTypes() {
   $e("sc-diff-run").disabled = !nFg;
   // Sub: always shown; active once a differential search has results
   $e("sc-coexp").disabled = scView.noGene && !scView.coAnchor;   // co-expression needs a gene
+  // While selecting rows the Co-exp. button reads Calc
+  $e("sc-coexp").nextElementSibling.textContent = scView.coMarking ? `Calc (${scView.coSel.size || "all"})` : "Co-exp.";
   $e("sc-diff-sub").hidden = false;
   $e("sc-diff-sub").disabled = !(diff?.list.length || co);
   // Which result sub works on: its key keeps the looked-up state until that result changes
-  scView.subKey = diff?.list.length ? `d${scView.diffRes.id}` : co ? `c${detailed}|${scView.coAnchor}` : null;
+  scView.subKey = diff?.list.length ? `d${scView.diffRes.id}` : co ? `c${detailed}|${scView.coAnchor}|${coRowsSel.map(r => r.key).join(",")}` : null;
   scSubLabel();
   $e("sc-diff-sub").title = diff?.list.length ? "Subcellular location images (Human Protein Atlas) of the differential genes" : co ? "Subcellular location images (Human Protein Atlas) of the co-expressed genes" : "Run a co-expression or differential search first";
   // A selected row (co-expression): the bars under the co-expressed genes show its nuclei expressing them
   const selRow = co && scView.selKey ? rows.find(r => r.key === scView.selKey && r.n) : null;
   // Co-expressed columns; after Sub, the nucl* genes first, a dashed line, then the rest (r order kept)
-  const coKey = co ? `${detailed}|${scView.coAnchor}` : null;
+  const coKey = co ? `${detailed}|${scView.coAnchor}|${coRowsSel.map(r => r.key).join(",")}` : null;
   const coNuc = scView.coNuc?.key === coKey ? scView.coNuc.set : null;
+  // After Sub: nuclear (nucl*) genes, a dashed line, then the rest; each group sorted by the share of the
+  // co-expression rows' nuclei expressing the gene, or by r (its ribbon above toggles which)
+  const ss = scView.subSort ??= { Nuclear: "pct", "Non-nuclear": "pct" };
+  const coPctRows = coRowsSel.length ? coRowsSel : rows.filter(r => r.n && r.key);
+  const coPct = name => { let f = 0, n = 0; for (const r of coPctRows) { const v = rowOf(r, name); if (v) { f += r.n * v.frac; n += r.n; } } return n ? f / n : 0; };
   const coCols = !co ? [] : !coNuc ? co.list : (() => {
-    const a = co.list.filter(c => coNuc.has(coData.genes[c.i])), b = co.list.filter(c => !coNuc.has(coData.genes[c.i]));
-    return [...a, ...b.map((c, j) => (j === 0 && a.length ? { ...c, sep: true } : c))];
+    const by = g => (ss[g] === "pct" ? (p, q) => q.pct - p.pct : (p, q) => q.r - p.r);
+    const L = co.list.map(c => ({ ...c, pct: coPct(coData.genes[c.i]) }));
+    const a = L.filter(c => coNuc.has(coData.genes[c.i])).sort(by("Nuclear")).map(c => ({ ...c, sgrp: "Nuclear" }));
+    const b = L.filter(c => !coNuc.has(coData.genes[c.i])).sort(by("Non-nuclear")).map((c, j) => ({ ...c, sgrp: "Non-nuclear", sep: j === 0 && a.length > 0 }));
+    return [...a, ...b];
   })();
   scView.coShown = co ? { key: coKey, list: co.list.map(c => ({ name: coData.genes[c.i], r: c.r })) } : null;
   // Extra columns on the right: co-expressed genes, then differential genes, each on its own range
   const fgRows = rows.filter(r => r.n && r.key && scView.marks?.get(r.key) === "fg");   // the differential's foreground rows
   const extra = [
-    ...coCols.map(({ i, r: rr, sep }) => ({ name: coData.genes[i], sep, ...(selRow ? { pct: rowOf(selRow, coData.genes[i])?.frac ?? 0, pctOf: `${selRow.label} nuclei`, hist: histOf(selRow, coData.genes[i]) } : {}), label: `${coData.genes[i]} ${rr.toFixed(2)}`, why: `r = ${rr.toFixed(2)} with ${scView.coAnchor}`, only: coIn })),
-    ...(diff?.list ?? []).map(({ name, d, pct }, j) => ({ name, pct, pctOf: "the foreground nuclei", hist: fgRows.length ? histOf(fgRows, name) : null, sep: diff.nucN != null && j === diff.nucN && j > 0, label: `${name} ${d >= 0 ? "+" : ""}${d.toFixed(1)}`, why: `foreground minus background, ${d.toFixed(2)} SD of the gene across the rows`, diff: true })),
+    ...coCols.map(({ i, r: rr, sep, sgrp, pct }) => ({ name: coData.genes[i], sep, sgrp, ...(selRow ? { pct: rowOf(selRow, coData.genes[i])?.frac ?? 0, pctOf: `${selRow.label} nuclei`, hist: histOf(selRow, coData.genes[i]) }
+      : sgrp ? { pct, pctOf: coRowsSel.length ? "the selected rows' nuclei" : "all rows' nuclei", hist: histOf(coPctRows, coData.genes[i]) } : {}), label: `${coData.genes[i]} ${rr.toFixed(2)}`, why: `r = ${rr.toFixed(2)} with ${scView.coAnchor}`, only: coIn })),
+    ...(diff?.nucSet ? (() => {   // after Sub: each group by share of foreground nuclei expressing, or by score
+      const by = g => (ss[g] === "pct" ? (p, q) => q.pct - p.pct : (p, q) => q.d - p.d);
+      return [...diff.list.filter(g => diff.nucSet.has(g.name)).sort(by("Nuclear")).map(g => ({ ...g, sgrp: "Nuclear" })),
+        ...diff.list.filter(g => !diff.nucSet.has(g.name)).sort(by("Non-nuclear")).map(g => ({ ...g, sgrp: "Non-nuclear" }))];
+    })() : diff?.list ?? []).map(({ name, d, pct, sgrp }, j) => ({ name, pct, sgrp, pctOf: "the foreground nuclei", hist: fgRows.length ? histOf(fgRows, name) : null, sep: diff.nucN != null && j === diff.nucN && j > 0, label: `${name} ${d >= 0 ? "+" : ""}${d.toFixed(1)}`, why: `foreground minus background, ${d.toFixed(2)} SD of the gene across the rows`, diff: true })),
   ];
   const exRows = rows.map(r => (r.n ? extra.map(c => (!c.only || c.only.has(r.k) ? rowOf(r, c.name) : null)) : null));
   const exRange = extra.map((_, j) => { const vs = exRows.filter(Boolean).map(v => v[j]?.lin).filter(v => v != null); return [Math.min(...vs), Math.max(...vs)]; });
@@ -4546,7 +4601,7 @@ async function renderCellTypes() {
   for (const r of rows) {
     if (r.divider) { lines.push({ divider: true }); continue; }
     if (r.sec) { lines.push({ sec: r.sec, secColor: r.color, info: scView.exporting ? null : r.info }); continue; }
-    const li = lines.push({ label: r.label, sub: r.sub, bar: r.bar, key: r.key, mark: scView.marks.get(r.key) }) - 1;
+    const li = lines.push({ label: r.label, sub: r.sub, bar: r.bar, key: r.key, mark: scView.coMarking || (co && scView.coRows?.length) ? (scView.coMarking ? scView.coSel : new Set(scView.coRows)).has(r.key) ? "fg" : null : scView.marks.get(r.key) }) - 1;
     if (multi) {
       const mv = mVals[rows.indexOf(r)];
       multi.forEach((name, j) => {
@@ -4600,14 +4655,14 @@ async function renderCellTypes() {
         tip: `${c.name} (${c.why})\n${r.label}: ${v.lin.toFixed(2)} ${SC_UNIT()} (log mean ${v.mean.toFixed(2)}), ${Math.round(v.frac * 100)}% of nuclei with any count` });
     });
   }
-  { const st = diff ? `Differential: ${diff.note}` : ""; $e("sc-status").textContent = st; $e("sc-status").title = st; }
-  $e("sc-sub").textContent = `${diff ? `Differential: ${diff.note} ` : ""}${scView.hpa ? "Protein Atlas brain clusters (c-numbers as on proteinatlas.org: brain neurons, and non-neuronal clusters marked so), each nucleus of these dissections assigned to the cluster whose expression profile it correlates with best over ~1,450 marker genes (an approximation of the Protein Atlas assignment), grouped by cell type, in c-number order. " : ""}${scView.hpa ? "Rows" : detailed ? "Siletti clusters, grouped by subfield (canonical markers) or cell class, sorted by share expressing" : "Hippocampal subfields by canonical markers (CA1: FIBCD1/FNDC1; CA2: RGS14; subiculum: PCP4 or FN1 without PROX1; CA3: HS3ST4; DG: PROX1; a cluster counts as positive when half its nuclei express the gene, in that order), other cell classes per region"}, then each dissection (all its nuclei; dissections mix neighbouring fields). The subiculum has no cluster or canonical marker of its own in these data (its nuclei fall into CA1-type clusters), so it appears only as a dissection row. Colour: mean expression of ${scView.g.name} in counts per 10k (linear, no log), from pale (lowest row) to red (highest row), square area likewise, stretched separately for the by-markers rows and the by-dissection rows; co-expressed columns each over their own range. Bars: nuclei (grey, linear) and those expressing the gene (green).${detailed ? " Allen: the probe highlighted in the ribbon, every sample of the Allen structures matching each subfield, class or dissection (the ribbon turned on its side, its colours), from your loaded donors." : " Allen: mean z of the probe highlighted in the ribbon in each marker subfield's Allen structures, in the ribbon's colours."}${detailed ? " Hover a cluster for where it was dissected." : ""} (Ex) excitatory, (In) inhibitory.`;
+  { const st = marking ? `Differential: ${diff.note}` : scView.coMarking ? "Co-expression: click rows to select them (yellow), again to clear; then press Calc (none selected: all rows of this view)." : ""; $e("sc-status").textContent = st; $e("sc-status").title = st; }
+  $e("sc-sub").textContent = `${scView.hpa ? "Protein Atlas brain clusters (c-numbers as on proteinatlas.org: brain neurons, and non-neuronal clusters marked so), each nucleus of these dissections assigned to the cluster whose expression profile it correlates with best over ~1,450 marker genes (an approximation of the Protein Atlas assignment), grouped by cell type, in c-number order. " : ""}${scView.hpa ? "Rows" : detailed ? "Siletti clusters, grouped by subfield (canonical markers) or cell class, sorted by share expressing" : "Hippocampal subfields by canonical markers (CA1: FIBCD1/FNDC1; CA2: RGS14; subiculum: PCP4 or FN1 without PROX1; CA3: HS3ST4; DG: PROX1; a cluster counts as positive when half its nuclei express the gene, in that order), other cell classes per region"}, then each dissection (all its nuclei; dissections mix neighbouring fields). The subiculum has no cluster or canonical marker of its own in these data (its nuclei fall into CA1-type clusters), so it appears only as a dissection row. Colour: mean expression of ${scView.g.name} in counts per 10k (linear, no log), from pale (lowest row) to red (highest row), square area likewise, stretched separately for the by-markers rows and the by-dissection rows; co-expressed columns each over their own range. Bars: nuclei (grey, linear) and those expressing the gene (green).${detailed ? " Allen: the probe highlighted in the ribbon, every sample of the Allen structures matching each subfield, class or dissection (the ribbon turned on its side, its colours), from your loaded donors." : " Allen: mean z of the probe highlighted in the ribbon in each marker subfield's Allen structures, in the ribbon's colours."}${detailed ? " Hover a cluster for where it was dissected." : ""} (Ex) excitatory, (In) inhibitory.`;
   const colsAll = [...(multi
       ? multi.flatMap((name, j) => [{ key: `g:${name}`, label: name, gene: name, vert: true, gap: j ? 10 : 0 }, { key: `g:${name}:ct`, label: SC_COUNT_LABEL(), w: 84, vert: true, gap: 2 }])
       : [{ key: "m:sn", label: "snRNA-seq Siletti et al.", lv: 0 }, { key: "m:al", label: "Allen Brain Atlas", lv: 1, mid: true, gap: 6 }, { key: "m:ct", label: SC_COUNT_LABEL(), w: 190, gap: 10, plain: true },
          ...added.flatMap(a => [{ key: `a:${a.name}:sn`, label: "snRNA-seq Siletti et al.", gene: a.name, lv: 0, gap: 14 }, { key: `a:${a.name}:al`, label: "Allen Brain Atlas", lv: 1, mid: true, gap: 6 }, { key: `a:${a.name}:ct`, label: SC_COUNT_LABEL(), w: 190, gap: 10, plain: true }])]),
       ...(detailed ? [{ key: "mk", label: "Markers ([canonical] then cluster-specific)", w: 360, gap: 8, plain: !multi, vert: !!multi }] : []),
-      ...extra.map((c, j) => ({ key: `x:${c.diff ? "d" : "c"}:${c.name}`, label: c.label, gene: c.name, pct: c.pct, pctOf: c.pctOf, hist: c.hist, sep: c.sep, vert: true, gap: j === 0 || (c.diff && !extra[j - 1].diff) || c.sep ? 8 : 0 }))];
+      ...extra.map((c, j) => ({ key: `x:${c.diff ? "d" : "c"}:${c.name}`, sgrp: c.sgrp, label: c.label, gene: c.name, pct: c.pct, pctOf: c.pctOf, hist: c.hist, sep: c.sep, vert: true, gap: j === 0 || (c.diff && !extra[j - 1].diff) || c.sep ? 8 : 0 }))];
   // Figure editing (PNG button): columns in the user's order; those toggled off are dimmed while
   // editing and left out otherwise (and in the PNG)
   const ce = scView.colEdit ??= { on: false, off: new Set(), order: null };
@@ -4624,6 +4679,8 @@ async function renderCellTypes() {
   scView.colKeys = colsF.map(c => c.key);
   drawGrid({ cols: colsF, edit: ce.on && !scView.exporting, bands: true,
     onBandRemove: ce.on || scView.exporting ? null : scRemoveGene,
+    sortOf: g => (scView.subSort?.[g] === "pct" ? "pct" : diff?.nucSet ? "z score" : "r"), sortAlt: diff?.nucSet ? "z score" : "r",
+    onSortBand: g => { scView.subSort[g] = scView.subSort[g] === "pct" ? "score" : "pct"; renderCellTypes(); },
     // a gene bar toggles all of its gene's columns in or out of the figure
     onBandToggle: g => { const ks = colsF.filter(c => c.grp === g).map(c => c.key), on = ks.some(k => !ce.off.has(k)); for (const k of ks) on ? ce.off.add(k) : ce.off.delete(k); renderCellTypes(); },
     onBandMove: (g, beforeKey) => { const keys = colsF.map(c => c.key), mine = keys.filter((k, i) => colsF[i].grp === g), rest = keys.filter((k, i) => colsF[i].grp !== g);
@@ -4633,7 +4690,8 @@ async function renderCellTypes() {
     // Differential mode: a click on a row cycles it foreground -> background -> clear
     selKey: scView.exporting ? null : scView.selKey, selCi: scView.selCi,
     onSelect: (key, ci) => { const was = scView.selKey; scView.selKey = key ?? null; scView.selCi = ci; if (co && was !== scView.selKey) renderCellTypes(); },
-    onRow: marking ? li => { const k = lines[li]?.key; if (!k) return; const m = scView.marks.get(k);
+    onRow: scView.coMarking ? li => { const k = lines[li]?.key; if (!k) return; scView.coSel.has(k) ? scView.coSel.delete(k) : scView.coSel.add(k); renderCellTypes(); }
+      : marking ? li => { const k = lines[li]?.key; if (!k) return; const m = scView.marks.get(k);
       if (!m) scView.marks.set(k, "fg"); else if (m === "fg") scView.marks.set(k, "bg"); else scView.marks.delete(k); renderCellTypes(); } : null });
   $e("sc-legend").replaceChildren();   // colour and square area both give the expression (stated in the caption)
 }
@@ -4690,7 +4748,7 @@ function drawGrid(spec) {
   const E0 = spec.edit && cols.some(c => !c.grp) ? 20 : 0;   // figure editing: a band of column toggles above the labels
   // Gene bars (figure editing and PNG): one rectangle over each run of a gene's columns
   const runs = [];
-  if (spec.bands) cols.forEach((c, ci) => { if (!c.grp) return; const r = runs[runs.length - 1]; if (r && r.g === c.grp && r.b === ci - 1) r.b = ci; else runs.push({ g: c.grp, a: ci, b: ci }); });
+  if (spec.bands) cols.forEach((c, ci) => { const g = c.grp ?? c.sgrp; if (!g) return; const r = runs[runs.length - 1]; if (r && r.g === g && r.b === ci - 1) r.b = ci; else runs.push({ g, a: ci, b: ci, sort: !c.grp }); });
   const shownRuns = runs, GB = shownRuns.length ? 20 : 0, E = E0 + GB;
   const top = (spec.flatLabels ? Math.max(16 * nLv + 30, vertH) : spec.top) + E;
   const xs = []; let x = labelW;
@@ -4753,6 +4811,15 @@ function drawGrid(spec) {
     svg.append(t); return t;
   });
   for (const r of shownRuns) {   // gene bars: click toggles (in the figure or not), drag moves the gene's columns
+    if (r.sort) {   // after Sub: a Nuclear / Non-nuclear ribbon over its sorted genes; a click toggles their sort
+      const x0 = xs[r.a], x1 = xs[r.b] + ws[r.b], y0 = E0 + 3, by = spec.sortOf?.(r.g);
+      const g = svgEl("g", { style: "cursor: pointer" });
+      g.append(svgEl("rect", { x: x0 + 1, y: y0, width: x1 - x0 - 2, height: 14, rx: 2, fill: "#bfc4cc" }),
+        svgEl("text", { x: x0 + 4, y: y0 + 10.5, style: "fill: #222; font-size: 10px; font-weight: 600; pointer-events: none" }, `${r.g} · by ${by === "pct" ? "% expressing" : by ?? ""} ⇄`));
+      g.firstChild.dataset.tip = `${r.g} genes, sorted by ${by === "pct" ? "the share of nuclei expressing them" : by}. Click to sort by ${by === "pct" ? spec.sortAlt ?? "score" : "% expressing"}`;
+      g.addEventListener("click", e => { e.stopPropagation(); spec.onSortBand?.(r.g); });
+      svg.append(g); continue;
+    }
     const off = cols.slice(r.a, r.b + 1).every(c => c.off), x0 = xs[r.a], x1 = xs[r.b] + ws[r.b], y0 = E0 + 3;
     const g = svgEl("g", spec.edit ? { style: "cursor: grab" } : {});
     g.append(svgEl("rect", { x: x0 + 1, y: y0, width: x1 - x0 - 2, height: 14, rx: 2, fill: "#bfc4cc" }),
@@ -4983,7 +5050,17 @@ document.querySelectorAll(".sc-seg:not(.sc-gseg) button").forEach(b => b.addEven
 }));
 $e("sc-hpa").addEventListener("change", () => { if ($e("sc-hpa").checked) $e("sc-detail").checked = true; scView.marks = new Map(); scView.diffRes = null; showCellTypes(); });
 $e("sc-detail").addEventListener("change", () => { if (!$e("sc-detail").checked) $e("sc-hpa").checked = false; scView.marks = new Map(); scView.diffRes = null; showCellTypes(); });
-$e("sc-coexp").addEventListener("change", () => { scView.coAnchor = null; showCellTypes(); });
+// Co-exp.: on, rows are selected (none: all of the view); the button then reads Calc, which correlates
+$e("sc-coexp").addEventListener("change", () => {
+  scView.coAnchor = null; scView.coRows = null; scView.coSel = new Set(); scView.coMarking = $e("sc-coexp").checked;
+  if (scView.coMarking && $e("sc-diff").checked) { $e("sc-diff").checked = false; scView.marks = new Map(); }
+  showCellTypes();
+});
+$e("sc-coexp").nextElementSibling.addEventListener("click", e => {
+  if (!$e("sc-coexp").checked || !scView.coMarking) return;   // off, or results shown: the click turns it off
+  e.preventDefault(); scView.coMarking = false; scView.coRun = true;
+  setBusy("Correlating genes…"); setTimeout(() => { renderCellTypes(); setBusy(null); }, 30);
+});
 // Gene box: Enter shows that gene (its Allen probe too, when Allen has it); other results stay
 $e("sc-gene").addEventListener("keydown", async e => {
   if (e.key !== "Enter") return;
@@ -5050,7 +5127,7 @@ $e("sc-diffraw").addEventListener("click", () => {
   if (!$e("sc-diff").checked || ![...(scView.marks?.values() ?? [])].includes("fg")) return;
   scView.diffMode = "raw"; $e("sc-diff-run").click();
 });
-$e("sc-diff").addEventListener("change", () => { scView.marks = new Map(); scView.diffRes = null; showCellTypes(); });   // on: a new search; off: cancelled
+$e("sc-diff").addEventListener("change", () => { if ($e("sc-diff").checked && $e("sc-coexp").checked) { $e("sc-coexp").checked = false; scView.coMarking = false; scView.coAnchor = null; } scView.marks = new Map(); scView.diffRes = null; showCellTypes(); });   // on: a new search; off: cancelled
 // Cells "sub": the first press looks everything up (the button counts) and reorders the columns,
 // nucl* genes first; then the button reads "view sub" and opens the images
 function scSubRun(items, onNuc) {
@@ -5070,7 +5147,7 @@ $e("sc-diff-sub").addEventListener("click", () => {
   if (!scView.diffRes?.list.length && scView.coShown) {
     const { key, list } = scView.coShown;
     scSubRun(list.map(c => ({ sym: c.name, stat: `r = ${c.r.toFixed(2)} with ${scView.coAnchor}` })),
-      set => { if (scView.coShown?.key === key) { scView.coNuc = { key, set }; renderCellTypes(); } });
+      set => { if (scView.coShown?.key === key) { scView.subSort = { Nuclear: "pct", "Non-nuclear": "pct" }; scView.coNuc = { key, set }; renderCellTypes(); } });
     return;
   }
   const L = scView.diffRes?.list ?? [];
@@ -5078,8 +5155,8 @@ $e("sc-diff-sub").addEventListener("click", () => {
   // them (highest first), then a dashed line and the rest in score order
   const reorder = nucSet => {
     if (scView.diffRes?.list !== L) return;
-    const a = L.filter(g => nucSet.has(g.name)).sort((p, q) => q.pct - p.pct), b = L.filter(g => !nucSet.has(g.name));
-    scView.diffRes = { ...scView.diffRes, list: [...a, ...b], nucN: a.length };
+    scView.subSort = { Nuclear: "pct", "Non-nuclear": "pct" };
+    scView.diffRes = { ...scView.diffRes, nucSet, nucN: L.filter(g => nucSet.has(g.name)).length };
     renderCellTypes();
   };
   scSubRun(L.map(g => ({ sym: g.name, pct: g.pct, stat: `${g.d >= 0 ? "+" : ""}${g.d.toFixed(2)} SD · foreground ${g.mf.toFixed(2)} vs background ${g.mb.toFixed(2)} counts per 10k (${g.mb > 0 ? `${(g.mf / g.mb).toFixed(1)}×` : "background 0"})` })), reorder);
@@ -5136,7 +5213,7 @@ const TOUR = [
     text: "Switch the rows to Siletti, the atlas's own clusters.", goal: "Finer cell types: which CA1 sub-clusters carry FNDC1, with their marker genes.",
     done: () => $e("sc-detail").checked && !$e("sc-hpa").checked && /Subfield by markers/.test($e("sc-plot").textContent) },
   { title: "7 · Co-expression", target: 'label[for="sc-coexp"]',
-    text: "Press Co-exp. The 200 genes whose expression across these clusters best follows FNDC1's appear as columns on the right (scroll right); r after each name.",
+    text: "Press Co-exp., then Calc (no rows selected: all clusters). The genes whose expression across these clusters best follows FNDC1's appear as columns on the right (scroll right); r after each name.",
     goal: "Genes co-expressed across cell types often share a cell type or a function: a first list of FNDC1's partners.", done: () => !!scView.coShown },
   { title: "8 · Subcellular location", target: "#sc-diff-sub",
     text: "Press Subcel. The Human Protein Atlas is asked where each co-expressed gene's protein sits in the cell (the button counts up); the columns are then reordered, nuclear genes first. Then press View subcel.",
