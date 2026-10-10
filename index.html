@@ -4808,7 +4808,9 @@ function drawGrid(spec) {
     }
     if (spec.flatLabels) {
       // the Allen label sits halfway between the snRNA-seq label above and the count label below
-      const ly = c.mid ? Math.round((16 + E + top - 7) / 2) : 16 * (lvOf(c, ci) + 1) + E;
+      // anchored just above the plot: a taller header (vertical gene labels on the right) leaves the Ls their length
+      const base = 16 * nLv + 30 + E, lOff = Math.max(0, top - base);
+      const ly = lOff + (c.mid ? Math.round((16 + E + base - 7) / 2) : 16 * (lvOf(c, ci) + 1) + E);
       svg.append(svgEl("polyline", { points: `${cx},${leadEnd} ${cx},${ly - 4} ${cx + 6},${ly - 4}`, fill: "none", stroke: "var(--muted)", "stroke-width": 0.8 }));
       const t = svgEl("text", { class: "col", x: cx + 9, y: ly }, c.label);
       svg.append(t); return t;
@@ -5091,7 +5093,9 @@ $e("sc-gene").addEventListener("keydown", async e => {
     renderCellTypes();
     return;
   }
-  scView.multi = hits.length > 1 ? hits : null; scView.blank = false;
+  // Several matches (wildcard): the first as the gene, the others as added genes, each with its own three columns
+  scView.multi = null; scView.blank = false;
+  if (hits.length > 1) { scView.added = []; for (const name of hits.slice(1)) scView.added.push({ name, probe: await allenOf(name) }); }
   if (nAll > hits.length) scToast(`${q}: ${nAll} genes match; the first ${hits.length} (alphabetical) are shown`);
   const allen = expr.bySymbol?.size ? (expr.bySymbol.has(q) ? q : [...expr.bySymbol.keys()].find(k => k.toUpperCase() === Q) ?? await resolveAlias(q)) : null;
   scView.sym = allen ?? region.genes[region.geneIndex.get(scName)];
