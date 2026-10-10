@@ -2085,7 +2085,7 @@ function showLoadedStatus() {
 // Probe ids for a gene symbol, probe name or probe_id; only probes present in a loaded file
 // "ZNF*" (what Enter on a partial name becomes) means every gene whose symbol starts with
 // ZNF: their probes, sorted by gene symbol and then probe name, capped at MAX_GROUP_PROBES
-const MAX_GROUP_PROBES = 3000;   // probes listed for a "PREFIX*" search (ZNF* has about 1,500)
+const MAX_GROUP_PROBES = 64;   // probes listed for a "PREFIX*" search (the note says how many match)
 // Allen symbols starting with the prefix, plus Allen genes whose current official (HGNC)
 // symbol starts with it (found on Enter, see hgncPrefixMatches), sorted by current name
 const shownName = sym => expr.currentName?.get(sym) ?? sym;
@@ -4005,7 +4005,7 @@ for (const [lbl, box] of [["rib-add", "gene-input"], ["sc-add", "sc-gene"]]) {
     $e(box).dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, bubbles: true, cancelable: true }));
   });
 }
-const SC_WILD_MAX = 400;   // genes shown for a wildcard search in the cells window
+const SC_WILD_MAX = 64;   // genes shown for a wildcard search in the cells window (a note says how many match)
 // Remove a gene's columns (the cross on its gene bar): an added gene goes; the main gene is replaced
 // by the first added one, or the window returns to its rows only
 function scRemoveGene(g) {
