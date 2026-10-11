@@ -420,8 +420,8 @@
   .sc-acts button, .sc-acts label { justify-content: center; text-align: center; }
   /* phones: the views and the actions in the same three full-width columns */
   body.phone .sc-seg, body.phone .sc-acts { display: grid; width: 100%; grid-template-columns: repeat(3, 1fr); box-sizing: border-box; }
-  body.phone .sc-acts { column-gap: 0; row-gap: 6px; margin-top: 2px; }
-  body.phone .sc-acts > * { margin: 0; width: calc(100% - 6px); justify-self: center; min-width: 0; box-sizing: border-box; }
+  body.phone .sc-acts { column-gap: 0; row-gap: 6px; margin-top: 2px; min-width: 0; }   /* same width as the view toggles, so the thirds line up */
+  body.phone .sc-acts > * { margin: 0; width: 100%; justify-self: stretch; min-width: 0; box-sizing: border-box; }   /* each button fills its third, edges under the toggles' */
   body.phone .sc-acts .sc-tg > label, body.phone .sc-acts .sc-tg > button:not([hidden]) { flex: 1; min-width: 0; box-sizing: border-box; }
   .sc-seg button { font: 12px var(--sans); color: var(--ink); background: transparent; border: 0; padding: 3px 9px; cursor: pointer; }
   .sc-seg button:not(:nth-child(3n+1)) { border-left: 1px solid var(--edge); }
