@@ -2134,6 +2134,12 @@ async function hgncPrefixMatches(prefix) {
   (expr.hgncPrefix ??= new Map()).set(P, out);
   return out;
 }
+// The Allen symbol of a current official name (e.g. RBFOX1 -> A2BP1), from the names found so far
+function allenSymbolOf(name) {
+  const N = String(name).toUpperCase();
+  for (const [allen, cur] of expr.currentName ?? []) if (cur.toUpperCase() === N) return allen;
+  return null;
+}
 function symbolOf(id) {
   if (!expr.symbolOf) { expr.symbolOf = new Map(); for (const [sym, ids] of expr.bySymbol) for (const i of ids) expr.symbolOf.set(i, sym); }
   return expr.symbolOf.get(id);
@@ -2145,7 +2151,7 @@ function probesFor(query) {
     const byName = (a, b) => (expr.probeName.get(a) ?? a).localeCompare(expr.probeName.get(b) ?? b, undefined, { numeric: true });
     return symbolsStarting(q.slice(0, -1)).flatMap(sym => expr.bySymbol.get(sym).filter(hasProbe).sort(byName)).slice(0, MAX_GROUP_PROBES);
   }
-  const ids = expr.bySymbol.get(q) ?? expr.bySymbol.get(q.toUpperCase()) ?? [expr.nameToId?.get(q) ?? q];
+  const ids = expr.bySymbol.get(q) ?? expr.bySymbol.get(q.toUpperCase()) ?? expr.bySymbol.get(allenSymbolOf(q)) ?? [expr.nameToId?.get(q) ?? q];
   return ids.filter(hasProbe);
 }
 
@@ -2321,14 +2327,13 @@ searchBox.addEventListener("keydown", e => {
         if (all.length === 1) {
           const sym = all[0];
           searchBox.value = sym; hideSuggestions(); onGeneChosen();
-          if (shownName(sym) !== sym) { expr.alias = shownName(sym); syncGeneBox(); showAliasTip(); setScaleNote(`${expr.alias} is ${sym} in the Allen probe annotation.`); }
+
           return;
         }
         return resolveAlias(raw).then(sym => {
         if (sym) {
           searchBox.value = sym; hideSuggestions(); onGeneChosen();
-          expr.alias = searchBox.dataset.asked; syncGeneBox(); showAliasTip();
-          setScaleNote(`${expr.alias} is ${sym} in the Allen probe annotation.`);
+
         }
         else showSuggestions(PARTIAL_LIMIT);
         });
@@ -2336,9 +2341,11 @@ searchBox.addEventListener("keydown", e => {
     }
     else if (q && (q.endsWith("*") ? q.length > 1 : symbolsStarting(q).length)) {
       // A partial gene name: take every gene starting with it (e.g. znf -> all ZNF genes)
-      searchBox.value = `${searchBox.value.trim().replace(/\*$/, "").toUpperCase()}*`;
+      // (current official symbols: each found in the Allen annotation by Entrez id or its old aliases)
+      const P = searchBox.value.trim().replace(/\*$/, "").toUpperCase();
+      searchBox.value = `${P}*`;
       hideSuggestions();
-      onGeneChosen();
+      hgncPrefixMatches(P).then(() => onGeneChosen());
     } else showSuggestions(PARTIAL_LIMIT);
   }
 });
@@ -2416,8 +2423,16 @@ function onGeneChosen() {
     if (!colouringActive()) applyColouring();
     return;
   }
-  const symbol = expr.bySymbol.has(query) || expr.bySymbol.has(query.toUpperCase()) ? query : (expr.probeName.get(ids[0]) ?? ids[0]);
+  const symbol = expr.bySymbol.has(query) || expr.bySymbol.has(query.toUpperCase()) ? query : allenSymbolOf(query) ?? (expr.probeName.get(ids[0]) ?? ids[0]);
   showProbeBox(symbol, ids);
+  // The box shows the gene's current official (HGNC) symbol; an older Allen symbol shows in a tooltip above it
+  const typed = searchBox.value;
+  if (expr.bySymbol.has(symbol)) currentSymbol(symbol).then(cur => {
+    if (expr.gene !== symbol) return;
+    if (searchBox.value === typed || [symbol, cur].includes(boxQuery().toUpperCase())) searchBox.value = cur;   // unless the user typed on
+    expr.alias = cur !== symbol ? symbol : null;
+    if (expr.alias) { setScaleNote(`${cur}: ${symbol} in the Allen probe annotation.`); showAliasTip(true); }
+  });
   autoZ(ids);
   if (!colouringActive()) applyColouring();
 }
@@ -3612,21 +3627,26 @@ function setRibbonMin(min) {
 // The gene box shows the Allen symbol; a name found through an alias is noted in its tooltip
 function syncGeneBox() {
   if (document.activeElement === searchBox || !expr.gene || expr.corr?.keep) return;   // corr / differential lists leave the box empty
-  searchBox.value = expr.gene;
+  searchBox.value = shownName(expr.gene);   // the current official name
 }
 // While the box is active, a gene found through an alias shows what was searched
 const aliasTip = Object.assign(document.createElement("div"), { id: "alias-tip", hidden: true });
 document.body.append(aliasTip);
-function showAliasTip() {
-  aliasTip.hidden = !(expr.alias && document.activeElement === searchBox);
+// Shown for a few seconds after a search, and while the box is hovered or focused
+function showAliasTip(brief) {
+  clearTimeout(showAliasTip.timer);
+  aliasTip.hidden = !(expr.alias && expr.alias === expr.gene && (brief === true || document.activeElement === searchBox || searchBox.matches(":hover")));
   if (aliasTip.hidden) return;
-  aliasTip.textContent = `Searched ${expr.alias} · ${expr.gene} in the Allen annotation`;
+  if (brief === true) showAliasTip.timer = setTimeout(() => { if (document.activeElement !== searchBox && !searchBox.matches(":hover")) aliasTip.hidden = true; }, 4000);
+  aliasTip.textContent = `Allen: ${expr.alias}`;
   const r = searchBox.getBoundingClientRect();
   aliasTip.style.left = `${Math.max(8, r.left)}px`;
   aliasTip.style.top = `${r.top - 30}px`;
 }
 searchBox.addEventListener("focus", showAliasTip);
 searchBox.addEventListener("blur", () => (aliasTip.hidden = true));
+searchBox.addEventListener("pointerenter", showAliasTip);
+searchBox.addEventListener("pointerleave", () => { if (document.activeElement !== searchBox) aliasTip.hidden = true; });
 searchBox.addEventListener("input", () => (aliasTip.hidden = true));
 // Swipe down on the ribbon's header, row switches or edges (not the heatmap) to minimise it
 {
