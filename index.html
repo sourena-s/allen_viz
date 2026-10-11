@@ -1127,6 +1127,12 @@ for (const type of ["pointerdown", "mousedown", "auxclick"]) {
   renderer.domElement.addEventListener(type, e => { if (e.button === 1) e.preventDefault(); });
 }
 controls.target.set(0, 5, 15);   // replaced by the brain's centre once the surface is built
+// The brain turns once every 20 s after loading, until the view is dragged, pinched or zoomed;
+// a click or tap on empty space turns the rotation on or off
+controls.autoRotate = true;
+controls.autoRotateSpeed = 3;   // with the frame time passed to update(): 2π/60 × 3 rad/s = one turn per 20 s
+const rotClock = new THREE.Clock();
+renderer.domElement.addEventListener("wheel", () => (controls.autoRotate = false), { passive: true });
 
 // Rotation centre: the brain's centre, or the selected sample. Changing it glides the camera
 // and the orbit target together, so the view keeps its angle and the new centre slides to
@@ -1465,9 +1471,14 @@ function setSelected(s) {
 
 let downAt = null;
 renderer.domElement.addEventListener("pointerdown", e => (downAt = [e.clientX, e.clientY]));
+renderer.domElement.addEventListener("pointermove", e => {
+  if (downAt && e.buttons && Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 4) controls.autoRotate = false;   // dragged: rotation stops
+});
 renderer.domElement.addEventListener("pointerup", e => {
   if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 4) return;   // a drag, not a click
-  setSelected(pick(e));
+  const s = pick(e);
+  if (!s && !selected) controls.autoRotate = !controls.autoRotate;   // a click on empty space toggles the rotation
+  setSelected(s);
 });
 
 // ---------------------------------------------------------------- cuts + T1 slice
@@ -5861,7 +5872,7 @@ renderer.domElement.addEventListener("webglcontextrestored", () => {
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") applyRibbonOrientation(); });
 addEventListener("pageshow", () => applyRibbonOrientation());
 renderer.setAnimationLoop(() => {
-  stepFocus(0.15); controls.update();
+  stepFocus(0.15); controls.update(rotClock.getDelta());
   // A sample picked in the ribbon flashes its yellow ring for 1 s; otherwise the ring is steady
   const flashing = performance.now() < flashUntil;
   selectRing.visible = !!selected && !(flashing && Math.floor(performance.now() / 110) % 2);
