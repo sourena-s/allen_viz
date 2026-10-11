@@ -3996,7 +3996,7 @@ function scDifferential(rows, detailed, region, clusters, raw = false) {
 // raw tables of tools/rawmean.py; flow-cytometry-like amounts per cell)
 const scVal = (d, gi, k) => (scView.glyphRaw && d.raw ? d.raw[gi * d.nU + k] / 255 * d.rawMax[gi] : scLin(d, gi, k));
 // The count columns' label: nuclei (% expressing – mean among the expressing, in raw counts or CP10k)
-const SC_COUNT_LABEL = () => `Count (% Exp. – mean ${scView.glyphRawPick ? "count" : "CP10k"} in expressed)`;
+const SC_COUNT_LABEL = () => `Count (% Exp. – ${scView.glyphRawPick ? "count" : "CP10k"} in expressed)`;
 const SC_UNIT = () => (scView.glyphRaw ? "raw counts per nucleus" : "counts per 10k");
 // A gene's linear mean (counts per 10k) in unit k; the log mean where a file has no linear block
 const scLin = (data, gi, k) => data.lin ? data.lin[gi * data.nU + k] / 255 * data.lmax[gi] : data.body[gi * data.nU * 2 + k] / 255 * data.max[gi];
