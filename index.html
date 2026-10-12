@@ -213,7 +213,7 @@
   #sub-grid figcaption b { font-size: 12px; }
   #sub-grid .ph { aspect-ratio: 1; background: #22262b; border-radius: 3px; display: flex; align-items: center; justify-content: center; color: var(--muted); text-align: center; padding: 6px; box-sizing: border-box; }
   #sub-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 3px; display: block; }
-  #pick-arrow { position: fixed; left: 0; top: 0; z-index: 4; pointer-events: none; filter: drop-shadow(0 0 4px rgba(0,0,0,0.6)); }
+  #pick-arrow { position: fixed; left: 0; top: 0; z-index: 4; pointer-events: none; opacity: 0.6; filter: drop-shadow(0 0 4px rgba(0,0,0,0.6)); }
   #pick-arrow[hidden] { display: none; }
   #alias-tip {
     position: fixed; z-index: 8; pointer-events: none; font: 11.5px var(--sans); color: var(--ink);
@@ -1420,7 +1420,7 @@ const readout = document.getElementById("readout");
 let hovered = null, selected = null, flashUntil = 0, arrowUntil = 0;
 // A large yellow arrow (cut views): its tip on the picked sample's dot, drawn over the canvas
 const pickArrow = Object.assign(document.createElement("div"), { id: "pick-arrow", hidden: true });
-pickArrow.innerHTML = '<svg viewBox="0 0 90 90" width="90" height="90" aria-hidden="true"><g stroke="#1a1a1a" stroke-width="1.2" stroke-linejoin="miter"><path d="M18 15.2 L86.8 84 L84 86.8 L15.2 18 Z" fill="#ffd21f"/><path d="M3 3 L31.5 15 L19.5 19.5 L15 31.5 Z" fill="#ffd21f"/></g></svg>';
+pickArrow.innerHTML = '<svg viewBox="0 0 90 90" width="90" height="90" aria-hidden="true"><path d="M3 3 L60 27 L36 36 L27 60 Z" fill="#ffd21f" stroke="#1a1a1a" stroke-width="1.5" stroke-linejoin="miter"/></svg>';
 document.body.append(pickArrow);
 function placePickArrow() {
   const now = performance.now();
@@ -1428,7 +1428,7 @@ function placePickArrow() {
   const v = new THREE.Vector3(...toScene(...shownMni(selected))).project(camera), r = renderer.domElement.getBoundingClientRect();
   const x = r.left + (v.x + 1) / 2 * r.width, y = r.top + (1 - v.y) / 2 * r.height;
   pickArrow.style.transform = `translate(${x - 3}px, ${y - 3}px)`;   // the arrow's tip (top left, at 3,3) on the dot
-  pickArrow.hidden = Math.floor((arrowUntil - now) / 325) % 2 === 1;   // four flashes, then gone
+  pickArrow.hidden = Math.floor((arrowUntil - now) / 162.5) % 2 === 1;   // four quick flashes, then gone
 }
 
 function pick(e) {
@@ -5836,7 +5836,7 @@ ribbonCanvas.addEventListener("click", e => {
     const s = ribbon.cols[ci].s, cut = activeCut();
     setSelected(s);
     // In a cut view a large yellow arrow points at the sample and flashes a few times; else the ring flashes
-    if (cut) { arrowUntil = performance.now() + 2600; clearInterval(placePickArrow.timer); placePickArrow.timer = setInterval(placePickArrow, 40); placePickArrow(); }
+    if (cut) { arrowUntil = performance.now() + 1300; clearInterval(placePickArrow.timer); placePickArrow.timer = setInterval(placePickArrow, 40); placePickArrow(); }
     else flashUntil = performance.now() + 1000;
     if (cut) setCutPos(shownMni(s)[CUTS[cut].axis]);   // move the slice to this sample's level
   }
