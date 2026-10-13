@@ -782,6 +782,17 @@
     <span class="hint" id="long-note">Lengths: GRCh38 gene spans from NCBI RefSeq, protein-coding genes as approved by HGNC. Rows are sorted by length, longest first.</span>
   </div>
 
+  <div class="group" id="comp-group">
+    <span class="label">PCA / ICA of long genes</span>
+    <label class="label" for="comp-len">Minimum gene length (kb)</label>
+    <input type="text" id="comp-len" value="500" inputmode="decimal" autocomplete="off">
+    <span class="hint" id="comp-count"></span>
+    <label class="label" for="comp-k">Components (dimension)</label>
+    <input type="text" id="comp-k" value="10" inputmode="numeric" autocomplete="off">
+    <button class="text-button" id="comp-run" type="button">Run PCA and ICA</button>
+    <span class="hint" id="comp-note">Every protein-coding gene at least this long is included (mean of its probes, z-scored within each donor). PCA, then FastICA on the same number of whitened components; each component becomes a ribbon row (PC1…, IC1…) of sample scores.</span>
+  </div>
+
   <div class="group">
     <span class="hint" id="controls-hint">Drag to rotate · middle- or right-drag to pan · scroll to zoom</span>
     <button class="text-button" id="legal-open" type="button">Data sources &amp; disclaimer</button>
@@ -2848,10 +2859,13 @@ async function writePack(dir = dataDir) {
 class PackedRows {
   constructor(q, n, index, lo, step) { Object.assign(this, { q, n, index, lo, step, cache: new Map() }); }
   get size() { return this.index.size; }
-  has(id) { return this.index.has(id); }
+  has(id) { return this.index.has(id) || !!this.extra?.has(id); }
   keys() { return this.index.keys(); }
   *values() { for (const id of this.index.keys()) yield this.get(id); }
+  set(id, v) { (this.extra ??= new Map()).set(id, v); return this; }   // computed rows (PCA / ICA components)
+  delete(id) { return !!this.extra?.delete(id); }
   get(id) {
+    if (this.extra?.has(id)) return this.extra.get(id);
     const base = this.index.get(id);
     if (base === undefined) return undefined;
     let v = this.cache.get(id);
@@ -5701,6 +5715,172 @@ async function showLongGenes() {
   } finally { setBusy(null); }
 }
 $e("long-run").addEventListener("click", showLongGenes);
+
+// ---------------------------------------------------------------- PCA / ICA of long genes
+// Genes: every protein-coding gene at least the given length (gene_lengths.tsv.gz) with Allen probes;
+// a gene's value per sample is the mean over its probes of the probe's z-score within the donor.
+// Samples: all samples of the loaded donors. PCA by randomised subspace iteration, then symmetric
+// FastICA (log cosh) on the whitened PC scores; both run in a worker, with progress in the busy bar.
+// Each component is added to every donor's rows as a computed probe (__PC1…, __IC1…) of sample
+// scores, so the ribbon, the brain colours and every other view treat it as a probe.
+async function compGenes() {
+  const L = +$e("comp-len").value * 1000;
+  const table = await loadGeneLengths(); await loadHgnc().catch(() => null);
+  const over = table.filter(g => g.len >= L);
+  const allenUpper = new Map([...expr.bySymbol.keys()].map(k => [k.toUpperCase(), k]));
+  const withProbes = expr.byDonor.size ? over.map(g => ({ g, sym: allenSymbolFor(g, allenUpper) })).filter(x => x.sym && (expr.bySymbol.get(x.sym) ?? []).some(hasProbe)) : null;
+  return { L, total: table.length, over, withProbes };
+}
+async function compCount() {
+  const n = $e("comp-count");
+  if (!(+$e("comp-len").value >= 0) || $e("comp-len").value.trim() === "") { n.textContent = "Enter a length in kb, e.g. 500."; return; }
+  try {
+    const { total, over, withProbes } = await compGenes();
+    n.textContent = `${over.length.toLocaleString()} genes of ${total.toLocaleString()} protein-coding will be included` + (withProbes ? ` (${withProbes.length.toLocaleString()} with Allen probes in the loaded data).` : " (load donor data to count those with Allen probes).");
+  } catch { n.textContent = "Could not read the gene length table."; }
+}
+$e("comp-len").addEventListener("input", compCount);
+$e("comp-len").addEventListener("focus", compCount, { once: true });
+const COMP_WORKER = `
+const orth = (A, n, l) => {   // modified Gram-Schmidt on the l columns (column-major, length n each)
+  for (let j = 0; j < l; j++) {
+    const a = A.subarray(j * n, (j + 1) * n);
+    for (let i = 0; i < j; i++) { const b = A.subarray(i * n, (i + 1) * n); let d = 0; for (let t = 0; t < n; t++) d += a[t] * b[t]; for (let t = 0; t < n; t++) a[t] -= d * b[t]; }
+    let s = 0; for (let t = 0; t < n; t++) s += a[t] * a[t]; s = Math.sqrt(s) || 1; for (let t = 0; t < n; t++) a[t] /= s;
+  }
+};
+const jacobi = (M, k) => {   // eigen-decomposition of a symmetric k x k matrix: { val, vec (columns) }
+  const A = Float64Array.from(M), V = new Float64Array(k * k); for (let i = 0; i < k; i++) V[i * k + i] = 1;
+  for (let sweep = 0; sweep < 60; sweep++) {
+    let off = 0; for (let i = 0; i < k; i++) for (let j = i + 1; j < k; j++) off += A[i * k + j] ** 2;
+    if (off < 1e-20) break;
+    for (let p = 0; p < k; p++) for (let q = p + 1; q < k; q++) {
+      const apq = A[p * k + q]; if (Math.abs(apq) < 1e-15) continue;
+      const th = (A[q * k + q] - A[p * k + p]) / (2 * apq), t = Math.sign(th || 1) / (Math.abs(th) + Math.sqrt(th * th + 1)), c = 1 / Math.sqrt(t * t + 1), s = t * c;
+      for (let r = 0; r < k; r++) { const a = A[r * k + p], b = A[r * k + q]; A[r * k + p] = c * a - s * b; A[r * k + q] = s * a + c * b; }
+      for (let r = 0; r < k; r++) { const a = A[p * k + r], b = A[q * k + r]; A[p * k + r] = c * a - s * b; A[q * k + r] = s * a + c * b; }
+      for (let r = 0; r < k; r++) { const a = V[r * k + p], b = V[r * k + q]; V[r * k + p] = c * a - s * b; V[r * k + q] = s * a + c * b; }
+    }
+  }
+  return { val: Array.from({ length: k }, (_, i) => A[i * k + i]), vec: V };
+};
+onmessage = ({ data: { X, n, p, k } }) => {
+  // X: n samples x p genes, row-major, columns centred
+  const l = Math.min(k + 10, p, n), iters = 4, steps = 2 * iters + 4; let step = 0;
+  const tick = what => postMessage({ progress: ++step / steps, what });
+  const Q = new Float64Array(n * l), Z = new Float64Array(p * l);
+  const XO = (Om) => { Q.fill(0); for (let i = 0; i < n; i++) { const row = i * p; for (let j = 0; j < l; j++) { let s = 0; const o = j * p; for (let g = 0; g < p; g++) s += X[row + g] * Om[o + g]; Q[j * n + i] = s; } } };
+  const XtQ = () => { Z.fill(0); for (let i = 0; i < n; i++) { const row = i * p; for (let j = 0; j < l; j++) { const q = Q[j * n + i]; if (!q) continue; const o = j * p; for (let g = 0; g < p; g++) Z[o + g] += X[row + g] * q; } } };
+  for (let t = 0; t < p * l; t++) Z[t] = Math.random() * 2 - 1;
+  XO(Z); orth(Q, n, l); tick("PCA");
+  for (let it = 0; it < iters; it++) { XtQ(); orth(Z, p, l); tick("PCA"); XO(Z); orth(Q, n, l); tick("PCA"); }
+  XtQ();   // Z = X^T Q (B^T), then B B^T = Z^T Z (l x l)
+  const BB = new Float64Array(l * l); for (let a = 0; a < l; a++) for (let b = a; b < l; b++) { let s = 0; for (let g = 0; g < p; g++) s += Z[a * p + g] * Z[b * p + g]; BB[a * l + b] = BB[b * l + a] = s; }
+  const { val, vec } = jacobi(BB, l); const ord = val.map((v, i) => i).sort((a, b) => val[b] - val[a]);
+  let tot = 0; for (let t = 0; t < n * p; t++) tot += X[t] * X[t];
+  tick("PCA");
+  // U = Q Ub; PC scores = U * sqrt(eig); whitened scores = U * sqrt(n)
+  const pcs = [], white = [], varExp = [];
+  for (let c = 0; c < k; c++) {
+    const e = ord[c], u = new Float64Array(n);
+    for (let j = 0; j < l; j++) { const w = vec[j * l + e]; if (!w) continue; for (let i = 0; i < n; i++) u[i] += Q[j * n + i] * w; }
+    const sv = Math.sqrt(Math.max(0, val[e]));
+    pcs.push(Float32Array.from(u, x => x * sv)); white.push(Float64Array.from(u, x => x * Math.sqrt(n))); varExp.push(val[e] / tot);
+  }
+  tick("ICA");
+  // Symmetric FastICA, log cosh, on the k whitened components
+  let W = new Float64Array(k * k); for (let i = 0; i < k * k; i++) W[i] = Math.random() - 0.5;
+  const decor = M => {   // (M M^T)^(-1/2) M
+    const MM = new Float64Array(k * k); for (let a = 0; a < k; a++) for (let b = 0; b < k; b++) { let s = 0; for (let t = 0; t < k; t++) s += M[a * k + t] * M[b * k + t]; MM[a * k + b] = s; }
+    const { val: ev, vec: V } = jacobi(MM, k), R = new Float64Array(k * k);
+    for (let a = 0; a < k; a++) for (let b = 0; b < k; b++) { let s = 0; for (let t = 0; t < k; t++) s += V[a * k + t] * V[b * k + t] / Math.sqrt(Math.max(ev[t], 1e-12)); R[a * k + b] = s; }
+    const out = new Float64Array(k * k); for (let a = 0; a < k; a++) for (let b = 0; b < k; b++) { let s = 0; for (let t = 0; t < k; t++) s += R[a * k + t] * M[t * k + b]; out[a * k + b] = s; }
+    return out;
+  };
+  W = decor(W);
+  const y = new Float64Array(n);
+  for (let it = 0; it < 300; it++) {
+    const Wn = new Float64Array(k * k);
+    for (let a = 0; a < k; a++) {
+      y.fill(0); for (let b = 0; b < k; b++) { const w = W[a * k + b]; const wb = white[b]; for (let i = 0; i < n; i++) y[i] += w * wb[i]; }
+      let gp = 0; for (let i = 0; i < n; i++) { const g = Math.tanh(y[i]); gp += 1 - g * g; y[i] = g; }
+      for (let b = 0; b < k; b++) { let s = 0; const wb = white[b]; for (let i = 0; i < n; i++) s += y[i] * wb[i]; Wn[a * k + b] = s / n - gp / n * W[a * k + b]; }
+    }
+    const W2 = decor(Wn);
+    let lim = 0; for (let a = 0; a < k; a++) { let s = 0; for (let b = 0; b < k; b++) s += W2[a * k + b] * W[a * k + b]; lim = Math.max(lim, Math.abs(Math.abs(s) - 1)); }
+    W = W2; if (lim < 1e-5) break;
+  }
+  const ics = [];
+  for (let a = 0; a < k; a++) {
+    const s = new Float64Array(n); for (let b = 0; b < k; b++) { const w = W[a * k + b], wb = white[b]; for (let i = 0; i < n; i++) s[i] += w * wb[i]; }
+    let m3 = 0, m4 = 0; for (let i = 0; i < n; i++) { m3 += s[i] ** 3; m4 += s[i] ** 4; }
+    const sign = m3 < 0 ? -1 : 1;   // the long tail positive
+    ics.push({ v: Float32Array.from(s, x => x * sign), kurt: m4 / n - 3 });
+  }
+  ics.sort((a, b) => Math.abs(b.kurt) - Math.abs(a.kurt));   // most non-Gaussian (|excess kurtosis|) first
+  tick("ICA");
+  postMessage({ done: true, pcs, varExp, ics: ics.map(x => x.v), kurt: ics.map(x => x.kurt) });
+};`;
+async function runComponents() {
+  const note = $e("comp-note");
+  if (!expr.byDonor.size) { note.textContent = "Load donor data first."; return; }
+  const k = Math.round(+$e("comp-k").value);
+  if (!(k >= 1 && k <= 100)) { note.textContent = "Enter a number of components between 1 and 100."; return; }
+  setBusy("PCA / ICA: collecting genes…", 0);
+  try {
+    let G;
+    try { G = await compGenes(); } catch { note.textContent = "Could not read the gene length table."; return; }
+    const genes = G.withProbes;
+    if (genes.length < k + 1) { note.textContent = `Only ${genes.length} genes with probes at this length: lower the threshold or the number of components.`; return; }
+    // Samples of the loaded donors (in donor order); per gene, the mean of its probes' within-donor z
+    const donors = donorClouds.filter(c => expr.byDonor.has(c.userData.donor)).map(c => ({ d: c.userData.donor, n: c.userData.items.length }));
+    const n = donors.reduce((a, d) => a + d.n, 0), p = genes.length, X = new Float32Array(n * p);
+    for (let gi = 0; gi < p; gi++) {
+      const probes = (expr.bySymbol.get(genes[gi].sym) ?? []).filter(hasProbe);
+      let off = 0;
+      for (const { d, n: nd } of donors) {
+        const rows = expr.byDonor.get(d), acc = new Float64Array(nd), cnt = new Uint16Array(nd);
+        for (const id of probes) {
+          const x = rows.get(id); if (!x) continue;
+          const { mean, sd } = meanSd(x); if (!(sd > 0)) continue;
+          for (let i = 0; i < nd; i++) if (isFinite(x[i])) { acc[i] += (x[i] - mean) / sd; cnt[i]++; }
+        }
+        for (let i = 0; i < nd; i++) X[(off + i) * p + gi] = cnt[i] ? acc[i] / cnt[i] : 0;
+        off += nd;
+      }
+      if (gi % 200 === 0) { setBusy(`PCA / ICA: ${gi.toLocaleString()} of ${p.toLocaleString()} genes collected…`, 0.1 * gi / p); await new Promise(r => setTimeout(r)); }
+    }
+    for (let gi = 0; gi < p; gi++) { let m = 0; for (let i = 0; i < n; i++) m += X[i * p + gi]; m /= n; for (let i = 0; i < n; i++) X[i * p + gi] -= m; }
+    const worker = new Worker(URL.createObjectURL(new Blob([COMP_WORKER], { type: "text/javascript" })));
+    const res = await new Promise((resolve, reject) => {
+      worker.onmessage = ({ data }) => { if (data.done) resolve(data); else setBusy(`${data.what}: ${p.toLocaleString()} genes × ${n.toLocaleString()} samples, ${k} components…`, 0.1 + 0.9 * data.progress); };
+      worker.onerror = e => reject(e);
+      worker.postMessage({ X, n, p, k }, [X.buffer]);
+    }).finally(() => worker.terminate());
+    // Components as computed probes in every loaded donor (replacing an earlier run's)
+    for (const rows of expr.byDonor.values()) for (const id of [...(expr.compIds ?? [])]) rows.delete(id);
+    for (const id of expr.compIds ?? []) { expr.bySymbol.delete(expr.probeName.get(id)); expr.probeName.delete(id); }
+    const ids = [], vals = [...res.pcs.map((v, c) => [`PC${c + 1}`, v]), ...res.ics.map((v, c) => [`IC${c + 1}`, v])];
+    for (const [name, v] of vals) {
+      const id = `__${name}`; ids.push(id);
+      let off = 0;
+      for (const { d, n: nd } of donors) { expr.byDonor.get(d).set(id, v.slice(off, off + nd)); off += nd; }
+      expr.probeName.set(id, name); expr.bySymbol.set(name, [id]);
+    }
+    expr.compIds = ids; expr.symbolOf = null;
+    const r = new Map([...res.varExp.map((x, c) => [`__PC${c + 1}`, x * 100])]);
+    expr.corr = { query: `PCA / ICA · ${p.toLocaleString()} genes ≥ ${G.L / 1000} kb`, ids, r, keep: true };
+    searchBox.value = "";
+    showProbeBox(expr.corr.query, ids);
+    autoZ(ids);
+    applyColouring();
+    const msg = `PCA and FastICA of ${p.toLocaleString()} protein-coding genes at least ${G.L / 1000} kb long (of ${G.over.length.toLocaleString()} that long; those with Allen probes), ${n.toLocaleString()} samples from ${donors.length} donor${donors.length > 1 ? "s" : ""}: ${k} PCs (the number before each is the % of variance explained; together ${(res.varExp.reduce((a, b) => a + b, 0) * 100).toFixed(1)}%) and ${k} ICs (most non-Gaussian first). Rows are sample scores; click one to show it on the brain.`;
+    note.textContent = msg; setScaleNote(msg);
+    setPanelOpen(false);
+    if (document.body.classList.contains("ribbon-min")) setRibbonMin(false);
+  } finally { setBusy(null); }
+}
+$e("comp-run").addEventListener("click", runComponents);
 // Mean z-score (z within each donor) of each probe over the hippocampal samples (CA1-4,
 // dentate gyrus, subiculum) of the loaded donors; null when no donor has any
 function hippocampalZ(ids) {
