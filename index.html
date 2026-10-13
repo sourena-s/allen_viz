@@ -184,6 +184,7 @@
   #probe-tip[hidden] { display: none; }
   .rgene { cursor: pointer; }
   .rgene:hover { color: var(--ink); text-decoration: underline; }
+  .rgene.comp { cursor: inherit; } .rgene.comp:hover { color: inherit; text-decoration: none; }
   #gene-menu {
     position: fixed; z-index: 9; display: flex; flex-direction: column; min-width: 150px; padding: 4px; border-radius: 6px;
     background: rgba(62, 68, 77, 0.92); border: 1px solid var(--edge); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
@@ -3233,7 +3234,10 @@ function renderRibbon() {
     }
     const rv = expr.corr?.r.get(r.id);
     if (ribbon.multiGene) row.append(Object.assign(document.createElement("span"), { className: "rgene", title: "GeneCards / Protein Atlas", textContent: `${rv != null ? `${rv.toFixed(2)} ` : ""}${shownName(symbolOf(r.id) ?? "")}` }));
-    if (row.lastChild?.className === "rgene") row.lastChild.dataset.symbol = symbolOf(r.id) ?? "";
+    if (row.lastChild?.className === "rgene") {
+      if (expr.compIds?.includes(r.id)) row.lastChild.classList.add("comp");   // a PCA / ICA component: no gene menu
+      else row.lastChild.dataset.symbol = symbolOf(r.id) ?? "";
+    }
     return row;
   }));
   // Probe list in the panel over the 3D view: tap a probe to add it to (or drop it from) the
