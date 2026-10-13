@@ -214,6 +214,15 @@
   #sub-grid figcaption b { font-size: 12px; }
   #sub-grid .ph { aspect-ratio: 1; background: #22262b; border-radius: 3px; display: flex; align-items: center; justify-content: center; color: var(--muted); text-align: center; padding: 6px; box-sizing: border-box; }
   #sub-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 3px; display: block; }
+  #comp-pop { position: fixed; z-index: 30; width: 260px; max-height: 70vh; overflow: auto; padding: 10px 12px; border-radius: 6px; background: #22262b; border: 1px solid var(--edge); color: var(--ink); font: 12px var(--sans); box-shadow: 0 6px 24px rgba(0,0,0,0.4); }
+  #comp-pop[hidden] { display: none; }
+  #comp-pop .cw-title { font-weight: 600; margin: 0 18px 2px 0; }
+  #comp-pop .cw-sub { color: var(--muted); font-size: 11px; margin-bottom: 8px; }
+  #comp-pop .cw-x { position: absolute; top: 6px; right: 8px; background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 13px; }
+  #comp-pop .cw-list { display: grid; grid-template-columns: 22px 1fr auto; gap: 2px 8px; align-items: center; }
+  #comp-pop .cw-cell { height: 14px; border-radius: 2px; }
+  #comp-pop .cw-name { font: 11px var(--mono); }
+  #comp-pop .cw-val { font: 11px var(--mono); color: var(--muted); text-align: right; }
   #pick-arrow { position: fixed; left: 0; top: 0; z-index: 4; pointer-events: none; opacity: 0.6; filter: drop-shadow(0 0 4px rgba(0,0,0,0.6)); }
   #pick-arrow[hidden] { display: none; }
   #alias-tip {
@@ -3378,7 +3387,14 @@ geneMenu.addEventListener("click", e => { if (e.target.closest("a")) geneMenu.hi
 addEventListener("keydown", e => { if (e.key === "Escape") geneMenu.hidden = true; });
 $e("ribbon-names").addEventListener("click", e => {
   const g = e.target.closest(".rgene");
-  if (g?.dataset.symbol) { e.stopPropagation(); document.body.append(geneMenu); openGeneMenu(g.dataset.symbol, g); }
+  if (g?.dataset.symbol) { e.stopPropagation(); document.body.append(geneMenu); openGeneMenu(g.dataset.symbol, g); return; }
+  // A PCA / ICA label picks its row (as a click on the row in the heatmap)
+  const row = g?.classList.contains("comp") && ribbon.rows.find(r => r.id === g.closest(".rname")?.dataset.id);
+  if (row) {
+    e.stopPropagation(); showRibbonProbe(row, true); ribbon.userPicked = true;
+    if (!expr.chosen?.has(row.id) || expr.chosen.size > 1) { expr.chosen = new Set([row.id]); applyColouring(); }
+    updateCorrButton();
+  }
 });
 
 // The probe name of the last clicked row (toggle or cell) is shown beside the gene name
@@ -3816,7 +3832,36 @@ function scGeneFor(data) {
   for (const [k, list] of hgnc?.bySynonym ?? []) if (k === sym.toUpperCase()) for (const a of list) { const i = data.geneIndex.get(a); if (i !== undefined) return { i, name: data.genes[i], allen: sym }; }
   return { i: -1, name: shownName(sym), allen: sym };
 }
-function updateCellsButton() { $e("cells-btn").disabled = false; }   // without a gene the window opens with its rows only
+function updateCellsButton() {
+  const b = $e("cells-btn"), ch = chosenProbes(), comp = ch.length === 1 && expr.compWeights?.has(ch[0]);
+  b.disabled = false; b.textContent = comp ? "Weights" : "Cell";
+  b.title = comp ? "The genes with the largest absolute weight (correlation with this component's sample scores), as a heatmap" : "Cell types expressing this gene in hippocampal and amygdala subregions (single-nucleus RNA-seq, Siletti et al. 2023)";
+}
+// A component's top genes by absolute weight: names with a heatmap cell each (the ribbon's colours)
+const compPop = Object.assign(document.createElement("div"), { id: "comp-pop", hidden: true });
+document.body.append(compPop);
+document.addEventListener("pointerdown", e => { if (!compPop.hidden && !compPop.contains(e.target) && e.target !== $e("cells-btn")) compPop.hidden = true; });
+function showCompWeights(id, N = 30) {
+  const w = expr.compWeights.get(id), names = expr.compGenes, name = expr.probeName.get(id);
+  const top = [...w.keys()].sort((a, b) => Math.abs(w[b]) - Math.abs(w[a])).slice(0, N);
+  const mx = Math.max(...top.map(g => Math.abs(w[g]))) || 1, zr = scView.zr ?? 2;
+  const list = Object.assign(document.createElement("div"), { className: "cw-list" });
+  for (const g of top) {
+    const cell = Object.assign(document.createElement("span"), { className: "cw-cell", title: `r = ${w[g].toFixed(3)}` });
+    cell.style.background = ribbonColour(w[g] / mx * zr);
+    list.append(cell, Object.assign(document.createElement("span"), { className: "cw-name", textContent: names[g] }),
+      Object.assign(document.createElement("span"), { className: "cw-val", textContent: `${w[g] >= 0 ? "+" : "−"}${Math.abs(w[g]).toFixed(2)}` }));
+  }
+  compPop.replaceChildren(
+    Object.assign(document.createElement("button"), { type: "button", className: "cw-x", textContent: "✕", title: "Close", onclick: () => (compPop.hidden = true) }),
+    Object.assign(document.createElement("div"), { className: "cw-title", textContent: `${name}: top ${top.length} genes by |weight|` }),
+    Object.assign(document.createElement("div"), { className: "cw-sub", textContent: `Weight: the gene's correlation with ${name}'s sample scores (colour scaled to the largest, ±${mx.toFixed(2)}).` }),
+    list);
+  compPop.hidden = false;
+  const r = $e("cells-btn").getBoundingClientRect();
+  compPop.style.left = `${Math.max(8, Math.min(innerWidth - compPop.offsetWidth - 8, r.left))}px`;
+  compPop.style.top = `${Math.max(8, r.top - compPop.offsetHeight - 8)}px`;
+}   // without a gene the window opens with its rows only
 // Excitatory (Ex) / inhibitory (In) tags: clusters by Siletti's neurotransmitter annotation
 // (GABA or glycine: inhibitory; otherwise VGLUT1-3: excitatory), superclusters by their type
 const SC_INHIB = new Set(["MGE interneuron", "CGE interneuron", "LAMP5-LHX6 and Chandelier", "Medium spiny neuron", "Eccentric medium spiny neuron", "Cerebellar inhibitory", "Midbrain-derived inhibitory"]);
@@ -5239,6 +5284,11 @@ $e("sc-diff-run").addEventListener("click", () => {
   setBusy("Ranking genes…"); setTimeout(() => { renderCellTypes(); setBusy(null); }, 30);
 });
 // Each opening of the cells window starts fresh: brief view, no co-expression
+// On a PCA / ICA row the button reads Weights and shows the component's top genes instead
+$e("cells-btn").addEventListener("click", e => {
+  const ch = chosenProbes();
+  if (ch.length === 1 && expr.compWeights?.has(ch[0])) { e.stopImmediatePropagation(); compPop.hidden ? showCompWeights(ch[0]) : (compPop.hidden = true); }
+}, { capture: true });
 $e("cells-btn").addEventListener("click", () => { scView.blank = false; $e("sc-add").checked = false; scView.colEdit = { on: false, off: new Set(), order: null }; $e("sc-editbar").hidden = true; $e("sc-png").setAttribute("aria-pressed", false); scView.selKey = null; scView.multi = null; scView.added = []; scView.sym = undefined; scView.probe = undefined; scView.coAnchor = null; $e("sc-detail").checked = false; $e("sc-custom").checked = true; $e("sc-brain").checked = false; $e("sc-ncx").checked = false; $e("sc-ncxcl").checked = false; $e("sc-hpa").checked = false; $e("sc-coexp").checked = false; $e("sc-diff").checked = false; scView.marks = new Map(); scView.diffRes = null; showCellTypes(); });
 // A click outside the window does not close it (close button or Escape); the ? button shows the descriptions
 // Allen z: the slider shows from its icon and goes away shortly after use (or a click elsewhere)
@@ -5822,8 +5872,17 @@ onmessage = ({ data: { X, n, p, k } }) => {
     ics.push({ v: Float32Array.from(s, x => x * sign), kurt: m4 / n - 3 });
   }
   ics.sort((a, b) => Math.abs(b.kurt) - Math.abs(a.kurt));   // most non-Gaussian (|excess kurtosis|) first
+  // Gene weights: each gene's correlation (over samples) with each component's scores
+  const sdg = new Float64Array(p); for (let i = 0; i < n; i++) { const row = i * p; for (let g = 0; g < p; g++) sdg[g] += X[row + g] ** 2; }
+  for (let g = 0; g < p; g++) sdg[g] = Math.sqrt(sdg[g]) || 1;
+  const weights = [...pcs, ...ics.map(x => x.v)].map(v => {
+    let m = 0; for (let i = 0; i < n; i++) m += v[i]; m /= n;
+    let ss = 0; for (let i = 0; i < n; i++) ss += (v[i] - m) ** 2; const sv = Math.sqrt(ss) || 1;
+    const w = new Float64Array(p); for (let i = 0; i < n; i++) { const d = v[i] - m, row = i * p; if (d) for (let g = 0; g < p; g++) w[g] += X[row + g] * d; }
+    return Float32Array.from(w, (x, g) => x / (sdg[g] * sv));
+  });
   tick("ICA");
-  postMessage({ done: true, pcs, varExp, ics: ics.map(x => x.v), kurt: ics.map(x => x.kurt) });
+  postMessage({ done: true, pcs, varExp, ics: ics.map(x => x.v), kurt: ics.map(x => x.kurt), weights });
 };`;
 async function runComponents() {
   const note = $e("comp-note");
@@ -5872,6 +5931,8 @@ async function runComponents() {
       expr.probeName.set(id, name); expr.bySymbol.set(name, [id]);
     }
     expr.compIds = ids; expr.symbolOf = null;
+    expr.compWeights = new Map(ids.map((id, c) => [id, res.weights[c]]));
+    expr.compGenes = genes.map(x => x.g.sym);   // current official symbols, in the weights' order
     const r = new Map([...res.varExp.map((x, c) => [`__PC${c + 1}`, x * 100])]);
     expr.corr = { query: `PCA / ICA · ${p.toLocaleString()} genes ≥ ${G.L / 1000} kb`, ids, r, keep: true };
     searchBox.value = "";
