@@ -214,18 +214,19 @@
   #sub-grid figcaption b { font-size: 12px; }
   #sub-grid .ph { aspect-ratio: 1; background: #22262b; border-radius: 3px; display: flex; align-items: center; justify-content: center; color: var(--muted); text-align: center; padding: 6px; box-sizing: border-box; }
   #sub-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 3px; display: block; }
-  #comp-pop { position: fixed; inset: 0; z-index: 40; display: flex; flex-direction: column; background: #1c1f23; color: var(--ink); font: 12px var(--sans); }
+  #comp-pop { position: fixed; left: 0; right: 0; bottom: 0; top: 0; z-index: 40; display: flex; flex-direction: column; background: #1c1f23; color: var(--ink); font: 12px var(--sans); }
   #comp-pop[hidden] { display: none; }
-  #comp-pop .cw-head { display: grid; grid-template-columns: auto 1fr auto; align-items: baseline; gap: 4px 14px; padding: 12px 16px 10px; border-bottom: 1px solid var(--edge); }
-  #comp-pop .cw-title { font-weight: 600; font-size: 14px; }
-  #comp-pop .cw-count { color: var(--muted); }
+  body.cw-open #ribbon { top: 0 !important; left: 0 !important; right: 0 !important; bottom: auto !important; z-index: 41; border-radius: 0; max-height: 45vh; background: #2b3036; backdrop-filter: none; }
+  #comp-pop .cw-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; border-bottom: 1px solid var(--edge); }
+  #comp-pop .cw-title { font-weight: 600; font-size: 15px; }
   #comp-pop .cw-x { font: 12px var(--sans); color: var(--ink); background: transparent; border: 1px solid var(--edge); border-radius: 5px; padding: 4px 10px; cursor: pointer; }
-  #comp-pop .cw-sub { grid-column: 1 / -1; color: var(--muted); font-size: 11px; }
-  #comp-pop .cw-strip { grid-column: 1 / -1; width: 100%; height: 28px; border-radius: 2px; }
-  #comp-pop .cw-body { flex: 1; overflow: auto; padding: 10px 16px 16px; }
-  #comp-pop .cw-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 4px; }
+  #comp-pop .cw-body { flex: 1; overflow: auto; padding: 8px 16px 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+  #comp-pop .cw-side-h { color: var(--muted); font-size: 11px; margin: 0 0 6px; }
+  #comp-pop .cw-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 4px; }
   #comp-pop .cw-tile { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 5px 7px; border-radius: 3px; color: #fff; text-shadow: 0 0 3px rgba(0,0,0,0.85), 0 0 1px #000; font: 11px var(--mono); }
   #comp-pop .cw-tile b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  body.phone #comp-pop .cw-body { grid-template-columns: 1fr 1fr; gap: 8px; padding: 6px 8px; }
+  body.phone #comp-pop .cw-tiles { grid-template-columns: 1fr; }
   #pick-arrow { position: fixed; left: 0; top: 0; z-index: 4; pointer-events: none; opacity: 0.6; filter: drop-shadow(0 0 4px rgba(0,0,0,0.6)); }
   #pick-arrow[hidden] { display: none; }
   #alias-tip {
@@ -3387,7 +3388,7 @@ $e("sub-btn").addEventListener("click", () => openSubcellularGrid());
 $e("sub-dialog").addEventListener("click", e => { if (e.target === $e("sub-dialog")) $e("sub-dialog").close(); });
 document.addEventListener("pointerdown", e => { if (!geneMenu.hidden && !geneMenu.contains(e.target) && !e.target.closest?.(".rgene")) geneMenu.hidden = true; });
 geneMenu.addEventListener("click", e => { if (e.target.closest("a")) geneMenu.hidden = true; });
-addEventListener("keydown", e => { if (e.key === "Escape") { geneMenu.hidden = true; compPop.hidden = true; } });
+addEventListener("keydown", e => { if (e.key === "Escape") { geneMenu.hidden = true; closeCompWeights(); } });
 $e("ribbon-names").addEventListener("click", e => {
   const g = e.target.closest(".rgene");
   if (g?.dataset.symbol) { e.stopPropagation(); document.body.append(geneMenu); openGeneMenu(g.dataset.symbol, g); return; }
@@ -3843,52 +3844,58 @@ function updateCellsButton() {
 // A component's top genes by absolute weight: names with a heatmap cell each (the ribbon's colours)
 const compPop = Object.assign(document.createElement("div"), { id: "comp-pop", hidden: true });
 document.body.append(compPop);
-document.addEventListener("pointerdown", e => { if (!compPop.hidden && !compPop.contains(e.target) && e.target !== $e("cells-btn")) compPop.hidden = true; });
+
+// While open, the ribbon itself moves to the top of the screen showing only this component's row (same labels,
+// zoom and pinch as ever); closing restores its rows and place
+function closeCompWeights() {
+  if (compPop.hidden) return;
+  compPop.hidden = true; document.body.classList.remove("cw-open");
+  if (compPop.saved) { expr.corr = compPop.saved; compPop.saved = null; }
+  renderRibbon(); layoutStage(); layoutRibbon(); drawRibbon();
+}
 function showCompWeights(id) {
   const w = expr.compWeights.get(id), names = expr.compGenes, name = expr.probeName.get(id);
-  const order = [...w.keys()].sort((a, b) => Math.abs(w[b]) - Math.abs(w[a]));   // strongest first
-  const mx = Math.abs(w[order[0]]) || 1, zr = scView.zr ?? 2;
-  // Header: title, close, and the component's ribbon row (samples in the ribbon's order and colours)
-  const strip = document.createElement("canvas"); strip.className = "cw-strip";
-  const tiles = Object.assign(document.createElement("div"), { className: "cw-tiles" });
-  const count = Object.assign(document.createElement("span"), { className: "cw-count" });
-  compPop.replaceChildren(
-    Object.assign(document.createElement("div"), { className: "cw-head" }),
-    Object.assign(document.createElement("div"), { className: "cw-body" }));
-  const head = compPop.firstChild, body = compPop.lastChild;
-  head.append(
-    Object.assign(document.createElement("div"), { className: "cw-title", textContent: `${name}: genes by |weight|` }),
-    count,
-    Object.assign(document.createElement("button"), { type: "button", className: "cw-x", textContent: "✕ Close", title: "Close (Esc)", onclick: () => (compPop.hidden = true) }),
-    Object.assign(document.createElement("div"), { className: "cw-sub", textContent: `Weight: the gene's correlation with ${name}'s sample scores; tile colour scaled to the strongest (±${mx.toFixed(2)}). The strip is ${name} across all samples, as in the ribbon.` }),
-    strip);
-  body.append(tiles);
-  compPop.hidden = false;
-  // The strip: each ribbon column's sample, coloured by its z-score (within its donor) on this component
-  const W = Math.max(1, strip.clientWidth), dpr = devicePixelRatio || 1, totW = Math.max(...ribbon.cols.map(c => c.x + c.w)) || 1;
-  strip.width = Math.round(W * dpr); strip.height = Math.round(28 * dpr);
-  const sc = strip.getContext("2d"), [lo, hi] = zRange;
-  for (const col of ribbon.cols) {
-    const z = cellValue(col.s, id);
-    sc.fillStyle = Number.isFinite(z) ? (() => { const i = Math.round((Math.max(-1, Math.min(1, (z - (lo + hi) / 2) / ((hi - lo) / 2))) + 1) / 2 * 255) * 3; return `rgb(${rgbLut[i]},${rgbLut[i + 1]},${rgbLut[i + 2]})`; })() : "rgba(255,255,255,0.1)";
-    sc.fillRect(Math.floor(col.x / totW * strip.width), 0, Math.max(1, Math.ceil(col.w / totW * strip.width)), strip.height);
-  }
-  // Tiles, strongest first; more are added as the list is scrolled
-  let shown = 0;
-  const more = () => {
-    const end = Math.min(order.length, shown + 150), frag = document.createDocumentFragment();
-    for (; shown < end; shown++) {
-      const g = order[shown], t = Object.assign(document.createElement("div"), { className: "cw-tile", title: `#${shown + 1} · ${names[g]}: r = ${w[g].toFixed(3)}` });
-      t.style.background = ribbonColour(w[g] / mx * zr);
-      t.append(Object.assign(document.createElement("b"), { textContent: names[g] }), Object.assign(document.createElement("span"), { textContent: `${w[g] >= 0 ? "+" : "−"}${Math.abs(w[g]).toFixed(2)}` }));
-      frag.append(t);
-    }
-    tiles.append(frag);
-    count.textContent = `${shown.toLocaleString()} of ${order.length.toLocaleString()} genes shown${shown < order.length ? " · scroll for more" : ""}`;
+  const pos = [...w.keys()].filter(g => w[g] > 0).sort((a, b) => w[b] - w[a]);   // strongest first on each side
+  const neg = [...w.keys()].filter(g => w[g] < 0).sort((a, b) => w[a] - w[b]);
+  const mx = Math.max(Math.abs(w[pos[0]] ?? 0), Math.abs(w[neg[0]] ?? 0)) || 1;
+  // The ribbon: this component only, at the top
+  compPop.saved = expr.corr;
+  expr.corr = { ...expr.corr, ids: [id] };
+  document.body.classList.add("cw-open");
+  if (document.body.classList.contains("ribbon-min")) setRibbonMin(false);
+  renderRibbon(); layoutRibbon(); drawRibbon();   // full width at the top
+  const title = id.startsWith("__IC") ? `${name} DIM${expr.compK}` : name;
+  const head = Object.assign(document.createElement("div"), { className: "cw-head" });
+  head.append(Object.assign(document.createElement("div"), { className: "cw-title", textContent: title }),
+    Object.assign(document.createElement("button"), { type: "button", className: "cw-x", textContent: "✕ Close", title: "Close (Esc)", onclick: closeCompWeights }));
+  const side = (list, label) => {
+    const col = Object.assign(document.createElement("div"), { className: "cw-side" });
+    const tiles = Object.assign(document.createElement("div"), { className: "cw-tiles" });
+    col.append(Object.assign(document.createElement("div"), { className: "cw-side-h", textContent: `${label} (${list.length.toLocaleString()})` }), tiles);
+    let shown = 0;
+    col.more = () => {
+      const end = Math.min(list.length, shown + 120), frag = document.createDocumentFragment();
+      for (; shown < end; shown++) {
+        const g = list[shown], t = Object.assign(document.createElement("div"), { className: "cw-tile", title: `${names[g]}: r = ${w[g].toFixed(3)}` });
+        t.style.background = ribbonColour(w[g] / mx * 2);
+        t.append(Object.assign(document.createElement("b"), { textContent: names[g] }), Object.assign(document.createElement("span"), { textContent: `${w[g] >= 0 ? "+" : "−"}${Math.abs(w[g]).toFixed(2)}` }));
+        frag.append(t);
+      }
+      tiles.append(frag);
+      return shown < list.length;
+    };
+    col.more();
+    return col;
   };
-  more();
-  body.onscroll = () => { if (shown < order.length && body.scrollTop + body.clientHeight > body.scrollHeight - 300) more(); };
-  while (shown < order.length && body.scrollHeight <= body.clientHeight + 50) more();   // fill a tall screen
+  const body = Object.assign(document.createElement("div"), { className: "cw-body" });
+  const L = side(pos, "Positive weights"), R = side(neg, "Negative weights");
+  body.append(L, R);
+  compPop.replaceChildren(head, body);
+  compPop.hidden = false;
+  const place = () => { compPop.style.top = `${Math.round($e("ribbon").getBoundingClientRect().bottom + 4)}px`; };
+  place(); requestAnimationFrame(place);
+  body.onscroll = () => { if (body.scrollTop + body.clientHeight > body.scrollHeight - 300) { L.more(); R.more(); } };
+  for (let i = 0; i < 20 && body.scrollHeight <= body.clientHeight + 50; i++) if (!(L.more() | R.more())) break;   // fill a tall screen
 }
 // Excitatory (Ex) / inhibitory (In) tags: clusters by Siletti's neurotransmitter annotation
 // (GABA or glycine: inhibitory; otherwise VGLUT1-3: excitatory), superclusters by their type
@@ -5315,7 +5322,7 @@ $e("sc-diff-run").addEventListener("click", () => {
 // On a PCA / ICA row the button reads Weights and shows the component's top genes instead
 $e("cells-btn").addEventListener("click", e => {
   const ch = chosenProbes();
-  if (ch.length === 1 && expr.compWeights?.has(ch[0])) { e.stopImmediatePropagation(); compPop.hidden ? showCompWeights(ch[0]) : (compPop.hidden = true); }
+  if (ch.length === 1 && expr.compWeights?.has(ch[0])) { e.stopImmediatePropagation(); compPop.hidden ? showCompWeights(ch[0]) : closeCompWeights(); }
 }, { capture: true });
 $e("cells-btn").addEventListener("click", () => { scView.blank = false; $e("sc-add").checked = false; scView.colEdit = { on: false, off: new Set(), order: null }; $e("sc-editbar").hidden = true; $e("sc-png").setAttribute("aria-pressed", false); scView.selKey = null; scView.multi = null; scView.added = []; scView.sym = undefined; scView.probe = undefined; scView.coAnchor = null; $e("sc-detail").checked = false; $e("sc-custom").checked = true; $e("sc-brain").checked = false; $e("sc-ncx").checked = false; $e("sc-ncxcl").checked = false; $e("sc-hpa").checked = false; $e("sc-coexp").checked = false; $e("sc-diff").checked = false; scView.marks = new Map(); scView.diffRes = null; showCellTypes(); });
 // A click outside the window does not close it (close button or Escape); the ? button shows the descriptions
@@ -5958,7 +5965,7 @@ async function runComponents() {
       for (const { d, n: nd } of donors) { expr.byDonor.get(d).set(id, v.slice(off, off + nd)); off += nd; }
       expr.probeName.set(id, name); expr.bySymbol.set(name, [id]);
     }
-    expr.compIds = ids; expr.symbolOf = null;
+    expr.compIds = ids; expr.symbolOf = null; expr.compK = k;
     expr.compWeights = new Map(ids.map((id, c) => [id, res.weights[c]]));
     expr.compGenes = genes.map(x => x.g.sym);   // current official symbols, in the weights' order
     const r = new Map([...res.varExp.map((x, c) => [`__PC${c + 1}`, x * 100])]);
