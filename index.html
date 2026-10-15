@@ -3857,6 +3857,7 @@ document.body.append(compPop);
 function closeCompWeights() {
   if (compPop.hidden) return;
   compPop.hidden = true; document.body.classList.remove("cw-open"); geneMenu.hidden = true; document.body.append(geneMenu);
+  if (compPop.modes?.length) { document.body.classList.add(...compPop.modes); compPop.modes = null; applyRibbonOrientation(); }
   if (compPop.saved) { expr.corr = compPop.saved; compPop.saved = null; }
   renderRibbon(); layoutStage(); layoutRibbon(); drawRibbon();
 }
@@ -3868,6 +3869,10 @@ function showCompWeights(id) {
   // The ribbon: this component only, at the top
   compPop.saved = expr.corr;
   expr.corr = { ...expr.corr, ids: [id] };
+  // A maximised (or turned) ribbon would keep its full-screen layout: leave it for now, back on close
+  compPop.modes = ["ribbon-full", "ribbon-rot", "ribbon-upright"].filter(c => document.body.classList.contains(c));
+  document.body.classList.remove(...compPop.modes);
+  if (compPop.modes.length) applyRibbonOrientation();
   document.body.classList.add("cw-open");
   if (document.body.classList.contains("ribbon-min")) setRibbonMin(false);
   renderRibbon(); layoutRibbon(); drawRibbon();   // full width at the top
