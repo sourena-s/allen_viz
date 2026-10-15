@@ -217,7 +217,8 @@
   #sub-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 3px; display: block; }
   #comp-pop { position: fixed; left: 0; right: 0; bottom: 0; top: 0; z-index: 40; display: flex; flex-direction: column; background: #1c1f23; color: var(--ink); font: 12px var(--sans); }
   #comp-pop[hidden] { display: none; }
-  body.cw-open #ribbon { top: 0 !important; left: 0 !important; right: 0 !important; bottom: auto !important; z-index: 41; border-radius: 0; max-height: 45vh; background: #2b3036; backdrop-filter: none; }
+  body.cw-open #ribbon .ribbon-head { display: none; }   /* only the component row, no gene box or buttons */
+  body.cw-open #ribbon { padding-top: 4px; padding-bottom: 2px; height: 62px; top: 0 !important; left: 0 !important; right: 0 !important; bottom: auto !important; z-index: 41; border-radius: 0; max-height: 62px; background: #2b3036; backdrop-filter: none; }
   #comp-pop .cw-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; border-bottom: 1px solid var(--edge); }
   #comp-pop .cw-title { font-weight: 600; font-size: 15px; }
   #comp-pop .cw-x { font: 12px var(--sans); color: var(--ink); background: transparent; border: 1px solid var(--edge); border-radius: 5px; padding: 4px 10px; cursor: pointer; }
@@ -3897,7 +3898,7 @@ function showCompWeights(id) {
   body.append(L, R);
   compPop.replaceChildren(head, body);
   compPop.hidden = false;
-  const place = () => { compPop.style.top = `${Math.round($e("ribbon").getBoundingClientRect().bottom + 4)}px`; };
+  const place = () => { compPop.style.top = `${Math.floor($e("ribbon").getBoundingClientRect().bottom)}px`; };
   place(); requestAnimationFrame(place);
   body.onscroll = () => { if (body.scrollTop + body.clientHeight > body.scrollHeight - 300) { L.more(); R.more(); } };
   for (let i = 0; i < 20 && body.scrollHeight <= body.clientHeight + 50; i++) if (!(L.more() | R.more())) break;   // fill a tall screen
