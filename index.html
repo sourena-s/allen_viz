@@ -184,6 +184,7 @@
   #probe-tip[hidden] { display: none; }
   .rgene { cursor: pointer; }
   .rgene:hover { color: var(--ink); text-decoration: underline; }
+  .rname.csep { box-shadow: inset 0 2px 0 #ffd21f; }
   .rgene.comp { cursor: inherit; } .rgene.comp:hover { color: inherit; text-decoration: none; }
   #gene-menu {
     position: fixed; z-index: 9; display: flex; flex-direction: column; min-width: 150px; padding: 4px; border-radius: 6px;
@@ -801,8 +802,8 @@
     <label class="label" for="comp-len">Minimum gene length (kb)</label>
     <input type="text" id="comp-len" value="500" inputmode="decimal" autocomplete="off">
     <span class="hint" id="comp-count"></span>
-    <label class="label" for="comp-k">Components (dimension)</label>
-    <input type="text" id="comp-k" value="10" inputmode="numeric" autocomplete="off">
+    <label class="label" for="comp-k">Components (dimensions: one, or several for ICA, e.g. 5, 10, 20)</label>
+    <input type="text" id="comp-k" value="10" inputmode="text" autocomplete="off">
     <button class="text-button" id="comp-run" type="button">Run PCA and ICA</button>
     <span class="hint" id="comp-note">Every protein-coding gene at least this long is included (mean of its probes, z-scored within each donor). PCA, then FastICA on the same number of whitened components; each component becomes a ribbon row (PC1…, IC1…) of sample scores.</span>
   </div>
@@ -3229,6 +3230,7 @@ function renderRibbon() {
   $e("ribbon-names").replaceChildren(...ribbon.rows.map(r => {
     const row = Object.assign(document.createElement("div"), { className: `rname${r.chosen && ribbon.multiGene ? " chosen" : ""}${ribbon.edit.on && ribbon.edit.off.has(r.id) ? " off" : ""}` });
     row.dataset.id = r.id;
+    if (r.id.startsWith("__IC") && ribbon.rows.indexOf(r) > 0 && !ribbon.rows[ribbon.rows.indexOf(r) - 1].id.startsWith("__IC")) row.classList.add("csep");   // PCs | ICs
     if (ribbon.edit.on) {   // figure editing: one continuous bar per gene's run of rows, in the PNG unless toggled off
       const g = symbolOf(r.id) ?? r.id, i = ribbon.rows.indexOf(r), nx = ribbon.rows[i + 1], off = ribbon.edit.bandOff.has(g);
       const band = Object.assign(document.createElement("span"), { className: `gband${nx && (symbolOf(nx.id) ?? nx.id) === g ? " cont" : ""}${off ? " off" : ""}`, title: `${g}: gene bar ${off ? "left out of" : "in"} the figure (click to ${off ? "include" : "leave out"})` });
@@ -3488,6 +3490,9 @@ function drawCells(ctx, dpr, W = ribbonCanvas.width) {
     const y0 = Math.round((r * RH - ribbon.y0) * dpr), y1 = Math.round((r * RH + ROW_H - ribbon.y0) * dpr);
     ctx.drawImage(cellLine, 0, 0, W, 1, 0, y0, W, y1 - y0);
   });
+  // PCA / ICA: a line between the PCs and the ICs
+  const sep = expr.compIds ? ribbon.rows.findIndex((r, i) => i > 0 && r.id.startsWith("__IC") && !ribbon.rows[i - 1].id.startsWith("__IC")) : -1;
+  if (sep > 0) { const y = Math.round((sep * RH - ribbon.y0 - ROW_GAP / 2) * dpr); ctx.fillStyle = "#ffd21f"; ctx.fillRect(0, y - Math.round(dpr), W, Math.max(2, Math.round(2 * dpr))); }
   ctx.restore();
 }
 
@@ -3864,7 +3869,7 @@ function showCompWeights(id) {
   document.body.classList.add("cw-open");
   if (document.body.classList.contains("ribbon-min")) setRibbonMin(false);
   renderRibbon(); layoutRibbon(); drawRibbon();   // full width at the top
-  const title = id.startsWith("__IC") ? `${name} DIM${expr.compK}` : name;
+  const title = id.startsWith("__IC") ? (name.includes("DIM") ? name : `${name} DIM${expr.compDim?.get(id) ?? expr.compK}`) : name;
   const head = Object.assign(document.createElement("div"), { className: "cw-head" });
   head.append(Object.assign(document.createElement("div"), { className: "cw-title", textContent: title }),
     Object.assign(document.createElement("button"), { type: "button", className: "cw-x", textContent: "✕ Close", title: "Close (Esc)", onclick: closeCompWeights }));
@@ -5853,9 +5858,10 @@ const jacobi = (M, k) => {   // eigen-decomposition of a symmetric k x k matrix:
   }
   return { val: Array.from({ length: k }, (_, i) => A[i * k + i]), vec: V };
 };
-onmessage = ({ data: { X, n, p, k } }) => {
+onmessage = ({ data: { X, n, p, dims } }) => {
+  const k = Math.max(...dims);
   // X: n samples x p genes, row-major, columns centred
-  const l = Math.min(k + 10, p, n), iters = 4, steps = 2 * iters + 4; let step = 0;
+  const l = Math.min(k + 10, p, n), iters = 4, steps = 2 * iters + 3 + dims.length; let step = 0;
   const tick = what => postMessage({ progress: ++step / steps, what });
   const Q = new Float64Array(n * l), Z = new Float64Array(p * l);
   const XO = (Om) => { Q.fill(0); for (let i = 0; i < n; i++) { const row = i * p; for (let j = 0; j < l; j++) { let s = 0; const o = j * p; for (let g = 0; g < p; g++) s += X[row + g] * Om[o + g]; Q[j * n + i] = s; } } };
@@ -5877,36 +5883,42 @@ onmessage = ({ data: { X, n, p, k } }) => {
     pcs.push(Float32Array.from(u, x => x * sv)); white.push(Float64Array.from(u, x => x * Math.sqrt(n))); varExp.push(val[e] / tot);
   }
   tick("ICA");
-  // Symmetric FastICA, log cosh, on the k whitened components
-  let W = new Float64Array(k * k); for (let i = 0; i < k * k; i++) W[i] = Math.random() - 0.5;
-  const decor = M => {   // (M M^T)^(-1/2) M
-    const MM = new Float64Array(k * k); for (let a = 0; a < k; a++) for (let b = 0; b < k; b++) { let s = 0; for (let t = 0; t < k; t++) s += M[a * k + t] * M[b * k + t]; MM[a * k + b] = s; }
-    const { val: ev, vec: V } = jacobi(MM, k), R = new Float64Array(k * k);
-    for (let a = 0; a < k; a++) for (let b = 0; b < k; b++) { let s = 0; for (let t = 0; t < k; t++) s += V[a * k + t] * V[b * k + t] / Math.sqrt(Math.max(ev[t], 1e-12)); R[a * k + b] = s; }
-    const out = new Float64Array(k * k); for (let a = 0; a < k; a++) for (let b = 0; b < k; b++) { let s = 0; for (let t = 0; t < k; t++) s += R[a * k + t] * M[t * k + b]; out[a * k + b] = s; }
+  // Symmetric FastICA (log cosh) at each dimension d, on the first d whitened components
+  const fastica = d => {
+    let W = new Float64Array(d * d); for (let t = 0; t < d * d; t++) W[t] = Math.random() - 0.5;
+    const decor = M => {   // (M M^T)^(-1/2) M
+      const MM = new Float64Array(d * d); for (let a = 0; a < d; a++) for (let b = 0; b < d; b++) { let s = 0; for (let t = 0; t < d; t++) s += M[a * d + t] * M[b * d + t]; MM[a * d + b] = s; }
+      const { val: ev, vec: V } = jacobi(MM, d), R = new Float64Array(d * d);
+      for (let a = 0; a < d; a++) for (let b = 0; b < d; b++) { let s = 0; for (let t = 0; t < d; t++) s += V[a * d + t] * V[b * d + t] / Math.sqrt(Math.max(ev[t], 1e-12)); R[a * d + b] = s; }
+      const out = new Float64Array(d * d); for (let a = 0; a < d; a++) for (let b = 0; b < d; b++) { let s = 0; for (let t = 0; t < d; t++) s += R[a * d + t] * M[t * d + b]; out[a * d + b] = s; }
+      return out;
+    };
+    W = decor(W);
+    const y = new Float64Array(n);
+    for (let it = 0; it < 300; it++) {
+      const Wn = new Float64Array(d * d);
+      for (let a = 0; a < d; a++) {
+        y.fill(0); for (let b = 0; b < d; b++) { const w = W[a * d + b], wb = white[b]; for (let i = 0; i < n; i++) y[i] += w * wb[i]; }
+        let gp = 0; for (let i = 0; i < n; i++) { const g = Math.tanh(y[i]); gp += 1 - g * g; y[i] = g; }
+        for (let b = 0; b < d; b++) { let s = 0; const wb = white[b]; for (let i = 0; i < n; i++) s += y[i] * wb[i]; Wn[a * d + b] = s / n - gp / n * W[a * d + b]; }
+      }
+      const W2 = decor(Wn);
+      let lim = 0; for (let a = 0; a < d; a++) { let s = 0; for (let b = 0; b < d; b++) s += W2[a * d + b] * W[a * d + b]; lim = Math.max(lim, Math.abs(Math.abs(s) - 1)); }
+      W = W2; if (lim < 1e-5) break;
+    }
+    const out = [];
+    for (let a = 0; a < d; a++) {
+      const s = new Float64Array(n); for (let b = 0; b < d; b++) { const w = W[a * d + b], wb = white[b]; for (let i = 0; i < n; i++) s[i] += w * wb[i]; }
+      let m3 = 0, m4 = 0; for (let i = 0; i < n; i++) { m3 += s[i] ** 3; m4 += s[i] ** 4; }
+      const sign = m3 < 0 ? -1 : 1;   // the long tail positive
+      out.push({ v: Float32Array.from(s, x => x * sign), kurt: m4 / n - 3, d });
+    }
+    out.sort((a, b) => Math.abs(b.kurt) - Math.abs(a.kurt));   // most non-Gaussian (|excess kurtosis|) first
+    out.forEach((x, j) => (x.j = j + 1));
     return out;
   };
-  W = decor(W);
-  const y = new Float64Array(n);
-  for (let it = 0; it < 300; it++) {
-    const Wn = new Float64Array(k * k);
-    for (let a = 0; a < k; a++) {
-      y.fill(0); for (let b = 0; b < k; b++) { const w = W[a * k + b]; const wb = white[b]; for (let i = 0; i < n; i++) y[i] += w * wb[i]; }
-      let gp = 0; for (let i = 0; i < n; i++) { const g = Math.tanh(y[i]); gp += 1 - g * g; y[i] = g; }
-      for (let b = 0; b < k; b++) { let s = 0; const wb = white[b]; for (let i = 0; i < n; i++) s += y[i] * wb[i]; Wn[a * k + b] = s / n - gp / n * W[a * k + b]; }
-    }
-    const W2 = decor(Wn);
-    let lim = 0; for (let a = 0; a < k; a++) { let s = 0; for (let b = 0; b < k; b++) s += W2[a * k + b] * W[a * k + b]; lim = Math.max(lim, Math.abs(Math.abs(s) - 1)); }
-    W = W2; if (lim < 1e-5) break;
-  }
   const ics = [];
-  for (let a = 0; a < k; a++) {
-    const s = new Float64Array(n); for (let b = 0; b < k; b++) { const w = W[a * k + b], wb = white[b]; for (let i = 0; i < n; i++) s[i] += w * wb[i]; }
-    let m3 = 0, m4 = 0; for (let i = 0; i < n; i++) { m3 += s[i] ** 3; m4 += s[i] ** 4; }
-    const sign = m3 < 0 ? -1 : 1;   // the long tail positive
-    ics.push({ v: Float32Array.from(s, x => x * sign), kurt: m4 / n - 3 });
-  }
-  ics.sort((a, b) => Math.abs(b.kurt) - Math.abs(a.kurt));   // most non-Gaussian (|excess kurtosis|) first
+  for (const d of dims) { ics.push(...fastica(d)); tick("ICA (dimension " + d + ")"); }
   // Gene weights: each gene's correlation (over samples) with each component's scores
   const sdg = new Float64Array(p); for (let i = 0; i < n; i++) { const row = i * p; for (let g = 0; g < p; g++) sdg[g] += X[row + g] ** 2; }
   for (let g = 0; g < p; g++) sdg[g] = Math.sqrt(sdg[g]) || 1;
@@ -5917,13 +5929,15 @@ onmessage = ({ data: { X, n, p, k } }) => {
     return Float32Array.from(w, (x, g) => x / (sdg[g] * sv));
   });
   tick("ICA");
-  postMessage({ done: true, pcs, varExp, ics: ics.map(x => x.v), kurt: ics.map(x => x.kurt), weights });
+  postMessage({ done: true, pcs, varExp, ics: ics.map(x => x.v), icDim: ics.map(x => x.d), icNum: ics.map(x => x.j), weights });
 };`;
 async function runComponents() {
   const note = $e("comp-note");
   if (!expr.byDonor.size) { note.textContent = "Load donor data first."; return; }
-  const k = Math.round(+$e("comp-k").value);
-  if (!(k >= 1 && k <= 100)) { note.textContent = "Enter a number of components between 1 and 100."; return; }
+  // One or more dimensions, e.g. "10" or "5, 10, 20": PCA at the largest, FastICA at each
+  const dims = [...new Set($e("comp-k").value.split(/[\s,;]+/).filter(Boolean).map(Number))].sort((a, b) => a - b);
+  if (!dims.length || dims.some(d => !(Number.isInteger(d) && d >= 1 && d <= 100))) { note.textContent = "Enter one or more numbers of components between 1 and 100, e.g. 10 or 5, 10, 20."; return; }
+  const k = dims.at(-1);
   setBusy("PCA / ICA: collecting genes…", 0);
   try {
     let G;
@@ -5953,20 +5967,43 @@ async function runComponents() {
     const res = await new Promise((resolve, reject) => {
       worker.onmessage = ({ data }) => { if (data.done) resolve(data); else setBusy(`${data.what}: ${p.toLocaleString()} genes × ${n.toLocaleString()} samples, ${k} components…`, 0.1 + 0.9 * data.progress); };
       worker.onerror = e => reject(e);
-      worker.postMessage({ X, n, p, k }, [X.buffer]);
+      worker.postMessage({ X, n, p, dims }, [X.buffer]);
     }).finally(() => worker.terminate());
     // Components as computed probes in every loaded donor (replacing an earlier run's)
     for (const rows of expr.byDonor.values()) for (const id of [...(expr.compIds ?? [])]) rows.delete(id);
     for (const id of expr.compIds ?? []) { expr.bySymbol.delete(expr.probeName.get(id)); expr.probeName.delete(id); }
-    const ids = [], vals = [...res.pcs.map((v, c) => [`PC${c + 1}`, v]), ...res.ics.map((v, c) => [`IC${c + 1}`, v])];
-    for (const [name, v] of vals) {
-      const id = `__${name}`; ids.push(id);
+    // ICs of every dimension pooled and ordered so similar components sit together: average-linkage
+    // clustering on 1 - |r| between their sample scores, rows in the dendrogram's leaf order
+    const icOrder = (() => {
+      const V = res.ics, m = V.length; if (m < 3) return V.map((_, i) => i);
+      const corr = (a, b) => { let sa = 0, sb = 0, sab = 0, ma = 0, mb = 0; for (let i = 0; i < n; i++) { ma += a[i]; mb += b[i]; } ma /= n; mb /= n; for (let i = 0; i < n; i++) { const x = a[i] - ma, y = b[i] - mb; sa += x * x; sb += y * y; sab += x * y; } return sab / Math.sqrt(sa * sb || 1); };
+      const D = Array.from({ length: m }, () => new Float64Array(m));
+      for (let a = 0; a < m; a++) for (let b = a + 1; b < m; b++) D[a][b] = D[b][a] = 1 - Math.abs(corr(V[a], V[b]));
+      let cl = V.map((_, i) => ({ leaves: [i] }));
+      const dist = (x, y) => { let s = 0; for (const a of x.leaves) for (const b of y.leaves) s += D[a][b]; return s / (x.leaves.length * y.leaves.length); };
+      while (cl.length > 1) {
+        let best = [0, 1], bd = Infinity;
+        for (let a = 0; a < cl.length; a++) for (let b = a + 1; b < cl.length; b++) { const d = dist(cl[a], cl[b]); if (d < bd) { bd = d; best = [a, b]; } }
+        const [a, b] = best, A = cl[a], B = cl[b];
+        // join ends that are closest, so neighbours across the join are similar too
+        const opts = [[A.leaves, B.leaves], [A.leaves, [...B.leaves].reverse()], [[...A.leaves].reverse(), B.leaves], [[...A.leaves].reverse(), [...B.leaves].reverse()]];
+        const pick = opts.reduce((x, y) => (D[x[0].at(-1)][x[1][0]] <= D[y[0].at(-1)][y[1][0]] ? x : y));
+        cl = cl.filter((_, i) => i !== a && i !== b); cl.push({ leaves: [...pick[0], ...pick[1]] });
+      }
+      return cl[0].leaves;
+    })();
+    const icName = c => (dims.length > 1 ? `IC${res.icNum[c]} DIM${res.icDim[c]}` : `IC${res.icNum[c]}`);
+    const ids = [], vals = [...res.pcs.map((v, c) => [`PC${c + 1}`, v, c]), ...icOrder.map(c => [icName(c), res.ics[c], res.pcs.length + c])];
+    expr.compDim = new Map(res.ics.map((_, c) => [`__${icName(c).replace(" ", "_")}`, res.icDim[c]]));
+    const wOf = new Map();
+    for (const [name, v, wi] of vals) {
+      const id = `__${name.replace(" ", "_")}`; ids.push(id); wOf.set(id, res.weights[wi]);
       let off = 0;
       for (const { d, n: nd } of donors) { expr.byDonor.get(d).set(id, v.slice(off, off + nd)); off += nd; }
       expr.probeName.set(id, name); expr.bySymbol.set(name, [id]);
     }
     expr.compIds = ids; expr.symbolOf = null; expr.compK = k;
-    expr.compWeights = new Map(ids.map((id, c) => [id, res.weights[c]]));
+    expr.compWeights = wOf; expr.compSep = `__IC`;   // a line between the PCs and the ICs
     expr.compGenes = genes.map(x => x.g.sym);   // current official symbols, in the weights' order
     const r = new Map([...res.varExp.map((x, c) => [`__PC${c + 1}`, x * 100])]);
     expr.corr = { query: `PCA / ICA · ${p.toLocaleString()} genes ≥ ${G.L / 1000} kb`, ids, r, keep: true };
@@ -5974,7 +6011,7 @@ async function runComponents() {
     showProbeBox(expr.corr.query, ids);
     autoZ(ids);
     applyColouring();
-    const msg = `PCA and FastICA of ${p.toLocaleString()} protein-coding genes at least ${G.L / 1000} kb long (of ${G.over.length.toLocaleString()} that long; those with Allen probes), ${n.toLocaleString()} samples from ${donors.length} donor${donors.length > 1 ? "s" : ""}: ${k} PCs (the number before each is the % of variance explained; together ${(res.varExp.reduce((a, b) => a + b, 0) * 100).toFixed(1)}%) and ${k} ICs (most non-Gaussian first). Rows are sample scores; click one to show it on the brain.`;
+    const msg = `PCA and FastICA of ${p.toLocaleString()} protein-coding genes at least ${G.L / 1000} kb long (of ${G.over.length.toLocaleString()} that long; those with Allen probes), ${n.toLocaleString()} samples from ${donors.length} donor${donors.length > 1 ? "s" : ""}: ${k} PCs (the number before each is the % of variance explained; together ${(res.varExp.reduce((a, b) => a + b, 0) * 100).toFixed(1)}%), then a line and the ICs of ${dims.length > 1 ? `dimensions ${dims.join(", ")} pooled, ordered so components with similar sample scores sit together` : `dimension ${k}, most non-Gaussian first`}. Rows are sample scores; click one to show it on the brain.`;
     note.textContent = msg; setScaleNote(msg);
     setPanelOpen(false);
     if (document.body.classList.contains("ribbon-min")) setRibbonMin(false);
