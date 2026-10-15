@@ -214,15 +214,18 @@
   #sub-grid figcaption b { font-size: 12px; }
   #sub-grid .ph { aspect-ratio: 1; background: #22262b; border-radius: 3px; display: flex; align-items: center; justify-content: center; color: var(--muted); text-align: center; padding: 6px; box-sizing: border-box; }
   #sub-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 3px; display: block; }
-  #comp-pop { position: fixed; z-index: 30; width: 260px; max-height: 70vh; overflow: auto; padding: 10px 12px; border-radius: 6px; background: #22262b; border: 1px solid var(--edge); color: var(--ink); font: 12px var(--sans); box-shadow: 0 6px 24px rgba(0,0,0,0.4); }
+  #comp-pop { position: fixed; inset: 0; z-index: 40; display: flex; flex-direction: column; background: #1c1f23; color: var(--ink); font: 12px var(--sans); }
   #comp-pop[hidden] { display: none; }
-  #comp-pop .cw-title { font-weight: 600; margin: 0 18px 2px 0; }
-  #comp-pop .cw-sub { color: var(--muted); font-size: 11px; margin-bottom: 8px; }
-  #comp-pop .cw-x { position: absolute; top: 6px; right: 8px; background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 13px; }
-  #comp-pop .cw-list { display: grid; grid-template-columns: 22px 1fr auto; gap: 2px 8px; align-items: center; }
-  #comp-pop .cw-cell { height: 14px; border-radius: 2px; }
-  #comp-pop .cw-name { font: 11px var(--mono); }
-  #comp-pop .cw-val { font: 11px var(--mono); color: var(--muted); text-align: right; }
+  #comp-pop .cw-head { display: grid; grid-template-columns: auto 1fr auto; align-items: baseline; gap: 4px 14px; padding: 12px 16px 10px; border-bottom: 1px solid var(--edge); }
+  #comp-pop .cw-title { font-weight: 600; font-size: 14px; }
+  #comp-pop .cw-count { color: var(--muted); }
+  #comp-pop .cw-x { font: 12px var(--sans); color: var(--ink); background: transparent; border: 1px solid var(--edge); border-radius: 5px; padding: 4px 10px; cursor: pointer; }
+  #comp-pop .cw-sub { grid-column: 1 / -1; color: var(--muted); font-size: 11px; }
+  #comp-pop .cw-strip { grid-column: 1 / -1; width: 100%; height: 28px; border-radius: 2px; }
+  #comp-pop .cw-body { flex: 1; overflow: auto; padding: 10px 16px 16px; }
+  #comp-pop .cw-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 4px; }
+  #comp-pop .cw-tile { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 5px 7px; border-radius: 3px; color: #fff; text-shadow: 0 0 3px rgba(0,0,0,0.85), 0 0 1px #000; font: 11px var(--mono); }
+  #comp-pop .cw-tile b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #pick-arrow { position: fixed; left: 0; top: 0; z-index: 4; pointer-events: none; opacity: 0.6; filter: drop-shadow(0 0 4px rgba(0,0,0,0.6)); }
   #pick-arrow[hidden] { display: none; }
   #alias-tip {
@@ -3384,7 +3387,7 @@ $e("sub-btn").addEventListener("click", () => openSubcellularGrid());
 $e("sub-dialog").addEventListener("click", e => { if (e.target === $e("sub-dialog")) $e("sub-dialog").close(); });
 document.addEventListener("pointerdown", e => { if (!geneMenu.hidden && !geneMenu.contains(e.target) && !e.target.closest?.(".rgene")) geneMenu.hidden = true; });
 geneMenu.addEventListener("click", e => { if (e.target.closest("a")) geneMenu.hidden = true; });
-addEventListener("keydown", e => { if (e.key === "Escape") geneMenu.hidden = true; });
+addEventListener("keydown", e => { if (e.key === "Escape") { geneMenu.hidden = true; compPop.hidden = true; } });
 $e("ribbon-names").addEventListener("click", e => {
   const g = e.target.closest(".rgene");
   if (g?.dataset.symbol) { e.stopPropagation(); document.body.append(geneMenu); openGeneMenu(g.dataset.symbol, g); return; }
@@ -3841,27 +3844,52 @@ function updateCellsButton() {
 const compPop = Object.assign(document.createElement("div"), { id: "comp-pop", hidden: true });
 document.body.append(compPop);
 document.addEventListener("pointerdown", e => { if (!compPop.hidden && !compPop.contains(e.target) && e.target !== $e("cells-btn")) compPop.hidden = true; });
-function showCompWeights(id, N = 30) {
+function showCompWeights(id) {
   const w = expr.compWeights.get(id), names = expr.compGenes, name = expr.probeName.get(id);
-  const top = [...w.keys()].sort((a, b) => Math.abs(w[b]) - Math.abs(w[a])).slice(0, N);
-  const mx = Math.max(...top.map(g => Math.abs(w[g]))) || 1, zr = scView.zr ?? 2;
-  const list = Object.assign(document.createElement("div"), { className: "cw-list" });
-  for (const g of top) {
-    const cell = Object.assign(document.createElement("span"), { className: "cw-cell", title: `r = ${w[g].toFixed(3)}` });
-    cell.style.background = ribbonColour(w[g] / mx * zr);
-    list.append(cell, Object.assign(document.createElement("span"), { className: "cw-name", textContent: names[g] }),
-      Object.assign(document.createElement("span"), { className: "cw-val", textContent: `${w[g] >= 0 ? "+" : "−"}${Math.abs(w[g]).toFixed(2)}` }));
-  }
+  const order = [...w.keys()].sort((a, b) => Math.abs(w[b]) - Math.abs(w[a]));   // strongest first
+  const mx = Math.abs(w[order[0]]) || 1, zr = scView.zr ?? 2;
+  // Header: title, close, and the component's ribbon row (samples in the ribbon's order and colours)
+  const strip = document.createElement("canvas"); strip.className = "cw-strip";
+  const tiles = Object.assign(document.createElement("div"), { className: "cw-tiles" });
+  const count = Object.assign(document.createElement("span"), { className: "cw-count" });
   compPop.replaceChildren(
-    Object.assign(document.createElement("button"), { type: "button", className: "cw-x", textContent: "✕", title: "Close", onclick: () => (compPop.hidden = true) }),
-    Object.assign(document.createElement("div"), { className: "cw-title", textContent: `${name}: top ${top.length} genes by |weight|` }),
-    Object.assign(document.createElement("div"), { className: "cw-sub", textContent: `Weight: the gene's correlation with ${name}'s sample scores (colour scaled to the largest, ±${mx.toFixed(2)}).` }),
-    list);
+    Object.assign(document.createElement("div"), { className: "cw-head" }),
+    Object.assign(document.createElement("div"), { className: "cw-body" }));
+  const head = compPop.firstChild, body = compPop.lastChild;
+  head.append(
+    Object.assign(document.createElement("div"), { className: "cw-title", textContent: `${name}: genes by |weight|` }),
+    count,
+    Object.assign(document.createElement("button"), { type: "button", className: "cw-x", textContent: "✕ Close", title: "Close (Esc)", onclick: () => (compPop.hidden = true) }),
+    Object.assign(document.createElement("div"), { className: "cw-sub", textContent: `Weight: the gene's correlation with ${name}'s sample scores; tile colour scaled to the strongest (±${mx.toFixed(2)}). The strip is ${name} across all samples, as in the ribbon.` }),
+    strip);
+  body.append(tiles);
   compPop.hidden = false;
-  const r = $e("cells-btn").getBoundingClientRect();
-  compPop.style.left = `${Math.max(8, Math.min(innerWidth - compPop.offsetWidth - 8, r.left))}px`;
-  compPop.style.top = `${Math.max(8, r.top - compPop.offsetHeight - 8)}px`;
-}   // without a gene the window opens with its rows only
+  // The strip: each ribbon column's sample, coloured by its z-score (within its donor) on this component
+  const W = Math.max(1, strip.clientWidth), dpr = devicePixelRatio || 1, totW = Math.max(...ribbon.cols.map(c => c.x + c.w)) || 1;
+  strip.width = Math.round(W * dpr); strip.height = Math.round(28 * dpr);
+  const sc = strip.getContext("2d"), [lo, hi] = zRange;
+  for (const col of ribbon.cols) {
+    const z = cellValue(col.s, id);
+    sc.fillStyle = Number.isFinite(z) ? (() => { const i = Math.round((Math.max(-1, Math.min(1, (z - (lo + hi) / 2) / ((hi - lo) / 2))) + 1) / 2 * 255) * 3; return `rgb(${rgbLut[i]},${rgbLut[i + 1]},${rgbLut[i + 2]})`; })() : "rgba(255,255,255,0.1)";
+    sc.fillRect(Math.floor(col.x / totW * strip.width), 0, Math.max(1, Math.ceil(col.w / totW * strip.width)), strip.height);
+  }
+  // Tiles, strongest first; more are added as the list is scrolled
+  let shown = 0;
+  const more = () => {
+    const end = Math.min(order.length, shown + 150), frag = document.createDocumentFragment();
+    for (; shown < end; shown++) {
+      const g = order[shown], t = Object.assign(document.createElement("div"), { className: "cw-tile", title: `#${shown + 1} · ${names[g]}: r = ${w[g].toFixed(3)}` });
+      t.style.background = ribbonColour(w[g] / mx * zr);
+      t.append(Object.assign(document.createElement("b"), { textContent: names[g] }), Object.assign(document.createElement("span"), { textContent: `${w[g] >= 0 ? "+" : "−"}${Math.abs(w[g]).toFixed(2)}` }));
+      frag.append(t);
+    }
+    tiles.append(frag);
+    count.textContent = `${shown.toLocaleString()} of ${order.length.toLocaleString()} genes shown${shown < order.length ? " · scroll for more" : ""}`;
+  };
+  more();
+  body.onscroll = () => { if (shown < order.length && body.scrollTop + body.clientHeight > body.scrollHeight - 300) more(); };
+  while (shown < order.length && body.scrollHeight <= body.clientHeight + 50) more();   // fill a tall screen
+}
 // Excitatory (Ex) / inhibitory (In) tags: clusters by Siletti's neurotransmitter annotation
 // (GABA or glycine: inhibitory; otherwise VGLUT1-3: excitatory), superclusters by their type
 const SC_INHIB = new Set(["MGE interneuron", "CGE interneuron", "LAMP5-LHX6 and Chandelier", "Medium spiny neuron", "Eccentric medium spiny neuron", "Cerebellar inhibitory", "Midbrain-derived inhibitory"]);
