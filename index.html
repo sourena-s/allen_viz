@@ -225,6 +225,7 @@
   #comp-pop .cw-body { flex: 1; overflow: auto; padding: 8px 16px 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
   #comp-pop .cw-side-h { color: var(--muted); font-size: 11px; margin: 0 0 6px; }
   #comp-pop .cw-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 4px; }
+  #comp-pop .cw-tile:hover { outline: 2px solid #fff; outline-offset: -1px; }
   #comp-pop .cw-tile { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 5px 7px; border-radius: 3px; color: #fff; text-shadow: 0 0 3px rgba(0,0,0,0.85), 0 0 1px #000; font: 11px var(--mono); }
   #comp-pop .cw-tile b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   body.phone #comp-pop .cw-body { grid-template-columns: 1fr 1fr; gap: 8px; padding: 6px 8px; }
@@ -3389,7 +3390,7 @@ async function openSubcellularGrid(items, onNuc, opts = {}) {
 $e("sub-btn").addEventListener("click", () => openSubcellularGrid());
 
 $e("sub-dialog").addEventListener("click", e => { if (e.target === $e("sub-dialog")) $e("sub-dialog").close(); });
-document.addEventListener("pointerdown", e => { if (!geneMenu.hidden && !geneMenu.contains(e.target) && !e.target.closest?.(".rgene")) geneMenu.hidden = true; });
+document.addEventListener("pointerdown", e => { if (!geneMenu.hidden && !geneMenu.contains(e.target) && !e.target.closest?.(".rgene, .cw-tile")) geneMenu.hidden = true; });
 geneMenu.addEventListener("click", e => { if (e.target.closest("a")) geneMenu.hidden = true; });
 addEventListener("keydown", e => { if (e.key === "Escape") { geneMenu.hidden = true; closeCompWeights(); } });
 $e("ribbon-names").addEventListener("click", e => {
@@ -3855,7 +3856,7 @@ document.body.append(compPop);
 // zoom and pinch as ever); closing restores its rows and place
 function closeCompWeights() {
   if (compPop.hidden) return;
-  compPop.hidden = true; document.body.classList.remove("cw-open");
+  compPop.hidden = true; document.body.classList.remove("cw-open"); geneMenu.hidden = true; document.body.append(geneMenu);
   if (compPop.saved) { expr.corr = compPop.saved; compPop.saved = null; }
   renderRibbon(); layoutStage(); layoutRibbon(); drawRibbon();
 }
@@ -3882,7 +3883,8 @@ function showCompWeights(id) {
     col.more = () => {
       const end = Math.min(list.length, shown + 120), frag = document.createDocumentFragment();
       for (; shown < end; shown++) {
-        const g = list[shown], t = Object.assign(document.createElement("div"), { className: "cw-tile", title: `${names[g]}: r = ${w[g].toFixed(3)}` });
+        const g = list[shown], t = Object.assign(document.createElement("div"), { className: "cw-tile", title: `${names[g]}: r = ${w[g].toFixed(3)} (click: GeneCards / Protein Atlas)` });
+        t.dataset.symbol = names[g];
         t.style.background = ribbonColour(w[g] / mx * 2);
         t.append(Object.assign(document.createElement("b"), { textContent: names[g] }), Object.assign(document.createElement("span"), { textContent: `${w[g] >= 0 ? "+" : "−"}${Math.abs(w[g]).toFixed(2)}` }));
         frag.append(t);
@@ -3896,6 +3898,8 @@ function showCompWeights(id) {
   const body = Object.assign(document.createElement("div"), { className: "cw-body" });
   const L = side(pos, "Positive weights"), R = side(neg, "Negative weights");
   body.append(L, R);
+  // A tile opens the gene's GeneCards / Protein Atlas links (as in the single-cell window)
+  body.addEventListener("click", e => { const t = e.target.closest(".cw-tile"); if (t) { e.stopPropagation(); compPop.append(geneMenu); openGeneMenu(t.dataset.symbol, t); } });
   compPop.replaceChildren(head, body);
   compPop.hidden = false;
   const place = () => { compPop.style.top = `${Math.floor($e("ribbon").getBoundingClientRect().bottom)}px`; };
