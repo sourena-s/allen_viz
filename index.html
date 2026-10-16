@@ -810,6 +810,12 @@
     <span class="hint" id="comp-note">Every protein-coding gene at least this long is included (mean of its probes, z-scored within each donor). PCA, then FastICA on the same number of whitened components; each component becomes a ribbon row (PC1…, IC1…) of sample scores.</span>
   </div>
 
+  <div class="group" id="repair-group">
+    <span class="label">DNA repair genes</span>
+    <button class="text-button" id="repair-run" type="button">Retrieve DNA repair</button>
+    <span class="hint" id="repair-note">The 225 DNA repair genes of the ALGEBRA repair map (26 pathways): every Allen probe of them as a row, ordered so probes with similar expression across the brain sit together.</span>
+  </div>
+
   <div class="group">
     <span class="hint" id="controls-hint">Drag to rotate · middle- or right-drag to pan · scroll to zoom</span>
     <button class="text-button" id="legal-open" type="button">Data sources &amp; disclaimer</button>
@@ -5820,6 +5826,72 @@ async function showLongGenes() {
 }
 $e("long-run").addEventListener("click", showLongGenes);
 
+// Rows ordered by similarity: average-linkage clustering on a distance matrix (Lance-Williams
+// updates), listed in the dendrogram's leaf order, each join oriented so its touching ends are closest
+function seriate(D) {
+  const m = D.length; if (m < 3) return [...Array(m).keys()];
+  const C = D.map(r => Float64Array.from(r)), size = new Array(m).fill(1), leaves = [...Array(m).keys()].map(i => [i]), alive = new Set(leaves.keys());
+  while (alive.size > 1) {
+    let a = -1, b = -1, bd = Infinity;
+    for (const x of alive) for (const y of alive) if (y > x && C[x][y] < bd) { bd = C[x][y]; a = x; b = y; }
+    const A = leaves[a], B = leaves[b], opts = [[A, B], [A, [...B].reverse()], [[...A].reverse(), B], [[...A].reverse(), [...B].reverse()]];
+    const pick = opts.reduce((u, v) => (D[u[0].at(-1)][u[1][0]] <= D[v[0].at(-1)][v[1][0]] ? u : v));
+    leaves[a] = [...pick[0], ...pick[1]];
+    for (const z of alive) if (z !== a && z !== b) C[a][z] = C[z][a] = (C[a][z] * size[a] + C[b][z] * size[b]) / (size[a] + size[b]);
+    size[a] += size[b]; alive.delete(b);
+  }
+  return leaves[[...alive][0]];
+}
+// 1 - |r| between rows of values (samples), NaN read as 0
+function absCorrDistance(V) {
+  const n = V[0]?.length ?? 0, Z = V.map(v => { let m = 0, c = 0; for (const x of v) if (Number.isFinite(x)) { m += x; c++; } m /= c || 1; const z = Float64Array.from(v, x => (Number.isFinite(x) ? x - m : 0)); let s = 0; for (const x of z) s += x * x; s = Math.sqrt(s) || 1; for (let i = 0; i < n; i++) z[i] /= s; return z; });
+  return Z.map((a, i) => Z.map((b, j) => { if (i === j) return 0; let s = 0; for (let t = 0; t < n; t++) s += a[t] * b[t]; return 1 - Math.abs(s); }));
+}
+
+// ---------------------------------------------------------------- DNA repair genes
+// The repair map of the ALGEBRA portal (sourena-s.github.io/algebra-portal/#repair): each gene with the
+// pathway it serves most. Every Allen probe of them is a row; rows are ordered by brain-wide co-expression
+// (each probe's z-scores within each donor, all loaded samples, average-linkage on 1 - |r|)
+const REPAIR_PATHWAYS = ["Direct reversal", "Base excision repair", "Single-strand break repair", "ADP-ribose turnover", "DNA–protein crosslink repair", "Topoisomerase damage", "R-loop resolution", "Global-genome NER", "Transcription-coupled NER", "TFIIH and transcription", "Mismatch repair and repeats", "Structure-specific nucleases", "Nucleotide pool", "Break signalling and checkpoints", "Homologous recombination", "Non-homologous end joining", "Alternative end joining", "Fanconi anaemia and crosslinks", "Aldehyde clearance", "Fork protection and restart", "Origin licensing", "Translesion synthesis", "Template switching", "Ribonucleotide excision repair", "Telomere maintenance", "Mitochondrial genome"];
+const REPAIR_GENES = [["MGMT",0],["ALKBH2",0],["ALKBH3",0],["OGG1",1],["UNG",1],["SMUG1",1],["MUTYH",1],["MPG",1],["NTHL1",1],["NEIL1",1],["NEIL2",1],["NEIL3",1],["TDG",1],["MBD4",1],["APEX1",1],["POLB",1],["XRCC1",2],["LIG3",1],["PARP1",3],["PARP2",3],["FEN1",1],["LIG1",1],["PCNA",1],["POLD1",1],["POLE",1],["PNKP",2],["APTX",2],["TDP1",2],["ADPRS",3],["PARP3",3],["HPF1",3],["PARG",3],["OARD1",3],["MACROD1",3],["MACROD2",3],["CHD1L",3],["SPRTN",4],["GCNA",4],["FAM111A",4],["TDP2",4],["ZNF451",4],["MRE11",13],["RBBP8",14],["ERCC1",7],["ERCC4",7],["MUS81",11],["TOP1",5],["TOP1MT",5],["TOP2A",5],["TOP2B",5],["TOP3A",14],["TOP3B",5],["SETX",6],["RNASEH1",6],["AQR",6],["BRCA1",14],["BRCA2",14],["THOC2",6],["THOC6",6],["DDX19",6],["DHX9",6],["XPC",7],["RAD23B",7],["CETN2",7],["DDB1",7],["DDB2",7],["XPA",7],["RPA",7],["ERCC3",9],["ERCC2",9],["GTF2H1",7],["GTF2H2",7],["GTF2H3",7],["GTF2H4",7],["GTF2H5",7],["ERCC5",7],["POLK",21],["ERCC6",8],["ERCC8",8],["UVSSA",8],["ELOF1",8],["STK19",8],["GTF2E2",9],["MPLKIP",9],["RNF113A",9],["MSH2",10],["MSH6",10],["MSH3",10],["MLH1",10],["PMS2",10],["PMS1",10],["MLH3",10],["EXO1",10],["FAN1",10],["EME1",11],["SLX1",11],["SLX4",17],["GEN1",11],["DNA2",14],["DCLRE1C",15],["ITPA",12],["NUDT1",12],["DUT",12],["SAMHD1",12],["NUDT15",12],["DCTPP1",12],["RRM2B",12],["PNP",12],["ATM",13],["ATR",13],["ATRIP",13],["RAD50",13],["NBN",13],["CHEK1",13],["CHEK2",13],["TP53",13],["H2AX",13],["MDC1",13],["RNF8",13],["RNF168",13],["TP53BP1",13],["BLM",14],["WRN",14],["RECQL4",14],["RMI1",14],["RMI2",14],["BARD1",14],["PALB2",14],["RAD51",14],["RAD51B",14],["RAD51C",14],["RAD51D",14],["XRCC2",14],["XRCC3",14],["RAD54L",14],["XRCC6",15],["XRCC5",15],["PRKDC",15],["XRCC4",15],["LIG4",15],["NHEJ1",15],["PAXX",15],["POLL",15],["POLM",15],["ERCC6L2",15],["POLQ",16],["RAD52",16],["FANCA",17],["FANCB",17],["FANCC",17],["FANCE",17],["FANCF",17],["FANCG",17],["FANCL",17],["UBE2T",17],["FANCM",17],["FANCD2",17],["FANCI",17],["BRIP1",17],["MAD2L2",21],["RFWD3",17],["ADH5",18],["ALDH2",18],["ESD",18],["ADH1B",18],["ALDH1A1",18],["SMARCAL1",19],["ZRANB3",19],["HLTF",22],["WRNIP1",19],["RECQL",19],["SLF1",19],["SLF2",19],["SMC5",19],["SMC6",19],["PRIMPOL",19],["ORC1",20],["ORC4",20],["ORC6",20],["CDT1",20],["CDC6",20],["GMNN",20],["CDC45",20],["MCM4",20],["MCM5",20],["GINS1",20],["DONSON",20],["POLH",21],["POLI",21],["REV1",21],["REV3L",21],["RAD18",21],["UBE2N",22],["UBE2V2",22],["SHPRH",22],["RNASEH2A",23],["RNASEH2B",23],["RNASEH2C",23],["TERT",24],["TERC",24],["DKC1",24],["NOP10",24],["NHP2",24],["PARN",24],["RTEL1",24],["TINF2",24],["TERF1",24],["TERF2",24],["POT1",24],["ACD",24],["CTC1",24],["STN1",24],["TEN1",24],["POLG",25],["POLG2",25],["TWNK",25],["TFAM",25],["SSBP1",25],["MGME1",25],["TYMP",25],["TK2",25],["DGUOK",25],["SLC25A4",25],["ABAT",25],["APEX2",25]];
+async function showRepairGenes() {
+  const note = $e("repair-note");
+  if (!expr.byDonor.size) { note.textContent = "Load donor data first."; return; }
+  setBusy("DNA repair genes…");
+  try {
+    await new Promise(r => setTimeout(r, 30));
+    await loadHgnc().catch(() => null);
+    const allenUpper = new Map([...expr.bySymbol.keys()].map(k => [k.toUpperCase(), k]));
+    const ids = [], pathOf = new Map(), missing = [];
+    for (const [sym, q] of REPAIR_GENES) {
+      const g = { sym, entrez: hgnc?.genes.get(sym.toUpperCase())?.entrez };
+      const a = allenSymbolFor(g, allenUpper), probes = a ? (expr.bySymbol.get(a) ?? []).filter(hasProbe) : [];
+      if (!probes.length) { missing.push(sym); continue; }
+      if (a !== sym) (expr.currentName ??= new Map()).set(a, sym);
+      for (const id of probes) { ids.push(id); pathOf.set(id, REPAIR_PATHWAYS[q]); }
+    }
+    if (!ids.length) { note.textContent = "None of the repair genes has probes in the loaded data."; return; }
+    // Each probe across all loaded samples: z within each donor, donors one after another
+    const donors = donorClouds.filter(c => expr.byDonor.has(c.userData.donor)).map(c => ({ d: c.userData.donor, n: c.userData.items.length }));
+    const V = ids.map(id => { const out = []; for (const { d, n } of donors) { const x = expr.byDonor.get(d).get(id);
+      if (!x) { for (let i = 0; i < n; i++) out.push(NaN); continue; } const { mean, sd } = meanSd(x); for (const v of x) out.push(sd > 0 ? (v - mean) / sd : NaN); } return out; });
+    setBusy("DNA repair genes: ordering by co-expression…"); await new Promise(r => setTimeout(r, 30));
+    const order = seriate(absCorrDistance(V)).map(i => ids[i]);
+    expr.corr = { query: "DNA repair genes", ids: order, r: new Map() };
+    expr.repairPath = pathOf;
+    searchBox.value = expr.corr.query;
+    showProbeBox(expr.corr.query, order);
+    autoZ(order.slice(0, 2000));
+    applyColouring();
+    const nGenes = new Set(order.map(symbolOf)).size;
+    const msg = `DNA repair genes (ALGEBRA repair map): ${nGenes} of ${REPAIR_GENES.length} with Allen probes, ${order.length} probes (one row each), ordered so probes with similar expression across the brain sit together.${missing.length ? ` Not in the Allen data: ${missing.join(", ")}.` : ""}`;
+    note.textContent = msg; setScaleNote(msg);
+    setPanelOpen(false);
+    if (document.body.classList.contains("ribbon-min")) setRibbonMin(false);
+  } finally { setBusy(null); }
+}
+$e("repair-run").addEventListener("click", showRepairGenes);
+
 // ---------------------------------------------------------------- PCA / ICA of long genes
 // Genes: every protein-coding gene at least the given length (gene_lengths.tsv.gz) with Allen probes;
 // a gene's value per sample is the mean over its probes of the probe's z-score within the donor.
@@ -5984,24 +6056,7 @@ async function runComponents() {
     for (const id of expr.compIds ?? []) { expr.bySymbol.delete(expr.probeName.get(id)); expr.probeName.delete(id); }
     // ICs of every dimension pooled and ordered so similar components sit together: average-linkage
     // clustering on 1 - |r| between their sample scores, rows in the dendrogram's leaf order
-    const icOrder = (() => {
-      const V = res.ics, m = V.length; if (m < 3) return V.map((_, i) => i);
-      const corr = (a, b) => { let sa = 0, sb = 0, sab = 0, ma = 0, mb = 0; for (let i = 0; i < n; i++) { ma += a[i]; mb += b[i]; } ma /= n; mb /= n; for (let i = 0; i < n; i++) { const x = a[i] - ma, y = b[i] - mb; sa += x * x; sb += y * y; sab += x * y; } return sab / Math.sqrt(sa * sb || 1); };
-      const D = Array.from({ length: m }, () => new Float64Array(m));
-      for (let a = 0; a < m; a++) for (let b = a + 1; b < m; b++) D[a][b] = D[b][a] = 1 - Math.abs(corr(V[a], V[b]));
-      let cl = V.map((_, i) => ({ leaves: [i] }));
-      const dist = (x, y) => { let s = 0; for (const a of x.leaves) for (const b of y.leaves) s += D[a][b]; return s / (x.leaves.length * y.leaves.length); };
-      while (cl.length > 1) {
-        let best = [0, 1], bd = Infinity;
-        for (let a = 0; a < cl.length; a++) for (let b = a + 1; b < cl.length; b++) { const d = dist(cl[a], cl[b]); if (d < bd) { bd = d; best = [a, b]; } }
-        const [a, b] = best, A = cl[a], B = cl[b];
-        // join ends that are closest, so neighbours across the join are similar too
-        const opts = [[A.leaves, B.leaves], [A.leaves, [...B.leaves].reverse()], [[...A.leaves].reverse(), B.leaves], [[...A.leaves].reverse(), [...B.leaves].reverse()]];
-        const pick = opts.reduce((x, y) => (D[x[0].at(-1)][x[1][0]] <= D[y[0].at(-1)][y[1][0]] ? x : y));
-        cl = cl.filter((_, i) => i !== a && i !== b); cl.push({ leaves: [...pick[0], ...pick[1]] });
-      }
-      return cl[0].leaves;
-    })();
+    const icOrder = seriate(absCorrDistance(res.ics));
     const icName = c => (dims.length > 1 ? `IC${res.icNum[c]} DIM${res.icDim[c]}` : `IC${res.icNum[c]}`);
     const ids = [], vals = [...res.pcs.map((v, c) => [`PC${c + 1}`, v, c]), ...icOrder.map(c => [icName(c), res.ics[c], res.pcs.length + c])];
     expr.compDim = new Map(res.ics.map((_, c) => [`__${icName(c).replace(" ", "_")}`, res.icDim[c]]));
