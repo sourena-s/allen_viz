@@ -801,6 +801,7 @@
 
   <div class="group" id="comp-group">
     <span class="label">PCA / ICA of long genes</span>
+    <div class="row"><input type="checkbox" id="comp-repair"><label for="comp-repair">Use the DNA repair genes instead (225, the repair map)</label></div>
     <label class="label" for="comp-len">Minimum gene length (kb)</label>
     <input type="text" id="comp-len" value="500" inputmode="decimal" autocomplete="off">
     <span class="hint" id="comp-count"></span>
@@ -5900,6 +5901,13 @@ $e("repair-run").addEventListener("click", showRepairGenes);
 // Each component is added to every donor's rows as a computed probe (__PC1…, __IC1…) of sample
 // scores, so the ribbon, the brain colours and every other view treat it as a probe.
 async function compGenes() {
+  if ($e("comp-repair").checked) {   // the repair map's genes instead of a length threshold
+    await loadHgnc().catch(() => null);
+    const allenUpper = new Map([...expr.bySymbol.keys()].map(k => [k.toUpperCase(), k]));
+    const over = REPAIR_GENES.map(([sym]) => ({ sym, entrez: hgnc?.genes.get(sym.toUpperCase())?.entrez }));
+    const withProbes = expr.byDonor.size ? over.map(g => ({ g, sym: allenSymbolFor(g, allenUpper) })).filter(x => x.sym && (expr.bySymbol.get(x.sym) ?? []).some(hasProbe)) : null;
+    return { repair: true, total: REPAIR_GENES.length, over, withProbes };
+  }
   const L = +$e("comp-len").value * 1000;
   const table = await loadGeneLengths(); await loadHgnc().catch(() => null);
   const over = table.filter(g => g.len >= L);
@@ -5909,6 +5917,12 @@ async function compGenes() {
 }
 async function compCount() {
   const n = $e("comp-count");
+  $e("comp-len").disabled = $e("comp-repair").checked;
+  if ($e("comp-repair").checked) {
+    const { withProbes } = await compGenes();
+    n.textContent = `All ${REPAIR_GENES.length} DNA repair genes of the repair map` + (withProbes ? ` (${withProbes.length} with Allen probes in the loaded data).` : " (load donor data to count those with Allen probes).");
+    return;
+  }
   if (!(+$e("comp-len").value >= 0) || $e("comp-len").value.trim() === "") { n.textContent = "Enter a length in kb, e.g. 500."; return; }
   try {
     const { total, over, withProbes } = await compGenes();
@@ -5916,6 +5930,7 @@ async function compCount() {
   } catch { n.textContent = "Could not read the gene length table."; }
 }
 $e("comp-len").addEventListener("input", compCount);
+$e("comp-repair").addEventListener("change", compCount);
 $e("comp-len").addEventListener("focus", compCount, { once: true });
 const COMP_WORKER = `
 const orth = (A, n, l) => {   // modified Gram-Schmidt on the l columns (column-major, length n each)
@@ -6025,7 +6040,7 @@ async function runComponents() {
     let G;
     try { G = await compGenes(); } catch { note.textContent = "Could not read the gene length table."; return; }
     const genes = G.withProbes;
-    if (genes.length < k + 1) { note.textContent = `Only ${genes.length} genes with probes at this length: lower the threshold or the number of components.`; return; }
+    if (genes.length < k + 1) { note.textContent = `Only ${genes.length} genes with probes${G.repair ? "" : " at this length: lower the threshold or"}${G.repair ? ": lower" : ""} the number of components.`; return; }
     // Samples of the loaded donors (in donor order); per gene, the mean of its probes' within-donor z
     const donors = donorClouds.filter(c => expr.byDonor.has(c.userData.donor)).map(c => ({ d: c.userData.donor, n: c.userData.items.length }));
     const n = donors.reduce((a, d) => a + d.n, 0), p = genes.length, X = new Float32Array(n * p);
@@ -6071,12 +6086,13 @@ async function runComponents() {
     expr.compWeights = wOf; expr.compSep = `__IC`;   // a line between the PCs and the ICs
     expr.compGenes = genes.map(x => x.g.sym);   // current official symbols, in the weights' order
     const r = new Map([...res.varExp.map((x, c) => [`__PC${c + 1}`, x * 100])]);
-    expr.corr = { query: `PCA / ICA · ${p.toLocaleString()} genes ≥ ${G.L / 1000} kb`, ids, r, keep: true };
+    const what = G.repair ? `${p.toLocaleString()} DNA repair genes` : `${p.toLocaleString()} genes ≥ ${G.L / 1000} kb`;
+    expr.corr = { query: `PCA / ICA · ${what}`, ids, r, keep: true };
     searchBox.value = "";
     showProbeBox(expr.corr.query, ids);
     autoZ(ids);
     applyColouring();
-    const msg = `PCA and FastICA of ${p.toLocaleString()} protein-coding genes at least ${G.L / 1000} kb long (of ${G.over.length.toLocaleString()} that long; those with Allen probes), ${n.toLocaleString()} samples from ${donors.length} donor${donors.length > 1 ? "s" : ""}: ${k} PCs (the number before each is the % of variance explained; together ${(res.varExp.reduce((a, b) => a + b, 0) * 100).toFixed(1)}%), then a line and the ICs of ${dims.length > 1 ? `dimensions ${dims.join(", ")} pooled, ordered so components with similar sample scores sit together` : `dimension ${k}, most non-Gaussian first`}. Rows are sample scores; click one to show it on the brain.`;
+    const msg = `PCA and FastICA of ${G.repair ? `${p.toLocaleString()} DNA repair genes (of the repair map's ${G.total}; those with Allen probes)` : `${p.toLocaleString()} protein-coding genes at least ${G.L / 1000} kb long (of ${G.over.length.toLocaleString()} that long; those with Allen probes)`}, ${n.toLocaleString()} samples from ${donors.length} donor${donors.length > 1 ? "s" : ""}: ${k} PCs (the number before each is the % of variance explained; together ${(res.varExp.reduce((a, b) => a + b, 0) * 100).toFixed(1)}%), then a line and the ICs of ${dims.length > 1 ? `dimensions ${dims.join(", ")} pooled, ordered so components with similar sample scores sit together` : `dimension ${k}, most non-Gaussian first`}. Rows are sample scores; click one to show it on the brain.`;
     note.textContent = msg; setScaleNote(msg);
     setPanelOpen(false);
     if (document.body.classList.contains("ribbon-min")) setRibbonMin(false);
