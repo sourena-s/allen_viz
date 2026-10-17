@@ -225,6 +225,9 @@
   #comp-pop .cw-mh { position: sticky; top: 0; z-index: 1; background: #1c1f23; height: 150px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 4px; }
   #comp-pop .cw-mh span { writing-mode: vertical-rl; transform: rotate(180deg); font: 10px var(--sans); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-height: 146px; }
   #comp-pop .cw-mc { border-left: 1px solid rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: center; }
+  #comp-pop .cw-mc, #comp-pop .cw-mh { cursor: pointer; }
+  #comp-pop .cw-mc.hl, #comp-pop .cw-mh.hl { background: rgba(255,255,255,0.09); }
+  #comp-pop .cw-matrix .cw-tile.hl { box-shadow: 0 0 0 2px rgba(255,255,255,0.35); }
   #comp-pop .cw-mc.on::after { content: ""; width: 11px; height: 11px; border-radius: 2px; background: #ffd21f; }
   body.phone #comp-pop .cw-matrix { gap: 3px 1px; }
   body.phone #comp-pop .cw-matrix .cw-tile { padding: 4px 5px; font-size: 10px; }
@@ -3948,7 +3951,15 @@ function showCompWeights(id) {
       grid.style.gridTemplateColumns = document.body.classList.contains("phone") ? `92px repeat(${cols.length}, minmax(9px, 1fr))` : `128px repeat(${cols.length}, minmax(14px, 1fr))`;
       grid.append(Object.assign(document.createElement("div"), { className: "cw-mh cw-mh0" }),
         ...cols.map(q => Object.assign(document.createElement("div"), { className: "cw-mh", title: REPAIR_PATHWAYS[q], innerHTML: "" })));
-      [...grid.children].slice(1).forEach((h, k) => h.append(Object.assign(document.createElement("span"), { textContent: REPAIR_PATHWAYS[cols[k]] })));
+      [...grid.children].slice(1).forEach((h, k) => { h.dataset.c = k; h.append(Object.assign(document.createElement("span"), { textContent: REPAIR_PATHWAYS[cols[k]] })); });
+      // A click on a cell lights its row and column in faint grey (a header: its column; again: off)
+      let sel = null;
+      grid.addEventListener("click", e => {
+        const el = e.target.closest(".cw-mc, .cw-mh"); if (!el || !el.dataset.c && el.dataset.r == null) return;
+        const next = { r: el.dataset.r ?? null, c: el.dataset.c ?? null };
+        sel = sel && sel.r === next.r && sel.c === next.c ? null : next;
+        for (const x of grid.children) x.classList.toggle("hl", !!sel && ((sel.r != null && x.dataset.r === sel.r) || (sel.c != null && x.dataset.c === sel.c)));
+      });
       let shown = 0;
       grid.more = () => {
         const end = Math.min(list.length, shown + 80), frag = document.createDocumentFragment();
@@ -3957,7 +3968,8 @@ function showCompWeights(id) {
           const t = Object.assign(document.createElement("div"), { className: "cw-tile", title: `${names[g]}: r = ${w[g].toFixed(3)} (click: GeneCards / Protein Atlas)` });
           t.dataset.symbol = names[g]; t.style.background = ribbonColour(w[g] / mx * 2);
           t.append(Object.assign(document.createElement("b"), { textContent: names[g] }), Object.assign(document.createElement("span"), { textContent: `${w[g] >= 0 ? "+" : "−"}${Math.abs(w[g]).toFixed(2)}` }));
-          frag.append(t, ...cols.map(q => Object.assign(document.createElement("div"), { className: `cw-mc${mine.has(q) ? " on" : ""}`, title: mine.has(q) ? `${names[g]} · ${REPAIR_PATHWAYS[q]}` : "" })));
+          t.dataset.r = shown;
+          frag.append(t, ...cols.map((q, k) => { const c = Object.assign(document.createElement("div"), { className: `cw-mc${mine.has(q) ? " on" : ""}`, title: mine.has(q) ? `${names[g]} · ${REPAIR_PATHWAYS[q]}` : "" }); c.dataset.r = shown; c.dataset.c = k; if (sel?.c != null && +sel.c === k) c.classList.add("hl"); return c; }));
         }
         grid.append(frag);
         return shown < list.length;
@@ -3965,7 +3977,7 @@ function showCompWeights(id) {
       grid.more();
       return grid;
     };
-    let sign = pos.length >= neg.length ? 1 : -1;
+    let sign = 1;   // positive weights first
     const tog = Object.assign(document.createElement("button"), { type: "button", className: "cw-sign" });
     const show = () => {
       tog.textContent = sign > 0 ? `Positive (${pos.length}) ⇄` : `Negative (${neg.length}) ⇄`;
