@@ -220,6 +220,12 @@
   body.cw-open #ribbon .ribbon-head { display: none; }   /* only the component row, no gene box or buttons */
   body.cw-open #ribbon { padding-top: 4px; padding-bottom: 2px; height: auto; top: var(--cw-top, 0px) !important; left: 0 !important; right: 0 !important; bottom: auto !important; z-index: 41; border-radius: 0; max-height: none; background: #2b3036; backdrop-filter: none; }
   #comp-pop .cw-gap { flex: none; }
+  #comp-pop .cw-body.cw-repair { display: block; }
+  #comp-pop .cw-rows { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); gap: 4px 16px; }
+  #comp-pop .cw-row { display: grid; grid-template-columns: 128px 1fr; gap: 6px; align-items: start; }
+  #comp-pop .cw-paths { display: flex; flex-wrap: wrap; gap: 3px; padding-top: 2px; }
+  #comp-pop .cw-path { font: 10px var(--sans); color: var(--ink); background: #3a4048; border: 1px solid var(--edge); border-radius: 3px; padding: 2px 6px; white-space: nowrap; }
+  #comp-pop .cw-sign { font: 12px var(--sans); color: #222; background: #ffd21f; border: 0; border-radius: 5px; padding: 4px 10px; cursor: pointer; margin-left: auto; margin-right: 8px; font-weight: 600; }
   body.cw-open #ribbon .ribbon-names { padding-bottom: 0; align-self: start; }
   #comp-pop .cw-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; border-bottom: 1px solid var(--edge); }
   #comp-pop .cw-title { font-weight: 600; font-size: 15px; }
@@ -3923,8 +3929,48 @@ function showCompWeights(id) {
     return col;
   };
   const body = Object.assign(document.createElement("div"), { className: "cw-body" });
-  const L = side(pos, "Positive weights"), R = side(neg, "Negative weights");
-  body.append(L, R);
+  let L, R;
+  if (expr.compRepair) {
+    // DNA repair input: one sign at a time (toggle in the corner), each gene a row with a tile per repair
+    // pathway it takes part in
+    const paths = new Map(REPAIR_GENES.map(([sym, , ps]) => [sym.toUpperCase(), ps.map(q => REPAIR_PATHWAYS[q])]));
+    body.classList.add("cw-repair");
+    const rows = list => {
+      const col = Object.assign(document.createElement("div"), { className: "cw-rows" });
+      let shown = 0;
+      col.more = () => {
+        const end = Math.min(list.length, shown + 80), frag = document.createDocumentFragment();
+        for (; shown < end; shown++) {
+          const g = list[shown], row = Object.assign(document.createElement("div"), { className: "cw-row" });
+          const t = Object.assign(document.createElement("div"), { className: "cw-tile", title: `${names[g]}: r = ${w[g].toFixed(3)} (click: GeneCards / Protein Atlas)` });
+          t.dataset.symbol = names[g]; t.style.background = ribbonColour(w[g] / mx * 2);
+          t.append(Object.assign(document.createElement("b"), { textContent: names[g] }), Object.assign(document.createElement("span"), { textContent: `${w[g] >= 0 ? "+" : "−"}${Math.abs(w[g]).toFixed(2)}` }));
+          const ps = Object.assign(document.createElement("div"), { className: "cw-paths" });
+          for (const name of paths.get(names[g].toUpperCase()) ?? []) ps.append(Object.assign(document.createElement("span"), { className: "cw-path", textContent: name }));
+          row.append(t, ps); frag.append(row);
+        }
+        col.append(frag);
+        return shown < list.length;
+      };
+      col.more();
+      return col;
+    };
+    let sign = pos.length >= neg.length ? 1 : -1;
+    const tog = Object.assign(document.createElement("button"), { type: "button", className: "cw-sign" });
+    const show = () => {
+      tog.textContent = sign > 0 ? `Positive (${pos.length}) ⇄` : `Negative (${neg.length}) ⇄`;
+      tog.title = `Showing the ${sign > 0 ? "positive" : "negative"} weights; click for the ${sign > 0 ? "negative" : "positive"}`;
+      L = rows(sign > 0 ? pos : neg); R = { more: () => false };
+      body.replaceChildren(L); body.scrollTop = 0;
+      for (let i = 0; i < 20 && body.scrollHeight <= body.clientHeight + 50; i++) if (!L.more()) break;
+    };
+    tog.onclick = () => { sign = -sign; show(); };
+    head.insertBefore(tog, head.lastChild);
+    compPop.cwShow = show;
+  } else {
+    L = side(pos, "Positive weights"); R = side(neg, "Negative weights");
+    body.append(L, R);
+  }
   // A tile opens the gene's GeneCards / Protein Atlas links (as in the single-cell window)
   body.addEventListener("click", e => { const t = e.target.closest(".cw-tile"); if (t) { e.stopPropagation(); compPop.append(geneMenu); openGeneMenu(t.dataset.symbol, t); } });
   // Title and Close on top, then the ribbon (one row: labels plus the row, scrolling and zooming only
@@ -3941,6 +3987,7 @@ function showCompWeights(id) {
     gap.style.height = `${Math.round($e("ribbon").getBoundingClientRect().height)}px`;
   };
   place(); requestAnimationFrame(place);
+  if (compPop.cwShow) { compPop.cwShow(); compPop.cwShow = null; }
   body.onscroll = () => { if (body.scrollTop + body.clientHeight > body.scrollHeight - 300) { L.more(); R.more(); } };
   for (let i = 0; i < 20 && body.scrollHeight <= body.clientHeight + 50; i++) if (!(L.more() | R.more())) break;   // fill a tall screen
 }
@@ -5880,7 +5927,7 @@ function absCorrDistance(V) {
 // R-loop, chromatin-at-breaks and repair-linked neurodegeneration genes. Every Allen probe of them is a row; rows are ordered by brain-wide co-expression
 // (each probe's z-scores within each donor, all loaded samples, average-linkage on 1 - |r|)
 const REPAIR_PATHWAYS = ["Direct reversal", "Base excision repair", "Single-strand break repair", "ADP-ribose turnover", "DNA–protein crosslink repair", "Topoisomerase damage", "R-loop resolution", "Global-genome NER", "Transcription-coupled NER", "TFIIH and transcription", "Mismatch repair and repeats", "Structure-specific nucleases", "Nucleotide pool", "Break signalling and checkpoints", "Homologous recombination", "Non-homologous end joining", "Alternative end joining", "Fanconi anaemia and crosslinks", "Aldehyde clearance", "Fork protection and restart", "Origin licensing", "Translesion synthesis", "Template switching", "Ribonucleotide excision repair", "Telomere maintenance", "Mitochondrial genome", "Chromatin at breaks", "Neurodegeneration genes linked to repair"];
-const REPAIR_GENES = [["MGMT",0],["ALKBH2",0],["ALKBH3",0],["OGG1",1],["UNG",1],["SMUG1",1],["MUTYH",1],["MPG",1],["NTHL1",1],["NEIL1",1],["NEIL2",1],["NEIL3",1],["TDG",1],["MBD4",1],["APEX1",1],["POLB",1],["XRCC1",2],["LIG3",1],["PARP1",3],["PARP2",3],["FEN1",1],["LIG1",1],["PCNA",1],["POLD1",1],["POLE",1],["PNKP",2],["APTX",2],["TDP1",2],["ADPRS",3],["PARP3",3],["HPF1",3],["PARG",3],["OARD1",3],["MACROD1",3],["MACROD2",3],["CHD1L",3],["SPRTN",4],["GCNA",4],["FAM111A",4],["TDP2",4],["ZNF451",4],["MRE11",13],["RBBP8",14],["ERCC1",7],["ERCC4",7],["MUS81",11],["TOP1",5],["TOP1MT",5],["TOP2A",5],["TOP2B",5],["TOP3A",14],["TOP3B",5],["SETX",6],["RNASEH1",6],["AQR",6],["BRCA1",14],["BRCA2",14],["THOC2",6],["THOC6",6],["DDX19A",6],["DDX19B",6],["DHX9",6],["XPC",7],["RAD23B",7],["CETN2",7],["DDB1",7],["DDB2",7],["XPA",7],["ERCC3",9],["ERCC2",9],["GTF2H1",7],["GTF2H2",7],["GTF2H3",7],["GTF2H4",7],["GTF2H5",7],["ERCC5",7],["POLK",21],["ERCC6",8],["ERCC8",8],["UVSSA",8],["ELOF1",8],["STK19",8],["GTF2E2",9],["MPLKIP",9],["RNF113A",9],["MSH2",10],["MSH6",10],["MSH3",10],["MLH1",10],["PMS2",10],["PMS1",10],["MLH3",10],["EXO1",10],["FAN1",10],["EME1",11],["SLX1A",11],["SLX1B",11],["SLX4",17],["GEN1",11],["DNA2",14],["DCLRE1C",15],["ITPA",12],["NUDT1",12],["DUT",12],["SAMHD1",12],["NUDT15",12],["DCTPP1",12],["RRM2B",12],["PNP",12],["ATM",13],["ATR",13],["ATRIP",13],["RAD50",13],["NBN",13],["CHEK1",13],["CHEK2",13],["TP53",13],["H2AX",13],["MDC1",13],["RNF8",13],["RNF168",13],["TP53BP1",13],["BLM",14],["WRN",14],["RECQL4",14],["RMI1",14],["RMI2",14],["BARD1",14],["PALB2",14],["RAD51",14],["RAD51B",14],["RAD51C",14],["RAD51D",14],["XRCC2",14],["XRCC3",14],["RAD54L",14],["XRCC6",15],["XRCC5",15],["PRKDC",15],["XRCC4",15],["LIG4",15],["NHEJ1",15],["PAXX",15],["POLL",15],["POLM",15],["ERCC6L2",15],["POLQ",16],["RAD52",16],["FANCA",17],["FANCB",17],["FANCC",17],["FANCE",17],["FANCF",17],["FANCG",17],["FANCL",17],["UBE2T",17],["FANCM",17],["FANCD2",17],["FANCI",17],["BRIP1",17],["MAD2L2",21],["RFWD3",17],["ADH5",18],["ALDH2",18],["ESD",18],["ADH1B",18],["ALDH1A1",18],["SMARCAL1",19],["ZRANB3",19],["HLTF",22],["WRNIP1",19],["RECQL",19],["SLF1",19],["SLF2",19],["SMC5",19],["SMC6",19],["PRIMPOL",19],["ORC1",20],["ORC4",20],["ORC6",20],["CDT1",20],["CDC6",20],["GMNN",20],["CDC45",20],["MCM4",20],["MCM5",20],["GINS1",20],["DONSON",20],["POLH",21],["POLI",21],["REV1",21],["REV3L",21],["RAD18",21],["UBE2N",22],["UBE2V2",22],["SHPRH",22],["RNASEH2A",23],["RNASEH2B",23],["RNASEH2C",23],["TERT",24],["TERC",24],["DKC1",24],["NOP10",24],["NHP2",24],["PARN",24],["RTEL1",24],["TINF2",24],["TERF1",24],["TERF2",24],["POT1",24],["ACD",24],["CTC1",24],["STN1",24],["TEN1",24],["POLG",25],["POLG2",25],["TWNK",25],["TFAM",25],["SSBP1",25],["MGME1",25],["TYMP",25],["TK2",25],["DGUOK",25],["SLC25A4",25],["ABAT",25],["APEX2",25],["THOC1",6],["THOC3",6],["THOC5",6],["THOC7",6],["ALYREF",6],["DDX5",6],["DDX21",6],["DDX23",6],["DDX39B",6],["DDX41",6],["DDX1",6],["TDRD3",6],["SRSF1",6],["XRN2",6],["ADAR",6],["RPA1",7],["RPA2",7],["RPA3",7],["MMS19",7],["RAD23A",7],["POLD2",10],["POLD3",10],["POLD4",10],["RFC1",10],["RFC2",10],["RFC3",10],["RFC4",10],["RFC5",10],["RAD54B",14],["ABRAXAS1",14],["UIMC1",14],["SEM1",14],["BRCC3",14],["RAD9A",13],["HUS1",13],["RAD1",13],["RAD17",13],["TOPBP1",13],["CLSPN",13],["TIMELESS",13],["TIPIN",13],["MDM2",13],["CDKN1A",13],["USP1",13],["WDR48",13],["DNTT",15],["APLF",15],["CYREN",15],["FAAP20",17],["FAAP24",17],["FAAP100",17],["CENPS",17],["CENPX",17],["POLN",21],["TERF2IP",24],["WRAP53",24],["POLRMT",25],["SMARCA5",26],["SMARCAD1",26],["INO80",26],["KAT5",26],["SIRT6",26],["HMGB1",26],["ATXN3",27],["HTT",27],["C9orf72",27],["FUS",27],["TARDBP",27]];
+const REPAIR_GENES = [["MGMT",0,[0]],["ALKBH2",0,[0]],["ALKBH3",0,[0]],["OGG1",1,[1,25]],["UNG",1,[1,25]],["SMUG1",1,[1]],["MUTYH",1,[1]],["MPG",1,[1]],["NTHL1",1,[1]],["NEIL1",1,[1,25]],["NEIL2",1,[1,25]],["NEIL3",1,[1]],["TDG",1,[1]],["MBD4",1,[1]],["APEX1",1,[1,25]],["POLB",1,[1,2]],["XRCC1",2,[1,2,3,16]],["LIG3",1,[1,2,16,25]],["PARP1",3,[1,2,3,16]],["PARP2",3,[1,3]],["FEN1",1,[1,11,23]],["LIG1",1,[1,7,10,16,23]],["PCNA",1,[1,7,10,21,22,23]],["POLD1",1,[1,7,10]],["POLE",1,[1,7]],["PNKP",2,[2]],["APTX",2,[2]],["TDP1",2,[2,4]],["ADPRS",3,[2,3]],["PARP3",3,[3]],["HPF1",3,[3]],["PARG",3,[3]],["OARD1",3,[3]],["MACROD1",3,[3]],["MACROD2",3,[3]],["CHD1L",3,[3]],["SPRTN",4,[4]],["GCNA",4,[4]],["FAM111A",4,[4]],["TDP2",4,[4]],["ZNF451",4,[4]],["MRE11",13,[4,11,13,16]],["RBBP8",14,[4,14,16]],["ERCC1",7,[4,7,11]],["ERCC4",7,[4,7,11,17]],["MUS81",11,[4,11,14]],["TOP1",5,[5]],["TOP1MT",5,[5]],["TOP2A",5,[5]],["TOP2B",5,[5]],["TOP3A",14,[5,14,25]],["TOP3B",5,[5]],["SETX",6,[6]],["RNASEH1",6,[6,23,25]],["AQR",6,[6]],["BRCA1",14,[6,14,17]],["BRCA2",14,[6,14,17,19]],["THOC2",6,[6]],["THOC6",6,[6]],["DDX19A",6,[6]],["DDX19B",6,[6]],["DHX9",6,[6]],["XPC",7,[7]],["RAD23B",7,[7]],["CETN2",7,[7]],["DDB1",7,[7]],["DDB2",7,[7]],["XPA",7,[7]],["ERCC3",9,[7,8,9]],["ERCC2",9,[7,8,9]],["GTF2H1",7,[7]],["GTF2H2",7,[7]],["GTF2H3",7,[7]],["GTF2H4",7,[7]],["GTF2H5",7,[7,9]],["ERCC5",7,[7,8]],["POLK",21,[7,21]],["ERCC6",8,[8]],["ERCC8",8,[8]],["UVSSA",8,[8]],["ELOF1",8,[8]],["STK19",8,[8]],["GTF2E2",9,[9]],["MPLKIP",9,[9]],["RNF113A",9,[9]],["MSH2",10,[10]],["MSH6",10,[10]],["MSH3",10,[10]],["MLH1",10,[10]],["PMS2",10,[10]],["PMS1",10,[10]],["MLH3",10,[10]],["EXO1",10,[10,11,14]],["FAN1",10,[10,11]],["EME1",11,[11,14]],["SLX1A",11,[11]],["SLX1B",11,[11]],["SLX4",17,[11,14,17]],["GEN1",11,[11,14]],["DNA2",14,[11,14,25]],["DCLRE1C",15,[11,15]],["ITPA",12,[12]],["NUDT1",12,[12]],["DUT",12,[12]],["SAMHD1",12,[12]],["NUDT15",12,[12]],["DCTPP1",12,[12]],["RRM2B",12,[12,25]],["PNP",12,[12]],["ATM",13,[13]],["ATR",13,[13]],["ATRIP",13,[13]],["RAD50",13,[13]],["NBN",13,[13]],["CHEK1",13,[13]],["CHEK2",13,[13]],["TP53",13,[13]],["H2AX",13,[13]],["MDC1",13,[13]],["RNF8",13,[13]],["RNF168",13,[13]],["TP53BP1",13,[13]],["BLM",14,[14]],["WRN",14,[14]],["RECQL4",14,[14]],["RMI1",14,[14]],["RMI2",14,[14]],["BARD1",14,[14]],["PALB2",14,[14,17]],["RAD51",14,[14,17,19,22]],["RAD51B",14,[14]],["RAD51C",14,[14,17]],["RAD51D",14,[14]],["XRCC2",14,[14,17]],["XRCC3",14,[14]],["RAD54L",14,[14]],["XRCC6",15,[15]],["XRCC5",15,[15]],["PRKDC",15,[15]],["XRCC4",15,[15]],["LIG4",15,[15]],["NHEJ1",15,[15]],["PAXX",15,[15]],["POLL",15,[15]],["POLM",15,[15]],["ERCC6L2",15,[15]],["POLQ",16,[16,21]],["RAD52",16,[16]],["FANCA",17,[17]],["FANCB",17,[17]],["FANCC",17,[17]],["FANCE",17,[17]],["FANCF",17,[17]],["FANCG",17,[17]],["FANCL",17,[17]],["UBE2T",17,[17]],["FANCM",17,[17,19]],["FANCD2",17,[17]],["FANCI",17,[17]],["BRIP1",17,[17]],["MAD2L2",21,[17,21]],["RFWD3",17,[17]],["ADH5",18,[18]],["ALDH2",18,[18]],["ESD",18,[18]],["ADH1B",18,[18]],["ALDH1A1",18,[18]],["SMARCAL1",19,[19]],["ZRANB3",19,[19,22]],["HLTF",22,[19,22]],["WRNIP1",19,[19]],["RECQL",19,[19]],["SLF1",19,[19]],["SLF2",19,[19]],["SMC5",19,[19]],["SMC6",19,[19]],["PRIMPOL",19,[19]],["ORC1",20,[20]],["ORC4",20,[20]],["ORC6",20,[20]],["CDT1",20,[20]],["CDC6",20,[20]],["GMNN",20,[20]],["CDC45",20,[20]],["MCM4",20,[20]],["MCM5",20,[20]],["GINS1",20,[20]],["DONSON",20,[20]],["POLH",21,[21]],["POLI",21,[21]],["REV1",21,[21]],["REV3L",21,[21]],["RAD18",21,[21,22]],["UBE2N",22,[22]],["UBE2V2",22,[22]],["SHPRH",22,[22]],["RNASEH2A",23,[23]],["RNASEH2B",23,[23]],["RNASEH2C",23,[23]],["TERT",24,[24]],["TERC",24,[24]],["DKC1",24,[24]],["NOP10",24,[24]],["NHP2",24,[24]],["PARN",24,[24]],["RTEL1",24,[24]],["TINF2",24,[24]],["TERF1",24,[24]],["TERF2",24,[24]],["POT1",24,[24]],["ACD",24,[24]],["CTC1",24,[24]],["STN1",24,[24]],["TEN1",24,[24]],["POLG",25,[25]],["POLG2",25,[25]],["TWNK",25,[25]],["TFAM",25,[25]],["SSBP1",25,[25]],["MGME1",25,[25]],["TYMP",25,[25]],["TK2",25,[25]],["DGUOK",25,[25]],["SLC25A4",25,[25]],["ABAT",25,[25]],["APEX2",25,[25]],["THOC1",6,[6]],["THOC3",6,[6]],["THOC5",6,[6]],["THOC7",6,[6]],["ALYREF",6,[6]],["DDX5",6,[6]],["DDX21",6,[6]],["DDX23",6,[6]],["DDX39B",6,[6]],["DDX41",6,[6]],["DDX1",6,[6]],["TDRD3",6,[6]],["SRSF1",6,[6]],["XRN2",6,[6]],["ADAR",6,[6]],["RPA1",7,[7,10]],["RPA2",7,[7,10]],["RPA3",7,[7,10]],["MMS19",7,[7]],["RAD23A",7,[7]],["POLD2",10,[10]],["POLD3",10,[10]],["POLD4",10,[10]],["RFC1",10,[10]],["RFC2",10,[10]],["RFC3",10,[10]],["RFC4",10,[10]],["RFC5",10,[10]],["RAD54B",14,[14]],["ABRAXAS1",14,[14]],["UIMC1",14,[14]],["SEM1",14,[14]],["BRCC3",14,[14]],["RAD9A",13,[13]],["HUS1",13,[13]],["RAD1",13,[13]],["RAD17",13,[13]],["TOPBP1",13,[13]],["CLSPN",13,[13]],["TIMELESS",13,[13]],["TIPIN",13,[13]],["MDM2",13,[13]],["CDKN1A",13,[13]],["USP1",13,[13]],["WDR48",13,[13]],["DNTT",15,[15]],["APLF",15,[15]],["CYREN",15,[15]],["FAAP20",17,[17]],["FAAP24",17,[17]],["FAAP100",17,[17]],["CENPS",17,[17]],["CENPX",17,[17]],["POLN",21,[21]],["TERF2IP",24,[24]],["WRAP53",24,[24]],["POLRMT",25,[25]],["SMARCA5",26,[26]],["SMARCAD1",26,[26]],["INO80",26,[26]],["KAT5",26,[26]],["SIRT6",26,[26]],["HMGB1",26,[26]],["ATXN3",27,[27]],["HTT",27,[27]],["C9orf72",27,[27]],["FUS",27,[27]],["TARDBP",27,[27]]];   // [symbol, main pathway, every pathway it takes part in]
 async function showRepairGenes() {
   const note = $e("repair-note");
   if (!expr.byDonor.size) { note.textContent = "Load donor data first."; return; }
@@ -6108,7 +6155,7 @@ async function runComponents() {
       for (const { d, n: nd } of donors) { expr.byDonor.get(d).set(id, v.slice(off, off + nd)); off += nd; }
       expr.probeName.set(id, name); expr.bySymbol.set(name, [id]);
     }
-    expr.compIds = ids; expr.symbolOf = null; expr.compK = k;
+    expr.compIds = ids; expr.symbolOf = null; expr.compK = k; expr.compRepair = !!G.repair;
     expr.compWeights = wOf; expr.compSep = `__IC`;   // a line between the PCs and the ICs
     expr.compGenes = genes.map(x => x.g.sym);   // current official symbols, in the weights' order
     const r = new Map([...res.varExp.map((x, c) => [`__PC${c + 1}`, x * 100])]);
