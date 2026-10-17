@@ -3867,6 +3867,12 @@ function closeCompWeights() {
   if (compPop.modes?.length) { document.body.classList.add(...compPop.modes); compPop.modes = null; applyRibbonOrientation(); }
   if (compPop.saved) { expr.corr = compPop.saved; compPop.saved = null; }
   renderRibbon(); layoutStage(); layoutRibbon(); drawRibbon();
+  const st = compPop.scroll; compPop.scroll = null;
+  if (st) requestAnimationFrame(() => {   // the list where it was
+    const sc = ribbonCanvas.parentElement;
+    if (st.zoom === ribbon.zoom) sc.scrollLeft = st.left;
+    sc.scrollTop = st.top; sc.dispatchEvent(new Event("scroll")); drawRibbon();
+  });
 }
 function showCompWeights(id) {
   const w = expr.compWeights.get(id), names = expr.compGenes, name = expr.probeName.get(id);
@@ -3875,6 +3881,8 @@ function showCompWeights(id) {
   const mx = Math.max(Math.abs(w[pos[0]] ?? 0), Math.abs(w[neg[0]] ?? 0)) || 1;
   // The ribbon: this component only, at the top
   compPop.saved = expr.corr;
+  const sc = ribbonCanvas.parentElement;   // where the list was scrolled to, back on close
+  compPop.scroll = { top: sc.scrollTop, left: sc.scrollLeft, zoom: ribbon.zoom };
   expr.corr = { ...expr.corr, ids: [id] };
   // A maximised (or turned) ribbon would keep its full-screen layout: leave it for now, back on close
   compPop.modes = ["ribbon-full", "ribbon-rot", "ribbon-upright"].filter(c => document.body.classList.contains(c));
@@ -3882,6 +3890,7 @@ function showCompWeights(id) {
   if (compPop.modes.length) applyRibbonOrientation();
   document.body.classList.add("cw-open");
   if (document.body.classList.contains("ribbon-min")) setRibbonMin(false);
+  ribbonCanvas.parentElement.scrollTop = 0;   // the one row in view
   renderRibbon(); layoutRibbon(); drawRibbon();   // full width at the top
   const title = id.startsWith("__IC") ? (name.includes("DIM") ? name : `${name} DIM${expr.compDim?.get(id) ?? expr.compK}`) : name;
   const head = Object.assign(document.createElement("div"), { className: "cw-head" });
