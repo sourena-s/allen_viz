@@ -221,10 +221,15 @@
   body.cw-open #ribbon { padding-top: 4px; padding-bottom: 2px; height: auto; top: var(--cw-top, 0px) !important; left: 0 !important; right: 0 !important; bottom: auto !important; z-index: 41; border-radius: 0; max-height: none; background: #2b3036; backdrop-filter: none; }
   #comp-pop .cw-gap { flex: none; }
   #comp-pop .cw-body.cw-repair { display: block; }
-  #comp-pop .cw-rows { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); gap: 4px 16px; }
-  #comp-pop .cw-row { display: grid; grid-template-columns: 128px 1fr; gap: 6px; align-items: start; }
-  #comp-pop .cw-paths { display: flex; flex-wrap: wrap; gap: 3px; padding-top: 2px; }
-  #comp-pop .cw-path { font: 10px var(--sans); color: var(--ink); background: #3a4048; border: 1px solid var(--edge); border-radius: 3px; padding: 2px 6px; white-space: nowrap; }
+  #comp-pop .cw-matrix { display: grid; gap: 3px 2px; align-items: stretch; }
+  #comp-pop .cw-mh { position: sticky; top: 0; z-index: 1; background: #1c1f23; height: 150px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 4px; }
+  #comp-pop .cw-mh span { writing-mode: vertical-rl; transform: rotate(180deg); font: 10px var(--sans); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-height: 146px; }
+  #comp-pop .cw-mc { border-left: 1px solid rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: center; }
+  #comp-pop .cw-mc.on::after { content: ""; width: 11px; height: 11px; border-radius: 2px; background: #ffd21f; }
+  body.phone #comp-pop .cw-matrix { gap: 3px 1px; }
+  body.phone #comp-pop .cw-matrix .cw-tile { padding: 4px 5px; font-size: 10px; }
+  body.phone #comp-pop .cw-mh span { font-size: 9px; }
+  body.phone #comp-pop .cw-mc.on::after { width: 8px; height: 8px; }
   #comp-pop .cw-sign { font: 12px var(--sans); color: #222; background: #ffd21f; border: 0; border-radius: 5px; padding: 4px 10px; cursor: pointer; margin-left: auto; margin-right: 8px; font-weight: 600; }
   body.cw-open #ribbon .ribbon-names { padding-bottom: 0; align-self: start; }
   #comp-pop .cw-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; border-bottom: 1px solid var(--edge); }
@@ -3933,27 +3938,32 @@ function showCompWeights(id) {
   if (expr.compRepair) {
     // DNA repair input: one sign at a time (toggle in the corner), each gene a row with a tile per repair
     // pathway it takes part in
-    const paths = new Map(REPAIR_GENES.map(([sym, , ps]) => [sym.toUpperCase(), ps.map(q => REPAIR_PATHWAYS[q])]));
+    // a matrix: genes as rows (weight tile), pathways as equal-width columns with vertical names; a
+    // square where the gene takes part in the pathway
+    const paths = new Map(REPAIR_GENES.map(([sym, , ps]) => [sym.toUpperCase(), new Set(ps)]));
     body.classList.add("cw-repair");
     const rows = list => {
-      const col = Object.assign(document.createElement("div"), { className: "cw-rows" });
+      const cols = REPAIR_PATHWAYS.map((_, q) => q).filter(q => list.some(g => paths.get(names[g].toUpperCase())?.has(q)));
+      const grid = Object.assign(document.createElement("div"), { className: "cw-matrix" });
+      grid.style.gridTemplateColumns = document.body.classList.contains("phone") ? `92px repeat(${cols.length}, minmax(9px, 1fr))` : `128px repeat(${cols.length}, minmax(14px, 1fr))`;
+      grid.append(Object.assign(document.createElement("div"), { className: "cw-mh cw-mh0" }),
+        ...cols.map(q => Object.assign(document.createElement("div"), { className: "cw-mh", title: REPAIR_PATHWAYS[q], innerHTML: "" })));
+      [...grid.children].slice(1).forEach((h, k) => h.append(Object.assign(document.createElement("span"), { textContent: REPAIR_PATHWAYS[cols[k]] })));
       let shown = 0;
-      col.more = () => {
+      grid.more = () => {
         const end = Math.min(list.length, shown + 80), frag = document.createDocumentFragment();
         for (; shown < end; shown++) {
-          const g = list[shown], row = Object.assign(document.createElement("div"), { className: "cw-row" });
+          const g = list[shown], mine = paths.get(names[g].toUpperCase()) ?? new Set();
           const t = Object.assign(document.createElement("div"), { className: "cw-tile", title: `${names[g]}: r = ${w[g].toFixed(3)} (click: GeneCards / Protein Atlas)` });
           t.dataset.symbol = names[g]; t.style.background = ribbonColour(w[g] / mx * 2);
           t.append(Object.assign(document.createElement("b"), { textContent: names[g] }), Object.assign(document.createElement("span"), { textContent: `${w[g] >= 0 ? "+" : "−"}${Math.abs(w[g]).toFixed(2)}` }));
-          const ps = Object.assign(document.createElement("div"), { className: "cw-paths" });
-          for (const name of paths.get(names[g].toUpperCase()) ?? []) ps.append(Object.assign(document.createElement("span"), { className: "cw-path", textContent: name }));
-          row.append(t, ps); frag.append(row);
+          frag.append(t, ...cols.map(q => Object.assign(document.createElement("div"), { className: `cw-mc${mine.has(q) ? " on" : ""}`, title: mine.has(q) ? `${names[g]} · ${REPAIR_PATHWAYS[q]}` : "" })));
         }
-        col.append(frag);
+        grid.append(frag);
         return shown < list.length;
       };
-      col.more();
-      return col;
+      grid.more();
+      return grid;
     };
     let sign = pos.length >= neg.length ? 1 : -1;
     const tog = Object.assign(document.createElement("button"), { type: "button", className: "cw-sign" });
