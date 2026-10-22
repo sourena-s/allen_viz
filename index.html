@@ -23,6 +23,7 @@
   }
   [hidden] { display: none !important; }
   html, body { height: 100%; }
+  html { overflow: hidden; overscroll-behavior: none; }   /* only the windows scroll, never the page */
   body { margin: 0; background: var(--ground); color: var(--ink); font: 13px/1.45 var(--sans); overflow: hidden; -webkit-font-smoothing: antialiased; }
   /* The 3D view is a square (--sx, --sy, --ss set by layoutStage); the ribbon sits under it */
   #stage { position: fixed; left: var(--sx, 0px); top: var(--sy, 0px); width: var(--ss, 100vw); height: var(--ss, 100vh); }
@@ -185,7 +186,14 @@
   .rgene { cursor: pointer; }
   .rgene:hover { color: var(--ink); text-decoration: underline; }
   .rname.csep { box-shadow: inset 0 2px 0 #ffd21f; }
-  .rgene.comp { cursor: inherit; } .rgene.comp:hover { color: inherit; text-decoration: none; }
+  .rgene.comp { cursor: inherit; }
+  .rgrip { flex: none; width: 9px; margin-right: 2px; font-size: 9px; line-height: 1; letter-spacing: -2px; color: var(--muted); cursor: grab; opacity: 0; touch-action: none; user-select: none; }
+  .rdel { flex: none; margin-left: auto; padding: 0 3px; border: 0; background: transparent; color: var(--muted); font: 12px/1 var(--sans); cursor: pointer; opacity: 0; }
+  .rname:hover .rgrip, .rname:hover .rdel, body.phone .rgrip, body.phone .rdel { opacity: 1; }
+  .rdel:hover { color: #fff; }
+  .rname.dragging { opacity: .45; }
+  .rname.drop-before { box-shadow: inset 0 2px 0 #ffd21f; }
+  .rname.drop-after { box-shadow: inset 0 -2px 0 #ffd21f; } .rgene.comp:hover { color: inherit; text-decoration: none; }
   #gene-menu {
     position: fixed; z-index: 9; display: flex; flex-direction: column; min-width: 150px; padding: 4px; border-radius: 6px;
     background: rgba(62, 68, 77, 0.92); border: 1px solid var(--edge); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
@@ -246,6 +254,15 @@
   #comp-pop .cw-tile b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   body.phone #comp-pop .cw-body { grid-template-columns: 1fr 1fr; gap: 8px; padding: 6px 8px; }
   body.phone #comp-pop .cw-tiles { grid-template-columns: 1fr; }
+  /* "What's this?" help, after Windows 95/98: a bevelled grey ? button; in help mode the pointer becomes the
+     arrow with a question mark and every control explains itself */
+  #help-btn { position: fixed; top: 10px; right: 10px; z-index: 60; width: 26px; height: 24px; padding: 0; font: 700 15px/1 "MS Sans Serif", Tahoma, Verdana, sans-serif; color: #000; background: #c0c0c0; cursor: pointer;
+    border: 0; box-shadow: inset -1px -1px #0a0a0a, inset 1px 1px #ffffff, inset -2px -2px #808080, inset 2px 2px #dfdfdf; }
+  #help-btn[aria-pressed=true] { box-shadow: inset 1px 1px #0a0a0a, inset -1px -1px #ffffff, inset 2px 2px #808080, inset -2px -2px #dfdfdf; padding: 2px 0 0 2px; }
+  body.phone #help-btn { top: 12px; right: 12px; width: 30px; height: 28px; }
+  body.help-mode, body.help-mode * { cursor: help !important; }
+  #help-tip { position: fixed; z-index: 61; max-width: 280px; padding: 4px 6px; background: #ffffe1; color: #000; border: 1px solid #000; font: 12px/1.35 Tahoma, Verdana, sans-serif; pointer-events: none; box-shadow: 2px 2px 0 rgba(0,0,0,.35); }
+  #help-tip[hidden] { display: none; }
   #pick-arrow { position: fixed; left: 0; top: 0; z-index: 4; pointer-events: none; opacity: 0.6; filter: drop-shadow(0 0 4px rgba(0,0,0,0.6)); }
   #pick-arrow[hidden] { display: none; }
   #alias-tip {
@@ -504,6 +521,11 @@
   #sc-tip[hidden] { display: none; }
   #sc-dialog.max { inset: 0; width: auto; max-width: none; height: auto; max-height: none; margin: 0; border-radius: 0; overflow: auto; }
   #sc-dialog.max #sc-plot { max-height: calc(100dvh - 104px); }
+  /* Maximised (desktop): the window itself stays put and only the plot scrolls, so there is one scrollbar */
+  body:not(.phone) #sc-dialog.max[open] { display: flex; flex-direction: column; overflow: hidden; }
+  body:not(.phone) #sc-dialog.max[open] > .sc-form { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  body:not(.phone) #sc-dialog.max[open] .sc-form > * { flex: none; }
+  body:not(.phone) #sc-dialog.max[open] #sc-plot { flex: 1 1 auto; min-height: 0; max-height: none; }
   .sc-legend { display: flex; gap: 28px; align-items: center; flex-wrap: wrap; font-size: 11px; color: var(--muted); }
   .sc-leg { display: inline-flex; align-items: center; gap: 6px; }
   /* Phone: the plot does not scroll on its own, so the legend and notes follow it in the page */
@@ -715,7 +737,7 @@
     <h1>Allen Human Brain Atlas samples</h1>
     <p class="sub" id="summary">Loading…</p>
     <button class="text-button" id="cells-open" type="button" title="Single-nucleus cell types of the hippocampus, parahippocampal gyrus and amygdala (Siletti et al. 2023); search a gene in its own box">Single-cell atlas</button>
-    <button class="text-button" id="tour-open" type="button" title="A guided example analysis (FNDC1): Allen, single cells, co-expression, subcellular location, differential">Tutorial</button>
+    <button class="text-button" id="tour-open" type="button" hidden title="A guided example analysis (FNDC1): Allen, single cells, co-expression, subcellular location, differential">Tutorial</button>
   </div>
 
   <div class="group">
@@ -893,6 +915,8 @@
 <div class="edge-rail v right" data-rail="axial" role="slider" tabindex="0" aria-label="Axial cut (z)" aria-orientation="vertical"><div class="rail-track"></div><div class="rail-thumb"><span></span></div></div>
 <div class="edge-rail h" data-rail="sagittal" role="slider" tabindex="0" aria-label="Sagittal cut (x)" aria-orientation="horizontal"><div class="rail-track"></div><div class="rail-thumb"><span></span></div></div>
 
+<button type="button" id="help-btn" aria-pressed="false" title="What's this? Press, then point at (or tap) any button or control to see what it does">?</button>
+<div id="help-tip" role="tooltip" hidden></div>
 <dialog id="sc-dialog" aria-labelledby="sc-title">
   <div id="sc-tip" hidden></div>
   <form method="dialog" class="sc-form">
@@ -3289,6 +3313,11 @@ function renderRibbon() {
       if (expr.compIds?.includes(r.id)) row.lastChild.classList.add("comp");   // a PCA / ICA component: no gene menu
       else row.lastChild.dataset.symbol = symbolOf(r.id) ?? "";
     }
+    // Several rows: a grip to drag the row elsewhere and a cross to remove it (shown on hover)
+    if (ribbon.multiGene && !ribbon.edit.on && ribbon.rows.length > 1 && !document.body.classList.contains("cw-open")) {
+      row.prepend(Object.assign(document.createElement("span"), { className: "rgrip", title: "Drag to move this row", textContent: "⋮⋮" }));
+      row.append(Object.assign(document.createElement("button"), { type: "button", className: "rdel", title: "Remove this row", textContent: "×" }));
+    }
     return row;
   }));
   // Probe list in the panel over the 3D view: tap a probe to add it to (or drop it from) the
@@ -3296,6 +3325,42 @@ function renderRibbon() {
   drawRibbon();
   layoutStage();   // the square view shrinks or grows with the ribbon's height
 }
+
+// Rows removed or moved by hand: the ribbon becomes that list (as a list of added rows)
+function setRibbonIds(ids) {
+  if (!ids.length) return;
+  expr.corr = { ...(expr.corr ?? {}), query: expr.corr?.query ?? boxQuery(), ids, r: expr.corr?.r ?? new Map(), keep: true };
+  if (![...(expr.chosen ?? [])].some(id => ids.includes(id))) { expr.chosen = new Set([ids[0]]); applyColouring(); }
+  renderRibbon();
+}
+$e("ribbon-names").addEventListener("click", e => {
+  const x = e.target.closest(".rdel"); if (!x) return;
+  e.stopPropagation();
+  const id = x.closest(".rname").dataset.id;
+  setRibbonIds(ribbon.rows.map(r => r.id).filter(i => i !== id));
+});
+$e("ribbon-names").addEventListener("pointerdown", e => {
+  const grip = e.target.closest(".rgrip"); if (!grip) return;
+  e.preventDefault(); e.stopPropagation();
+  const names = $e("ribbon-names"), from = grip.closest(".rname"), id = from.dataset.id;
+  grip.setPointerCapture(e.pointerId); from.classList.add("dragging");
+  let target = null, after = false;
+  const mv = ev => {
+    names.querySelectorAll(".drop-before, .drop-after").forEach(n => n.classList.remove("drop-before", "drop-after"));
+    const over = [...names.querySelectorAll(".rname")].find(n => { const r = n.getBoundingClientRect(); return ev.clientY >= r.top && ev.clientY < r.bottom; });
+    target = over && over !== from ? over : null;
+    if (target) { const r = target.getBoundingClientRect(); after = ev.clientY > r.top + r.height / 2; target.classList.add(after ? "drop-after" : "drop-before"); }
+  };
+  const up = () => {
+    grip.removeEventListener("pointermove", mv); grip.removeEventListener("pointerup", up); grip.removeEventListener("pointercancel", up);
+    from.classList.remove("dragging");
+    names.querySelectorAll(".drop-before, .drop-after").forEach(n => n.classList.remove("drop-before", "drop-after"));
+    if (!target) return;
+    const ids = ribbon.rows.map(r => r.id).filter(i => i !== id), at = ids.indexOf(target.dataset.id) + (after ? 1 : 0);
+    ids.splice(at, 0, id); setRibbonIds(ids);
+  };
+  grip.addEventListener("pointermove", mv); grip.addEventListener("pointerup", up); grip.addEventListener("pointercancel", up);
+});
 
 // Clicking a gene name in the ribbon offers it on GeneCards or the Human Protein Atlas
 const geneMenu = Object.assign(document.createElement("div"), { id: "gene-menu", hidden: true });
@@ -5563,6 +5628,35 @@ function tourTick() {
 }
 function tourStart() { tourEnd(); tourGo(0); tour.timer = setInterval(tourTick, 300); }
 $e("tour-open").addEventListener("click", tourStart);
+// "What's this?" help mode: the ? button turns it on; pointing at a control shows its description (its title,
+// tooltip or label) above it; a click or tap shows that one and ends the mode (as does Esc or the button)
+{
+  const btn = $e("help-btn"), tip = $e("help-tip");
+  const textOf = el => { const t = el?.closest("[title], [data-tip], [aria-label]"); return t ? { el: t, text: t.getAttribute("title") || t.dataset.tip || t.getAttribute("aria-label") } : null; };
+  const place = ({ el, text }) => {
+    tip.textContent = text; tip.hidden = false;
+    const r = el.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+    tip.style.left = `${Math.max(6, Math.min(innerWidth - w - 6, r.left + r.width / 2 - w / 2))}px`;
+    tip.style.top = `${r.top - h - 6 >= 6 ? r.top - h - 6 : Math.min(innerHeight - h - 6, r.bottom + 6)}px`;
+  };
+  const setMode = on => { document.body.classList.toggle("help-mode", on); btn.setAttribute("aria-pressed", on); if (on) tip.hidden = true; };
+  btn.addEventListener("click", e => { e.stopPropagation(); setMode(!document.body.classList.contains("help-mode")); });
+  document.addEventListener("pointermove", e => {
+    if (!document.body.classList.contains("help-mode") || e.target === btn) return;
+    const t = textOf(e.target); if (t) place(t); else tip.hidden = true;
+  }, true);
+  // In help mode a click explains instead of acting
+  for (const type of ["pointerdown", "mousedown", "click"]) document.addEventListener(type, e => {
+    if (!document.body.classList.contains("help-mode") || e.target === btn) return;
+    e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+    if (type !== "click") return;
+    const t = textOf(e.target);
+    setMode(false);
+    if (t) { place(t); clearTimeout(tip.timer); tip.timer = setTimeout(() => (tip.hidden = true), 4000); }
+  }, true);
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && document.body.classList.contains("help-mode")) setMode(false); });
+  document.addEventListener("pointerdown", () => { if (!document.body.classList.contains("help-mode")) tip.hidden = true; });
+}
 $e("cells-open").addEventListener("click", () => { setPanelOpen(false); $e("cells-btn").click(); });
 // ---------------------------------------------------------------- figures as PNG
 const PNG_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 19h14"/></svg>';
