@@ -259,7 +259,7 @@
   #help-btn { position: fixed; top: 10px; right: 10px; z-index: 60; width: 26px; height: 24px; padding: 0; font: 700 15px/1 "MS Sans Serif", Tahoma, Verdana, sans-serif; color: #000; background: #c0c0c0; cursor: pointer;
     border: 0; box-shadow: inset -1px -1px #0a0a0a, inset 1px 1px #ffffff, inset -2px -2px #808080, inset 2px 2px #dfdfdf; }
   #help-btn[aria-pressed=true] { box-shadow: inset 1px 1px #0a0a0a, inset -1px -1px #ffffff, inset 2px 2px #808080, inset -2px -2px #dfdfdf; padding: 2px 0 0 2px; }
-  body.phone #help-btn { top: 12px; right: 12px; width: 30px; height: 28px; }
+  body.phone #help-btn { top: 13px; right: auto; left: 56px; width: 30px; height: 28px; }   /* beside the menu button, clear of the view's buttons */
   body.help-mode, body.help-mode * { cursor: help !important; }
   #help-tip { position: fixed; z-index: 61; max-width: 280px; padding: 4px 6px; background: #ffffe1; color: #000; border: 1px solid #000; font: 12px/1.35 Tahoma, Verdana, sans-serif; pointer-events: none; box-shadow: 2px 2px 0 rgba(0,0,0,.35); }
   #help-tip[hidden] { display: none; }
@@ -1212,10 +1212,10 @@ for (const type of ["pointerdown", "mousedown", "auxclick"]) {
   renderer.domElement.addEventListener(type, e => { if (e.button === 1) e.preventDefault(); });
 }
 controls.target.set(0, 5, 15);   // replaced by the brain's centre once the surface is built
-// The brain turns once every 20 s after loading, until the view is dragged, pinched or zoomed;
+// The brain turns once every 40 s after loading, until the view is dragged, pinched or zoomed;
 // a click or tap on empty space turns the rotation on or off
 controls.autoRotate = true;
-controls.autoRotateSpeed = 3;   // with the frame time passed to update(): 2π/60 × 3 rad/s = one turn per 20 s
+controls.autoRotateSpeed = 1.5;   // with the frame time passed to update(): 2π/60 × 1.5 rad/s = one turn per 40 s
 const rotClock = new THREE.Clock();
 renderer.domElement.addEventListener("wheel", () => (controls.autoRotate = false), { passive: true });
 
@@ -2377,8 +2377,10 @@ searchBox.addEventListener("focus", () => {
   if (searchBox.value.trim().length >= MIN_SUGGEST) showSuggestions(SUGGEST_LIMIT);
   setTimeout(() => searchBox.select(), 0);
 });
-// A click (or tap) in the gene box always selects all its text, so typing replaces it
-searchBox.addEventListener("click", () => setTimeout(() => searchBox.select(), 0));
+// The click (or tap) that enters the gene box selects all its text, so typing replaces it; a further
+// click in the box places the cursor as usual, to change a character
+searchBox.addEventListener("pointerdown", () => { searchBox.wasFocused = document.activeElement === searchBox; });
+searchBox.addEventListener("click", () => { if (!searchBox.wasFocused) setTimeout(() => searchBox.select(), 0); });
 searchBox.addEventListener("blur", () => { hideSuggestions(); syncGeneBox(); });
 searchBox.addEventListener("keydown", e => {
   if (e.key === "ArrowDown") { e.preventDefault(); if (suggestList.hidden) showSuggestions(SUGGEST_LIMIT); moveActive(1); }
@@ -5438,7 +5440,8 @@ $e("sc-gene").addEventListener("keydown", async e => {
 });
 // A click in the gene box selects what is there, so typing replaces it
 $e("sc-gene").addEventListener("focus", () => $e("sc-gene").select());
-$e("sc-gene").addEventListener("pointerup", e => { if (document.activeElement === $e("sc-gene") && $e("sc-gene").selectionStart === $e("sc-gene").selectionEnd) { e.preventDefault(); $e("sc-gene").select(); } });
+$e("sc-gene").addEventListener("pointerdown", () => { $e("sc-gene").wasFocused = document.activeElement === $e("sc-gene"); });
+$e("sc-gene").addEventListener("pointerup", e => { if (!$e("sc-gene").wasFocused) { e.preventDefault(); $e("sc-gene").select(); } });   // a further click places the cursor
 // While marking, the (yellow) differential button reads calculate: with a yellow row it ranks the
 // genes; without any it cancels the search
 $e("sc-diff-lbl").addEventListener("click", e => {
