@@ -1,7 +1,10 @@
+<!doctype html>
+<html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Allen Sample Brain</title>
-<meta name="description" content="Allen Human Brain Atlas microarray sample locations on an MNI cortex, cerebellum and brainstem">
+<meta name="description" content="Allen Human Brain Atlas microarray samples on an MNI brain: gene expression by sample, co-expression, PCA and ICA, DNA repair genes, and single-nucleus cell types (Siletti et al.)">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%233e444d'/%3E%3Cellipse cx='16' cy='15.5' rx='11' ry='9' fill='%23aab1ba'/%3E%3Ccircle cx='11.5' cy='14' r='2.4' fill='%23ffd21f'/%3E%3Ccircle cx='18.5' cy='11.5' r='2.4' fill='%23e8590c'/%3E%3Ccircle cx='19' cy='19' r='2.4' fill='%231c7ed6'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Geist:wght@400;500;600&display=swap">
 <style>
@@ -260,6 +263,12 @@
     border: 0; box-shadow: inset -1px -1px #0a0a0a, inset 1px 1px #ffffff, inset -2px -2px #808080, inset 2px 2px #dfdfdf; }
   #help-btn[aria-pressed=true] { box-shadow: inset 1px 1px #0a0a0a, inset -1px -1px #ffffff, inset 2px 2px #808080, inset -2px -2px #dfdfdf; padding: 2px 0 0 2px; }
   body.phone #help-btn { top: 13px; right: auto; left: 56px; width: 30px; height: 28px; }   /* beside the menu button, clear of the view's buttons */
+  /* Where it would cover a control it joins a tool row instead (dockHelp): the maximised ribbon's, or the
+     Weights header before Close; hidden under a modal window, where it cannot be pressed */
+  #help-btn.docked { position: static; flex: none; align-self: center; }
+  #comp-pop .cw-title + #help-btn { margin-left: auto; }
+  #comp-pop .cw-head #help-btn { margin-right: 4px; }
+  body:has(dialog[open]) #help-btn { display: none; }
   body.help-mode, body.help-mode * { cursor: help !important; }
   #help-tip { position: fixed; z-index: 61; max-width: 280px; padding: 4px 6px; background: #ffffe1; color: #000; border: 1px solid #000; font: 12px/1.35 Tahoma, Verdana, sans-serif; pointer-events: none; box-shadow: 2px 2px 0 rgba(0,0,0,.35); }
   #help-tip[hidden] { display: none; }
@@ -390,7 +399,7 @@
   .ribbon-names.multi { width: auto; max-width: 118px; padding-right: 8px; padding-left: 5px; }
   .ribbon-names:not(.multi) { margin-right: 8px; }
   .rname.chosen { box-shadow: inset 0 1.5px #ffe600, inset 0 -1.5px #ffe600, inset 1.5px 0 #ffe600; margin: 0 -8px 0 -5px; padding: 0 8px 0 5px; }
-  .rgene { flex: none; min-width: 0; font: 9.5px var(--mono); color: var(--muted); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rgene { flex: 0 1 auto; min-width: 0; font: 9.5px var(--mono); color: var(--muted); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ribbon-names:not(.multi) { width: 0; }
   .ribbon-names { flex: none; width: 20px; padding-top: 28px; display: flex; flex-direction: column; gap: 2px; overflow: hidden; clip-path: inset(28px 0 0 0); padding-bottom: 40px; box-sizing: border-box; }
   .rname { flex: none; height: var(--row-h, 16px); display: flex; align-items: center; gap: 6px; }
@@ -974,7 +983,6 @@
 <div id="readout" class="glass" hidden></div>
 <div id="status">Loading meshes…</div>
 
-<script src="assets/bundle.js"></script>
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
@@ -1009,8 +1017,16 @@ const HIPPOCAMPUS_LABELS = [105, 106, 107];                    // HiH, HiB, HiT 
 const statusEl = document.getElementById("status");
 
 // ---------------------------------------------------------------- loading
-// assets/bundle.js (from make_bundle.sh) embeds every file, so the page also works from file://
+// assets/bundle.js (from make_bundle.sh) embeds the startup files, so the page also works from file://,
+// where fetch() is blocked. It is 7.6 MB, so it is loaded only there
+let bundleLoad = null;
+const loadBundle = () => bundleLoad ??= new Promise(done => {
+  const s = document.createElement("script");
+  s.src = "assets/bundle.js"; s.onload = s.onerror = done;
+  document.head.append(s);
+});
 async function fetchRaw(url) {
+  if (location.protocol === "file:") await loadBundle();
   const packed = window.BRAIN_BUNDLE?.[url];
   if (packed) return Uint8Array.from(atob(packed), c => c.charCodeAt(0));
   const res = await fetch(url).catch(() => { throw new Error(`Could not load ${url}. Run make_bundle.sh or serve the folder over HTTP.`); });
@@ -2110,10 +2126,15 @@ async function readProbesFile(file) {
   return { probeName, bySymbol, symbolByEntrez };
 }
 
-// frac: 0..1 fills the bar; undefined/null shows a moving (indeterminate) bar
-function setBusy(text, frac) {
-  $e("busy").hidden = !text;
-  if (!text) return;
+// frac: 0..1 fills the bar; undefined/null shows a moving (indeterminate) bar. task: donor packing runs
+// in the background ("pack"); the bar shows the user's own task over it, and neither clears the other's
+const busyTasks = new Map();
+function setBusy(text, frac, task = "main") {
+  if (text) busyTasks.set(task, { text, frac }); else busyTasks.delete(task);
+  const shown = busyTasks.get("main") ?? busyTasks.get("pack");
+  $e("busy").hidden = !shown;
+  if (!shown) return;
+  ({ text, frac } = shown);
   $e("busy-text").textContent = text;
   const known = typeof frac === "number" && isFinite(frac);
   $e("busy-fill").parentElement.classList.toggle("indeterminate", !known);
@@ -2149,7 +2170,7 @@ async function loadExpressionFilesNow(files, donor) {
   try {
     if (probesFile) {
       setExprStatus([`Reading ${probesFile.name}…`]);
-      Object.assign(expr, await readProbesFile(probesFile), { symbolOf: null });
+      Object.assign(expr, await readProbesFile(probesFile), { symbolOf: null, entrezSets: null });
     }
     if (exprFile) {
       bar.hidden = false;
@@ -2209,34 +2230,62 @@ const symbolsStarting = prefix => {
   for (const sym of expr.hgncPrefix?.get(p) ?? []) set.add(sym);
   return [...set].sort((a, b) => shownName(a).localeCompare(shownName(b), undefined, { numeric: true }));
 };
-// The current (approved HGNC) symbol of an Allen gene symbol, e.g. HRNBP3 -> RBFOX3 (NeuN):
-// by Entrez id, else the symbol itself if approved, else the gene listing it as a previous/alias symbol
-async function currentSymbol(sym) {
+// The Entrez ids the Allen annotation gives an Allen symbol's probes. Usually one; a few symbols
+// hold probes of several genes (PDCD6 also AHRR's, NBPF8 also NBPF10's and NBPF11's)
+function allenEntrez(sym) {
+  if (!expr.entrezSets) {
+    expr.entrezSets = new Map();
+    for (const [e, s] of expr.symbolByEntrez ?? []) (expr.entrezSets.get(s) ?? expr.entrezSets.set(s, new Set()).get(s)).add(String(e));
+  }
+  return expr.entrezSets.get(sym) ?? new Set();
+}
+// The current (approved HGNC) symbol of an Allen gene symbol, e.g. HRNBP3 -> RBFOX3 (NeuN): the
+// symbol itself if approved and its probes are that gene's; else the approved gene of the probes'
+// Entrez id (DMRTC1B -> DMRTC1); else the symbol if approved (a symbol holding several genes keeps
+// its name); else the gene listing it as a previous/alias symbol
+function currentNameOf(sym, table) {
   if (expr.currentName?.has(sym)) return expr.currentName.get(sym);
-  let table;
-  try { table = await loadHgnc(); } catch { return sym; }
-  if (!expr.entrezBySymbol) { expr.entrezBySymbol = new Map(); for (const [e, s] of expr.symbolByEntrez ?? []) expr.entrezBySymbol.set(s, String(e)); }
-  const ent = expr.entrezBySymbol.get(sym);
-  let cur = ent && [...table.genes.values()].find(g => g.entrez === ent)?.sym;
-  if (!cur) cur = table.genes.get(sym.toUpperCase())?.sym ?? table.genes.get(table.bySynonym.get(sym.toUpperCase())?.[0])?.sym;
-  cur ??= sym;
+  const self = table.genes.get(sym.toUpperCase()), ids = allenEntrez(sym);
+  let cur = self && (!ids.size || ids.has(self.entrez)) ? self.sym : null;
+  if (!cur) { const genes = new Set([...ids].map(e => table.byEntrez.get(e)).filter(Boolean)); if (genes.size === 1) [cur] = genes; }
+  cur ||= self?.sym ?? table.genes.get(table.bySynonym.get(sym.toUpperCase())?.[0])?.sym ?? sym;
   if (cur !== sym) (expr.currentName ??= new Map()).set(sym, cur);
   return cur;
 }
+async function currentSymbol(sym) {
+  if (expr.currentName?.has(sym)) return expr.currentName.get(sym);
+  try { return currentNameOf(sym, await loadHgnc()); } catch { return sym; }
+}
+// Whether the Allen probes under a name belong to another approved gene than g: then a name match
+// is not g's (MGA, an old alias of MGAM, is a gene of its own; GIYD2, an alias of SLX1B, is SLX1A)
+function othersProbes(allenSym, g) {
+  const ids = allenEntrez(allenSym);
+  return !!(g.entrez && hgnc && ids.size) && !ids.has(g.entrez) && [...ids].every(e => hgnc.byEntrez.has(e) && hgnc.byEntrez.get(e) !== g.sym);
+}
+// The Allen symbol of an HGNC gene ({sym, entrez}, synonyms from the HGNC table unless given): by
+// Entrez id, else by the symbol or its previous/alias symbols, skipping another gene's probes
+function allenSymbolFor(g, allenUpper) {
+  const byId = g.entrez && expr.symbolByEntrez?.get(g.entrez);
+  if (byId) return byId;
+  for (const name of [g.sym, ...(g.synonyms ?? hgnc?.genes.get(g.sym.toUpperCase())?.synonyms ?? [])]) {
+    const x = allenUpper.get(name.toUpperCase());
+    if (x && !othersProbes(x, g)) return x;
+  }
+  return null;
+}
+const allenUpperMap = () => new Map([...expr.bySymbol].filter(([, ids]) => !ids[0]?.startsWith("__")).map(([k]) => [k.toUpperCase(), k]));   // genes, not PC/IC rows
 // Approved HGNC symbols starting with the prefix, mapped to the Allen symbol of the same gene
 // (by Entrez id, else by previous/alias symbols); remembers each gene's current name
 async function hgncPrefixMatches(prefix) {
   const P = prefix.toUpperCase(), out = [];
   let table;
   try { table = await loadHgnc(); } catch { return out; }
-  const allenUpper = new Map([...expr.bySymbol.keys()].map(k => [k.toUpperCase(), k]));
-  expr.currentName ??= new Map();
+  const allenUpper = allenUpperMap();
   for (const [key, g] of table.genes) {
     if (!key.startsWith(P)) continue;
-    let sym = g.entrez && expr.symbolByEntrez?.get(g.entrez);
-    if (!sym) for (const name of [g.sym, ...g.synonyms]) { sym = allenUpper.get(name.toUpperCase()); if (sym) break; }
+    const sym = allenSymbolFor(g, allenUpper);
     if (!sym) continue;
-    if (sym !== g.sym) expr.currentName.set(sym, g.sym);
+    currentNameOf(sym, table);
     out.push(sym);
   }
   (expr.hgncPrefix ??= new Map()).set(P, out);
@@ -2337,6 +2386,7 @@ function showSuggestions(limit) {
   const note = text => Object.assign(document.createElement("li"), { className: "note", textContent: text });
   if (total > list.length) items.push(note(`${list.length} of ${total.toLocaleString()} matches · press Enter to list more`));
   else if (limit === PARTIAL_LIMIT && total) items.unshift(note(`${total.toLocaleString()} partial match${total > 1 ? "es" : ""}`));
+  else if (limit === PARTIAL_LIMIT && query.trim()) items.push(note(`No gene or probe matches "${query.trim()}"`));   // Enter found nothing
   suggestList.replaceChildren(...items);
   suggestList.hidden = !items.length;
   // The list floats above the ribbon (which clips its own overflow), under or over the box
@@ -2434,18 +2484,10 @@ searchBox.addEventListener("keydown", e => {
       hgncPrefixMatches(raw).then(() => {
         const all = symbolsStarting(raw);
         if (all.length > 1) { searchBox.value = `${P}*`; hideSuggestions(); onGeneChosen(); return; }
-        if (all.length === 1) {
-          const sym = all[0];
-          searchBox.value = sym; hideSuggestions(); onGeneChosen();
-
-          return;
-        }
+        if (all.length === 1) { searchBox.value = all[0]; hideSuggestions(); onGeneChosen(); return; }
         return resolveAlias(raw).then(sym => {
-        if (sym) {
-          searchBox.value = sym; hideSuggestions(); onGeneChosen();
-
-        }
-        else showSuggestions(PARTIAL_LIMIT);
+          if (sym) { searchBox.value = sym; hideSuggestions(); onGeneChosen(); }
+          else showSuggestions(PARTIAL_LIMIT);
         });
       });
     }
@@ -2455,7 +2497,7 @@ searchBox.addEventListener("keydown", e => {
       const P = searchBox.value.trim().replace(/\*$/, "").toUpperCase();
       searchBox.value = `${P}*`;
       hideSuggestions();
-      hgncPrefixMatches(P).then(() => onGeneChosen());
+      hgncPrefixMatches(P).then(() => { if (probesFor(searchBox.value).length) onGeneChosen(); else showSuggestions(PARTIAL_LIMIT); });
     } else showSuggestions(PARTIAL_LIMIT);
   }
 });
@@ -2465,40 +2507,34 @@ searchBox.addEventListener("keydown", e => {
 // assets/hgnc_aliases.tsv.gz (approved symbol, Entrez id, previous and alias symbols), loaded
 // on first use. The approved gene's Entrez id is matched against Probes.csv first, then its
 // previous/alias symbols against the Allen symbols.
-let hgnc = null;
-async function loadHgnc() {
-  if (hgnc) return hgnc;
+let hgnc = null, hgncLoad = null;
+const loadHgnc = () => hgncLoad ??= (async () => {   // one fetch, however many ask at once
   const res = await fetch("assets/hgnc_aliases.tsv.gz");
-  let stream = res.body;
+  if (!res.ok) throw new Error(`hgnc_aliases.tsv.gz: ${res.status}`);
   // A host may already have decompressed it (then it no longer starts with the gzip magic)
-  const buf = new Uint8Array(await new Response(stream).arrayBuffer());
+  const buf = new Uint8Array(await res.arrayBuffer());
   const text = buf[0] === 0x1f && buf[1] === 0x8b
     ? await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"))).text()
     : new TextDecoder().decode(buf);
-  const genes = new Map(), bySynonym = new Map();
+  const genes = new Map(), bySynonym = new Map(), byEntrez = new Map();
   for (const line of text.split("\n")) {
     if (!line || line[0] === "#") continue;
     const [sym, entrez, syn] = line.split("\t");
     const synonyms = syn ? syn.split("|") : [];
     genes.set(sym.toUpperCase(), { sym, entrez, synonyms });
+    if (entrez) byEntrez.set(entrez, sym);
     for (const a of synonyms) (bySynonym.get(a.toUpperCase()) ?? bySynonym.set(a.toUpperCase(), []).get(a.toUpperCase())).push(sym.toUpperCase());
   }
-  return (hgnc = { genes, bySynonym });
-}
+  return (hgnc = { genes, bySynonym, byEntrez });
+})().catch(e => { hgncLoad = null; throw e; });   // a failed load is tried again next time
 async function resolveAlias(query) {
   const q = query.toUpperCase();
   searchBox.dataset.asked = q;
   let table;
   try { table = await loadHgnc(); } catch { return null; }
-  const inAllen = sym => expr.bySymbol.has(sym) ? sym : [...expr.bySymbol.keys()].find(k => k.toUpperCase() === sym.toUpperCase());
   // The approved gene(s) the query names: itself, or those listing it as a previous/alias symbol
-  const approved = table.genes.has(q) ? [q] : table.bySynonym.get(q) ?? [];
-  for (const key of approved) {
-    const g = table.genes.get(key);
-    const byEntrez = g.entrez && expr.symbolByEntrez?.get(g.entrez);
-    if (byEntrez) return byEntrez;
-    for (const name of [g.sym, ...g.synonyms]) { const hit = inAllen(name); if (hit) return hit; }
-  }
+  const approved = table.genes.has(q) ? [q] : table.bySynonym.get(q) ?? [], allenUpper = allenUpperMap();
+  for (const key of approved) { const hit = allenSymbolFor(table.genes.get(key), allenUpper); if (hit) return hit; }
   return null;
 }
 
@@ -2900,7 +2936,7 @@ async function writePack(dir = dataDir) {
   const handle = await dir.getFileHandle(PACK_NAME, { create: true });
   const out = await handle.createWritable(), total = offset;
   try {
-    setBusy("Packing donors…", 0);
+    setBusy("Packing donors…", 0, "pack");
     await out.write(pre);
     const CHUNK = 2000;
     let done = 0;
@@ -2918,12 +2954,12 @@ async function writePack(dir = dataDir) {
         });
         await out.write(q);
         done += q.byteLength;
-        setBusy(`Packing donors… ${Math.round(done / 1e6)} of ${Math.round(total / 1e6)} MB`, done / total);
+        setBusy(`Packing donors… ${Math.round(done / 1e6)} of ${Math.round(total / 1e6)} MB`, done / total, "pack");
       }
     }
     await out.close();
   } catch (err) { await out.abort?.(); throw err; }
-  finally { setBusy(null); }
+  finally { setBusy(null, null, "pack"); }
   expr.packed = new Set(donorList);
   await dir.removeEntry(`${PACK_NAME}.part`).catch(() => {});   // left by an earlier version
   setExprStatus([`Packed ${header.donors.length} donor${header.donors.length > 1 ? "s" : ""} (${Math.round((pre.length + total) / 1e6)} MB) into ${dirLabel(dir)} (${PACK_NAME}). Next visits load it instead of the CSV files.`]);
@@ -2982,7 +3018,7 @@ async function loadPack(dir = dataDir) {
     const sym = header.symbols[i];
     if (sym) (bySymbol.get(sym) ?? bySymbol.set(sym, []).get(sym)).push(id);
   });
-  Object.assign(expr, { probeName, bySymbol, symbolByEntrez: new Map(header.entrez), symbolOf: null });
+  Object.assign(expr, { probeName, bySymbol, symbolByEntrez: new Map(header.entrez), symbolOf: null, entrezSets: null });
   if (header.ontology && !ontology) setOntology(header.ontology);
   const P = header.probes.length;
   try {
@@ -3181,7 +3217,7 @@ function layoutRibbon() {
   const scroll = ribbonCanvas.parentElement;
   // Keep the column at the middle of the view in place when the layout is redone (resizes, recolouring)
   const centre = ribbon.width && ribbon.zoom > 1 ? (scroll.scrollLeft + scroll.clientWidth / 2) / ribbon.width : null;
-  const available = Math.max(200, scroll.clientWidth);
+  const available = ribbon.availW = Math.max(200, scroll.clientWidth);
   // Donor gaps take at most a third of the width, so they shrink when zoomed out
   const nDonorGaps = ribbon.items.filter(it => it.donorGap).length;
   const donorGap = nDonorGaps ? Math.min(GAP_DONOR, available * ribbon.zoom / 3 / nDonorGaps) : 0;
@@ -3317,8 +3353,11 @@ function renderRibbon() {
     }
     // Several rows: a grip to drag the row elsewhere and a cross to remove it (shown on hover)
     if (ribbon.multiGene && !ribbon.edit.on && ribbon.rows.length > 1 && !document.body.classList.contains("cw-open")) {
-      row.prepend(Object.assign(document.createElement("span"), { className: "rgrip", title: "Drag to move this row", textContent: "⋮⋮" }));
-      row.append(Object.assign(document.createElement("button"), { type: "button", className: "rdel", title: "Remove this row", textContent: "×" }));
+      const grip = Object.assign(document.createElement("span"), { className: "rgrip", title: "Drag to move this row", textContent: "⋮⋮" });
+      const del = Object.assign(document.createElement("button"), { type: "button", className: "rdel", title: "Remove this row", textContent: "×" });
+      grip.setAttribute("aria-hidden", "true");   // a pointer handle; the cross is the row's keyboard action
+      del.setAttribute("aria-label", `Remove the row ${[...new Set([shownName(symbolOf(r.id) ?? ""), expr.probeName.get(r.id) ?? r.id])].filter(Boolean).join(" ")}`);
+      row.prepend(grip); row.append(del);
     }
     return row;
   }));
@@ -3741,8 +3780,20 @@ function applyRibbonOrientation() {
   $e("ribbon-orient").setAttribute("aria-label", full && !upright ? "Restore the ribbon" : "Maximise the ribbon");
   $e("ribbon-orient").setAttribute("aria-pressed", full && !upright);
   $e("ribbon-upright").setAttribute("aria-pressed", upright);
+  dockHelp();
   if (ribbon.built && !$e("ribbon").hidden) { layoutRibbon(); drawRibbon(); }
   layoutStage();
+}
+// The ? button floats at the top corner, except where it would cover a control: with the Weights window
+// open it sits in its header before Close, in the maximised ribbon at the start of the ribbon's tools
+function dockHelp() {
+  const btn = $e("help-btn"), cl = document.body.classList;
+  const head = cl.contains("cw-open") ? compPop.querySelector(".cw-head") : null;
+  if (head) head.insertBefore(btn, head.querySelector(".cw-x"));
+  else if (cl.contains("ribbon-full")) document.querySelector("#ribbon .rb-tools").prepend(btn);
+  else if (btn.classList.contains("docked")) { btn.classList.remove("docked"); $e("help-tip").before(btn); return; }
+  else return;
+  btn.classList.add("docked");
 }
 // On a phone, landscape first tries a real rotation (full screen + orientation lock, e.g.
 // Android Chrome) so the keyboard rotates too; where that is refused the ribbon is rotated
@@ -3958,6 +4009,7 @@ document.body.append(compPop);
 function closeCompWeights() {
   if (compPop.hidden) return;
   compPop.hidden = true; document.body.classList.remove("cw-open"); geneMenu.hidden = true; document.body.append(geneMenu);
+  dockHelp();
   if (compPop.modes?.length) { document.body.classList.add(...compPop.modes); compPop.modes = null; applyRibbonOrientation(); }
   if (compPop.saved) { expr.corr = compPop.saved; compPop.saved = null; }
   { const sc = ribbonCanvas.parentElement; sc.style.flex = sc.style.overflowY = sc.style.height = ""; }
@@ -4075,6 +4127,7 @@ function showCompWeights(id) {
   const gap = Object.assign(document.createElement("div"), { className: "cw-gap" });
   compPop.replaceChildren(head, gap, body);
   compPop.hidden = false; compPop.style.top = "0px";
+  dockHelp();
   const place = () => {
     document.body.style.setProperty("--cw-top", `${Math.round(head.getBoundingClientRect().height)}px`);
     const sc = ribbonCanvas.parentElement;
@@ -5288,7 +5341,7 @@ function drawGrid(spec) {
     selG.append(svgEl("rect", { x: 4.5, y: y0 + 0.5, width: x - 5, height: rh - 1, fill: "none", stroke: "#ffe600", "stroke-width": 1.5 }));
     rowText[li]?.classList.add("hl");
     // and a vertical outline down the clicked column, its label lit (not for the row-label area)
-    if (ci != null && ci >= 0 && !(cols[ci]?.plain)) {
+    if (ci != null && ci >= 0 && ci < cols.length && xs[ci] != null && !cols[ci].plain) {   // a kept column may be gone (Clear)
       selG.append(svgEl("rect", { x: xs[ci] + 0.5, y: top + 0.5, width: ws[ci] - 1, height: lines.length * rh - 1, fill: "none", stroke: "#ffe600", "stroke-width": 1.5 }));
       colText[ci]?.classList.add("hl");
     }
@@ -5379,6 +5432,12 @@ function setScZr(v, redraw = true) {
 $e("sc-zr").addEventListener("input", e => { scView.zrManual = true; setScZr(+e.target.value); });
 $e("sc-max").addEventListener("click", () => $e("sc-max").setAttribute("aria-pressed", $e("sc-dialog").classList.toggle("max")));
 $e("sc-dialog").addEventListener("close", () => ($e("sc-tip").hidden = true));
+// Esc closes a pop-up open in the window (gene links, donor bars, rule notes) before the window itself
+addEventListener("keydown", e => {
+  if (e.key !== "Escape" || !$e("sc-dialog").open) return;
+  const pop = [geneMenu, scInfo].find(el => !el.hidden && $e("sc-dialog").contains(el));
+  if (pop) { e.preventDefault(); e.stopImmediatePropagation(); pop.hidden = true; }
+}, true);
 $e("sc-zoom-out").addEventListener("click", () => setScZoom(scView.zoom / 1.25));
 // Rows: one three-way choice (Brief / Siletti clusters / Protein Atlas clusters), kept in the two
 // hidden checkboxes the rest of the code reads
@@ -5967,21 +6026,28 @@ $e("hsub-run").addEventListener("click", findSubfieldMarkers);
 let geneLengths = null;
 async function loadGeneLengths() {
   if (geneLengths) return geneLengths;
-  const buf = new Uint8Array(await (await fetch("assets/gene_lengths.tsv.gz")).arrayBuffer());
+  const res = await fetch("assets/gene_lengths.tsv.gz");
+  if (!res.ok) throw new Error(`gene_lengths.tsv.gz: ${res.status}`);
+  const buf = new Uint8Array(await res.arrayBuffer());
   const text = buf[0] === 0x1f && buf[1] === 0x8b
     ? await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"))).text()
     : new TextDecoder().decode(buf);
   geneLengths = text.split("\n").filter(l => l && l[0] !== "#").map(l => { const [sym, entrez, len] = l.split("\t"); return { sym, entrez, len: +len }; });
   return geneLengths;
 }
-// Allen symbol of an HGNC gene: by Entrez id, else by the symbol or its previous names/aliases
-function allenSymbolFor(g, allenUpper) {
-  const byId = g.entrez && expr.symbolByEntrez?.get(g.entrez);
-  if (byId) return byId;
-  const direct = allenUpper.get(g.sym.toUpperCase());
-  if (direct) return direct;
-  for (const a of hgnc?.genes.get(g.sym.toUpperCase())?.synonyms ?? []) { const x = allenUpper.get(a.toUpperCase()); if (x) return x; }
-  return null;
+// A gene list on the Allen symbols: each list gene's Allen symbol with probes, every Allen symbol once
+// (two list genes can share one, as NBPF10 and NBPF11 share NBPF8: the first keeps it), with the rows
+// named by current symbol. missing: list genes without Allen probes; shared: [gene, the earlier list gene]
+function listOnAllen(list) {
+  const allenUpper = allenUpperMap(), first = new Map(), out = [], missing = [], shared = [];
+  for (const g of list) {
+    const sym = allenSymbolFor(g, allenUpper);
+    if (!sym || !(expr.bySymbol.get(sym) ?? []).some(hasProbe)) { missing.push(g.sym); continue; }
+    if (first.has(sym)) { shared.push([g.sym, first.get(sym)]); continue; }
+    first.set(sym, g.sym); out.push({ g, sym });
+    if (hgnc) currentNameOf(sym, hgnc);
+  }
+  return Object.assign(out, { missing, shared });
 }
 async function showLongGenes() {
   const note = $e("long-note");
@@ -5993,17 +6059,8 @@ async function showLongGenes() {
     let table;
     try { table = await loadGeneLengths(); await loadHgnc().catch(() => null); }
     catch { note.textContent = "Could not read the gene length table."; return; }
-    const allenUpper = new Map([...expr.bySymbol.keys()].map(k => [k.toUpperCase(), k]));
-    const ids = [], lenOf = new Map();
-    let found = 0;
-    for (const g of table.slice(0, N)) {
-      const sym = allenSymbolFor(g, allenUpper);
-      const probes = sym ? (expr.bySymbol.get(sym) ?? []).filter(hasProbe) : [];
-      if (!probes.length) continue;
-      found++;
-      if (sym !== g.sym) (expr.currentName ??= new Map()).set(sym, g.sym);   // label rows with the current symbol
-      for (const id of probes) { ids.push(id); lenOf.set(id, g.len / 1e6); }
-    }
+    const ids = [], lenOf = new Map(), genes = listOnAllen(table.slice(0, N)), found = genes.length;
+    for (const { g, sym } of genes) for (const id of expr.bySymbol.get(sym).filter(hasProbe)) { ids.push(id); lenOf.set(id, g.len / 1e6); }
     if (!ids.length) { note.textContent = "None of these genes has probes in the loaded data."; return; }
     // Row labels: the gene's length in Mb before its symbol. With "Sort by hippocampal z-score"
     // ticked, rows are sorted by the probe's mean hippocampal z-score, highest first
@@ -6062,15 +6119,9 @@ async function showRepairGenes() {
   try {
     await new Promise(r => setTimeout(r, 30));
     await loadHgnc().catch(() => null);
-    const allenUpper = new Map([...expr.bySymbol.keys()].map(k => [k.toUpperCase(), k]));
-    const ids = [], pathOf = new Map(), missing = [];
-    for (const [sym, q] of REPAIR_GENES) {
-      const g = { sym, entrez: hgnc?.genes.get(sym.toUpperCase())?.entrez };
-      const a = allenSymbolFor(g, allenUpper), probes = a ? (expr.bySymbol.get(a) ?? []).filter(hasProbe) : [];
-      if (!probes.length) { missing.push(sym); continue; }
-      if (a !== sym) (expr.currentName ??= new Map()).set(a, sym);
-      for (const id of probes) { ids.push(id); pathOf.set(id, REPAIR_PATHWAYS[q]); }
-    }
+    const ids = [], pathOf = new Map(), pathIndex = new Map(REPAIR_GENES.map(([sym, q]) => [sym, q]));
+    const genes = listOnAllen(REPAIR_GENES.map(([sym]) => ({ sym, entrez: hgnc?.genes.get(sym.toUpperCase())?.entrez }))), { missing, shared } = genes;
+    for (const { g, sym } of genes) for (const id of expr.bySymbol.get(sym).filter(hasProbe)) { ids.push(id); pathOf.set(id, REPAIR_PATHWAYS[pathIndex.get(g.sym)]); }
     if (!ids.length) { note.textContent = "None of the repair genes has probes in the loaded data."; return; }
     // Each probe across all loaded samples: z within each donor, donors one after another
     const donors = donorClouds.filter(c => expr.byDonor.has(c.userData.donor)).map(c => ({ d: c.userData.donor, n: c.userData.items.length }));
@@ -6084,8 +6135,7 @@ async function showRepairGenes() {
     showProbeBox(expr.corr.query, order);
     autoZ(order.slice(0, 2000));
     applyColouring();
-    const nGenes = new Set(order.map(symbolOf)).size;
-    const msg = `DNA repair genes: ${nGenes} of ${REPAIR_GENES.length} with Allen probes, ${order.length} probes (one row each), ordered so probes with similar expression across the brain sit together.${missing.length ? ` Not in the Allen data: ${missing.join(", ")}.` : ""}`;
+    const msg = `DNA repair genes: ${genes.length + shared.length} of ${REPAIR_GENES.length} with Allen probes${shared.length ? ` (${shared.map(([a, b]) => `${a} shares ${b}'s`).join(", ")})` : ""}, ${order.length} probes (one row each), ordered so probes with similar expression across the brain sit together.${missing.length ? ` Not in the Allen data: ${missing.join(", ")}.` : ""}`;
     note.textContent = msg; setScaleNote(msg);
     setPanelOpen(false);
     if (document.body.classList.contains("ribbon-min")) setRibbonMin(false);
@@ -6103,17 +6153,13 @@ $e("repair-run").addEventListener("click", showRepairGenes);
 async function compGenes() {
   if ($e("comp-repair").checked) {   // the repair map's genes instead of a length threshold
     await loadHgnc().catch(() => null);
-    const allenUpper = new Map([...expr.bySymbol.keys()].map(k => [k.toUpperCase(), k]));
     const over = REPAIR_GENES.map(([sym]) => ({ sym, entrez: hgnc?.genes.get(sym.toUpperCase())?.entrez }));
-    const withProbes = expr.byDonor.size ? over.map(g => ({ g, sym: allenSymbolFor(g, allenUpper) })).filter(x => x.sym && (expr.bySymbol.get(x.sym) ?? []).some(hasProbe)) : null;
-    return { repair: true, total: REPAIR_GENES.length, over, withProbes };
+    return { repair: true, total: REPAIR_GENES.length, over, withProbes: expr.byDonor.size ? listOnAllen(over) : null };
   }
   const L = +$e("comp-len").value * 1000;
   const table = await loadGeneLengths(); await loadHgnc().catch(() => null);
   const over = table.filter(g => g.len >= L);
-  const allenUpper = new Map([...expr.bySymbol.keys()].map(k => [k.toUpperCase(), k]));
-  const withProbes = expr.byDonor.size ? over.map(g => ({ g, sym: allenSymbolFor(g, allenUpper) })).filter(x => x.sym && (expr.bySymbol.get(x.sym) ?? []).some(hasProbe)) : null;
-  return { L, total: table.length, over, withProbes };
+  return { L, total: table.length, over, withProbes: expr.byDonor.size ? listOnAllen(over) : null };
 }
 async function compCount() {
   const n = $e("comp-count");
@@ -6367,10 +6413,14 @@ $e("ribbon-axis").addEventListener("click", e => {
   applyScales();
   layoutRibbon();
 });
-// The visible height decides how many rows the canvas holds: redraw when it changes
+// A new visible width (the window, the names column, a scrollbar) lays the columns out again; the
+// visible height decides how many rows the canvas holds: redraw when either changes
 new ResizeObserver(() => {
   const scroll = ribbonCanvas.parentElement, axisH = $e("ribbon-axis").offsetHeight + 2;
-  if (ribbon.built && Math.round(scroll.clientHeight - axisH - 4) !== Math.round(ribbon.viewH)) drawRibbon();
+  if (!ribbon.built || $e("ribbon").hidden) return;
+  const newWidth = Math.max(200, scroll.clientWidth) !== ribbon.availW;
+  if (newWidth) layoutRibbon();
+  if (newWidth || Math.round(scroll.clientHeight - axisH - 4) !== Math.round(ribbon.viewH)) drawRibbon();
 }).observe(ribbonCanvas.parentElement);
 ribbonCanvas.parentElement.addEventListener("scroll", () => {
   const scroll = ribbonCanvas.parentElement;
